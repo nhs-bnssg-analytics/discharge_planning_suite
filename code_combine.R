@@ -265,4 +265,3 @@ ptc[[2]] <- ptc[[2]] +
   theme(legend.position = "off")
 
 ptc
-
