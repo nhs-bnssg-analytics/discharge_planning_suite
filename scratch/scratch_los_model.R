@@ -1,0 +1,193 @@
+library(fitdistrplus)
+library(tidyverse)
+library(tidymodels)
+
+con <- switch(.Platform$OS.type,
+              windows = RODBC::odbcConnect(dsn = "xsw"),
+              unix = xswauth::modelling_sql_area()
+)
+
+
+nctr_df <-
+  RODBC::sqlQuery(
+    con,
+    "SELECT
+       [Organisation_Code_Provider]
+      ,[Organisation_Code_Commissioner]
+      ,[Census_Date]
+      ,[NHS_Number]
+      ,[Person_Stated_Gender_Code]
+      ,[Person_Age]
+      ,[CDS_Unique_Identifier]
+      ,[Sub_ICB_Location]
+      ,[Organisation_Site_Code]
+      ,[Current_Ward]
+      ,[Specialty_Code]
+      ,[Bed_Type]
+      ,[Date_Of_Admission]
+      ,[BNSSG]
+      ,[Local_Authority]
+      ,[Criteria_To_Reside]
+      ,[Date_NCTR]
+      ,[Current_LOS]
+      ,[Days_NCTR]
+      ,[Current_Delay_Code]
+      ,[Current_Covid_Status]
+      ,[Planned_Date_Of_Discharge]
+      ,[Date_Toc_Form_Completed]
+      ,[Toc_Form_Status]
+      ,[Discharge_Pathway]
+      ,[DER_File_Name]
+      ,[DER_Load_Timestamp]
+  FROM Analyst_SQL_Area.dbo.vw_NCTR_Status_Report_Daily_JI"
+  )
+
+
+los_df <- nctr_df %>%
+  group_by(NHS_Number) %>%
+  # take maximum date we have data for each patient
+  filter(Census_Date == max(Census_Date)) %>%
+  ungroup() %>%
+  # keep only patients with either NCTR (we know they are ready for discharge)
+  # OR whos max date recorded is before the latest data (have been discharged)
+  filter(!is.na(Date_NCTR) | Census_Date != max(Census_Date)) %>%
+  # Compute the fit for discharge LOS
+  mutate(discharge_los = ifelse(!is.na(Date_NCTR), Current_LOS - Days_NCTR, Current_LOS + 1))  %>%
+  # remove negative LOS (wrong end timestamps?)
+  filter(discharge_los > 0) %>%
+  filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
+  mutate(Organisation_Site_Code = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt',
+                           Organisation_Site_Code == 'RA701' ~ 'bri',
+                           Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
+                           TRUE ~ '')) %>%
+  dplyr::select(
+                nhs_number = NHS_Number,
+                site = Organisation_Site_Code,
+                # gender = Person_Stated_Gender_Code, # will get these from another table
+                # age = Person_Age,
+                spec = Specialty_Code,
+                bed_type = Bed_Type,
+                los = discharge_los
+                ) %>%
+  # filter outlier LOS
+  filter(los < 50) # higher than Q(.99)
+
+# attributes to join
+
+attr_df <-
+  RODBC::sqlQuery(
+    con,
+    "select * from (
+select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
+[MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
+  )
+
+
+
+# modelling
+model_df <- los_df %>%
+   left_join(attr_df, by = join_by(nhs_number == nhs_number)) %>%
+   na.omit() %>%
+   select(los,
+          #site,
+          cambridge_score,
+          age,
+          sex,
+          #spec, # spec has too many levels, some of which don't get seen enough to reliably create a model pipeline
+          bed_type
+          # smoking,
+          # ethnicity,
+          #segment
+          ) %>%
+  filter(sex != "Unknown") # remove this as only 1 case
+
+
+
+set.seed(123)
+los_split <- initial_split(model_df, strata = los)
+los_train <- training(los_split)
+los_test <- testing(los_split)
+
+set.seed(234)
+los_folds <- vfold_cv(model_df, strata = los)
+los_folds
+
+
+tree_spec <- decision_tree(
+  cost_complexity = tune(),
+  tree_depth = tune(),
+  min_n = tune()
+) %>%
+  set_engine("rpart") %>%
+  set_mode("regression")
+
+
+tree_grid <- grid_regular(cost_complexity(),
+                          tree_depth(range = c(1, 3)),
+                          min_n(range = c(15, 100)), levels = 4)
+
+
+tree_rec <- recipe(los ~ ., data = los_train)  %>%
+    step_novel(all_nominal_predictors(), new_level = "other") %>%
+    step_other(all_nominal_predictors(), threshold = 0.1)
+
+
+tree_wf <- workflow() %>%
+           add_model(tree_spec) %>%
+           add_recipe(tree_rec)
+
+
+doParallel::registerDoParallel()
+
+set.seed(345)
+tree_rs <- tune_grid(
+  tree_wf,
+  resamples = los_folds,
+  grid = tree_grid,
+  metrics = metric_set(rmse, rsq, mae, mape)
+)
+
+
+
+autoplot(tree_rs) + theme_light(base_family = "IBMPlexSans")
+collect_metrics(tree_rs)
+
+tuned_wf<- finalize_workflow(tree_wf, select_best(tree_rs, "rsq"))
+
+tuned_wf
+
+# fit on all data
+tree_fit <- fit(tuned_wf, model_df)
+
+tree <- extract_fit_engine(tree_fit)
+rpart.plot::rpart.plot(tree)
+
+
+
+
+# append leaf number onto original data:
+
+los_model_df <- model_df %>%
+  bake(extract_recipe(tree_fit), .) %>%
+  mutate(leaf = treeClust::rpart.predict.leaves(tree, .))
+
+ggplot(los_model_df, aes(x = los)) +
+  geom_histogram() +
+  facet_wrap(vars(leaf), scales = "free_y")
+
+
+# fit los dists on the data at each leaf
+
+
+fit_lnorm <- los_model_df %>%
+             dplyr::select(leaf, los) %>%
+             group_by(leaf) %>%
+             nest() %>%
+             mutate(fit = map(data, ~fitdist(.x$los, "lnorm"))) %>%
+             mutate(fit = map(fit, pluck, "estimate"))  %>%
+             select(leaf, fit) %>%
+             mutate(fit = set_names(fit, leaf))
+
+
+saveRDS(fit_lnorm$fit, "data/dist_split.RDS")
+saveRDS(tree_fit, "data/los_wf.RDS")

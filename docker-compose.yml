@@ -1,0 +1,8 @@
+version: '3.7'
+services:
+    forecast:
+      build: .
+      restart: always
+      volumes:
+      - /samba/nowcast-data/dpp/data:/root/data
+      restart: always
