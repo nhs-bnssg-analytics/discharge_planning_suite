@@ -1,4 +1,4 @@
-FROM ubuntu2204_r422_lho
+FROM ubuntu2204_r422_dpp
 
 RUN apt update && apt -y install cron
 
