@@ -5,4 +5,5 @@ services:
       restart: always
       volumes:
       - /samba/nowcast-data/dpp/data:/root/data
+      - /home/rshiny:/root/sql
       restart: always
