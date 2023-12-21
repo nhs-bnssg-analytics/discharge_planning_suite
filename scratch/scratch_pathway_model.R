@@ -117,9 +117,9 @@ mod_rec <- recipe(pathway ~ ., data = model_df_split) %>%
   # step_unknown(all_nominal_predictors()) %>%
   step_nzv(all_predictors()) %>%
   # step_other(all_nominal_predictors(), threshold = 0.05) %>%
-  step_dummy(all_nominal_predictors()) #%>%
+  step_dummy(all_nominal_predictors()) %>%
   # embed::step_lencode_glm(all_nominal_predictors(), outcome = vars(pathway)) %>%
-  # themis::step_smote(pathway, over_ratio = 0.25)
+  themis::step_smote(pathway)
 
 
 rf_spec <- rand_forest(

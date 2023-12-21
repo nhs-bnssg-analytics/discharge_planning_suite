@@ -212,56 +212,52 @@ RODBC::sqlQuery(con, query_delete)
 RODBC::sqlSave(con, plot_df, tablename = 'dbo.discharge_pathway_projections', rownames = FALSE, append = TRUE)
 
 
-
-
-
-
-# make plots
-# total plot (current NCTR, CTR, and predicted NCTR tomorrow)
-p_tot <- plot_df %>%
-  filter(!(ctr == "Y" & source == "current_ctr_data")) %>%
-  pivot_wider(names_from = metric,
-              values_from = value) %>%
-  mutate(pathway = fct_reorder(pathway, n),
-         pathway = fct_relevel(pathway, rev(c("Other", "P1", "P2", "P3", "Not tomorrow")), after = 0)) %>%
-  ggplot(aes(x = fct_recode(ctr, "NCTR" = "N", "CTR" = "Y"), y = n, fill = pathway)) +
-  geom_col() +
-  bnssgtheme() +
-  theme(legend.position = "bottom") +
-  scale_fill_bnssg() +
-  labs(title = "Current patients by CTR status",
-       #subtitle = str_wrap("CTR is broken down into those who we predict will be NCTR tomorrow and not", 50),
-       x = "",
-       y = ""
-       )
-  
-
-
-p_pred <- plot_df %>%
-  pivot_wider(names_from = metric,
-              values_from = value) %>%
-  filter(source == "model_pred") %>%
-  # mutate(pathway = factor(pathway, levels = (c("Other", "P1", "P2", "P3", "Not tomorrow")))) %>%
-  # filter(los_remaining == 0) %>%
-  filter(pathway %in% c("P1", "P2", "P3")) %>%
-  ggplot(aes(x = pathway, y = n, fill = pathway)) +
-  geom_col() + 
-  geom_errorbar(aes(ymin = l95, ymax = u95), size = 0.9, width = 0.5)  +
-  bnssgtheme() +
-  theme(legend.position = "off") +
-  scale_fill_manual(values = c("Other" = "#853358", "P3" = "#8d488d", "P2" = "#8AC0E5", "P1" = "#003087")) +
-  labs(title = "Predicted NCTR tomorrow",
-       x = "",
-       y = "")
-
-
-ptc <- patchwork::wrap_plots(p_tot, p_pred) +
-  patchwork::plot_layout(guides = "collect") &
-  # patchwork::plot_annotation(title = "Current patients by NCTR status") &
-  theme(legend.position = 'bottom')
-
-
-ptc[[2]] <- ptc[[2]] +
-  theme(legend.position = "off")
-
-ptc
+# # make plots
+# # total plot (current NCTR, CTR, and predicted NCTR tomorrow)
+# p_tot <- plot_df %>%
+#   filter(!(ctr == "Y" & source == "current_ctr_data")) %>%
+#   pivot_wider(names_from = metric,
+#               values_from = value) %>%
+#   mutate(pathway = fct_reorder(pathway, n),
+#          pathway = fct_relevel(pathway, rev(c("Other", "P1", "P2", "P3", "Not tomorrow")), after = 0)) %>%
+#   ggplot(aes(x = fct_recode(ctr, "NCTR" = "N", "CTR" = "Y"), y = n, fill = pathway)) +
+#   geom_col() +
+#   bnssgtheme() +
+#   theme(legend.position = "bottom") +
+#   scale_fill_bnssg() +
+#   labs(title = "Current patients by CTR status",
+#        #subtitle = str_wrap("CTR is broken down into those who we predict will be NCTR tomorrow and not", 50),
+#        x = "",
+#        y = ""
+#        )
+#   
+# 
+# 
+# p_pred <- plot_df %>%
+#   pivot_wider(names_from = metric,
+#               values_from = value) %>%
+#   filter(source == "model_pred") %>%
+#   # mutate(pathway = factor(pathway, levels = (c("Other", "P1", "P2", "P3", "Not tomorrow")))) %>%
+#   # filter(los_remaining == 0) %>%
+#   filter(pathway %in% c("P1", "P2", "P3")) %>%
+#   ggplot(aes(x = pathway, y = n, fill = pathway)) +
+#   geom_col() + 
+#   geom_errorbar(aes(ymin = l95, ymax = u95), size = 0.9, width = 0.5)  +
+#   bnssgtheme() +
+#   theme(legend.position = "off") +
+#   scale_fill_manual(values = c("Other" = "#853358", "P3" = "#8d488d", "P2" = "#8AC0E5", "P1" = "#003087")) +
+#   labs(title = "Predicted NCTR tomorrow",
+#        x = "",
+#        y = "")
+# 
+# 
+# ptc <- patchwork::wrap_plots(p_tot, p_pred) +
+#   patchwork::plot_layout(guides = "collect") &
+#   # patchwork::plot_annotation(title = "Current patients by NCTR status") &
+#   theme(legend.position = 'bottom')
+# 
+# 
+# ptc[[2]] <- ptc[[2]] +
+#   theme(legend.position = "off")
+# 
+# ptc
