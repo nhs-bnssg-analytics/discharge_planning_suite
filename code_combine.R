@@ -5,7 +5,9 @@ library(lubridate)
 
 con <- switch(.Platform$OS.type,
               windows = RODBC::odbcConnect(dsn = "xsw"),
-              unix = xswauth::modelling_sql_area()
+              unix = {"/root/sql/sql_connect_string_linux" |>
+                  readr::read_lines() |>
+                xswauth::modelling_sql_area()}
 )
 
 source("utils.R")
