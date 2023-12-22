@@ -10,6 +10,8 @@ con <- switch(.Platform$OS.type,
                   RODBC::odbcDriverConnect()}
 )
 
+# con <- RODBC::odbcDriverConnect(readr::read_lines("/root/sql/sql_connect_string_linux"))
+
 source("utils.R")
 source("theme.R")
 source("colour_functions.R")

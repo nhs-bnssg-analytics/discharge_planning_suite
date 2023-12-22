@@ -20,6 +20,8 @@ source("./theme.R")
 
 
 ui <- shinyUI(fluidPage(
+  # fix the font
+  tags$head( tags$style(type="text/css", "text {font-family: sans-serif}")),
   
     dashboardPage(
     header = dashboardHeader(  titleWidth="30vw",
