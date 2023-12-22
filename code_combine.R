@@ -213,6 +213,10 @@ plot_df <- bind_rows(plot_df_pred,
 query_delete <- "DELETE FROM MODELLING_SQL_AREA.dbo.discharge_pathway_projections"
 RODBC::sqlQuery(con, query_delete)
 # save data to SQL
+# Note you have to change your con to include the modelling database
+# con_string <- c("driver={SQL Server};server=Xsw-00-ash01;
+# database=MODELLING_SQL_AREA;
+# trusted_connection=true")
 RODBC::sqlSave(con, plot_df, tablename = 'dbo.discharge_pathway_projections', rownames = FALSE, append = TRUE)
 
 
