@@ -35,15 +35,17 @@ levels <- set_names(levels, glue::glue("Still CTR {report_date + ddays(1)}"))
 
 data_dpp <- data_dpp %>%
   mutate(across(matches('date'), ~ as.POSIXct(.x, tz = 'UTC'))) %>%
-  mutate(pathway = factor(pathway, levels = (
-    c("Other", "P1", "P2", "P3", "Not tomorrow")
-  ))) %>%
-  mutate(pathway = fct_recode(pathway,  !!!levels)) %>%
-  mutate(pathway = fct_recode(pathway,  "NTCR without D2A referral" = "Other")) %>%
+  mutate(pathway = factor(pathway, levels = 
+    c("Other", "P1", "P2", "P3", "Not tomorrow"),
+    labels = c("NTCR not on D2A queue","P1 queue", "P2 queue", "P3 queue", names(levels))
+  )) %>%
+  # mutate(pathway = fct_recode(pathway,  !!!levels)) %>%
+  # mutate(pathway = fct_recode(pathway,  "NTCR not on D2A queue" = "Other")) %>%
   pivot_wider(names_from = metric,
               values_from = value) %>%
   mutate(
-    tooltip_n = glue::glue("Queue {pathway} = {round(n, 0)}"),
+    tooltip_n = glue::glue("{pathway} = {round(n, 0)}"),
+    tooltip_n_noqueue = glue::glue("{str_remove_all(pathway, 'queue')} = {round(n, 0)}"),
     tooltip_errorbar = glue::glue("({round(u95,0)}, {round(l95,0)})")
   ) %>%
   mutate(pathway = fct_relevel(pathway, names(levels), after = 0))
