@@ -30,33 +30,36 @@ ui <- shinyUI(fluidPage(
     
     body = dashboardBody(
       box(width = 12,
-          HTML(glue::glue("<h5>Here you can visualise currently admitted patients by CTR status. Shown on the left is the count of patients broken down by CTR status and coloured by the pathway queue they are on. Included in the count of patients with CTR are predictions for those likely to be NTCR tomorrow. More detail on these predictions are shown in the chart on the right.<br>
+          HTML(glue::glue("<h5>Here you can visualise currently admitted patients by CTR status. Shown on the left is the count of patients broken down by CTR status and coloured by the pathway queue they are on. Included in the count of patients with CTR are predictions for those likely to be NTCR by {report_date + ddays(1)}. More detail on these predictions are shown in the chart on the right.<br>
                                 For comments and suggestions, email Nick Howlett (Modelling and Analytics) by clicking <a href='mailto:nick.howlett5@nhs.net'>here.</a><br><br>", 
                           "These data were last updated: <b>{report_date}</b></h5>"))),
       box(width = 12, girafeOutput("dpp_plot"))
-      )
   )
-))
+)))
 
 
 server <- shinyServer(function(input, output) {
-
+  
+  cols <- c("#853358", "#003087", "#8AC0E5", "#8d488d", "#999999")
+  
+  cols <- set_names(cols, c("NTCR without D2A referral","P1", "P2", "P3", names(levels)))
   
   output$dpp_plot <- renderGirafe({
     p_tot <- data_dpp %>%
+      mutate(pathway = fct_relevel(pathway, names(levels), after = Inf)) %>%
       filter(!(ctr == "Y" & source == "current_ctr_data")) %>%
-      pivot_wider(names_from = metric,
-                  values_from = value) %>%
-      mutate(pathway = fct_reorder(pathway, n),
-             pathway = fct_relevel(pathway, rev(c("Other", "P1", "P2", "P3", "Not tomorrow")), after = 0),
-             tooltip_n = round(n, 1)) %>%
-      ggplot(aes(x = fct_recode(ctr, "NCTR" = "N", "CTR" = "Y"), y = n, fill = pathway)) +
-      geom_col_interactive(aes(tooltip = tooltip_n)) +
+      ggplot(aes(x = fct_recode(ctr, "NCTR\n(with NCTR status)" = "N", "CTR\n(with CTR status)" = "Y"), y = round(n, 0), 
+                 fill = fct_rev(pathway), 
+                 group = fct_rev(pathway))) +
+      geom_col_interactive(aes(tooltip = tooltip_n))  +
       bnssgtheme() +
       theme(legend.position = "bottom") +
-      scale_fill_bnssg() +
-      labs(title = "Current patients by CTR status",
-           #subtitle = str_wrap("CTR is broken down into those who we predict will be NCTR tomorrow and not", 50),
+      scale_fill_manual(values = unname(cols),
+                        breaks = names(cols),
+                        labels = c("NTCR without D2A referral","P1 queue", "P2 queue", "P3 queue", names(levels))) +
+      labs(title = "Acute patients* in BNSSG system**\nby CTR status",
+           #subtitle = str_wrap(glue::glue("CTR is broken down into those who we predict will be NCTR {report_date + ddays(1)} and not", 50)),
+           fill = "D2A queue",
            x = "",
            y = ""
       )
@@ -64,37 +67,33 @@ server <- shinyServer(function(input, output) {
     
     
     p_pred <- data_dpp %>%
-      pivot_wider(names_from = metric,
-                  values_from = value) %>%
       filter(source == "model_pred") %>%
-      mutate(tooltip_n = round(n, 1),
-             tooltip_errorbar = glue::glue("({round(u95,1)}, {round(l95,1)})")) %>%
-      # mutate(pathway = factor(pathway, levels = (c("Other", "P1", "P2", "P3", "Not tomorrow")))) %>%
-      # filter(los_remaining == 0) %>%
       filter(pathway %in% c("P1", "P2", "P3")) %>%
-      ggplot(aes(x = pathway, y = n, fill = pathway)) +
+      ggplot(aes(x = pathway, y = round(n, 0), fill = pathway)) +
       geom_col_interactive(aes(tooltip = tooltip_n)) + 
       geom_errorbar_interactive(aes(ymin = l95, ymax = u95, tooltip = tooltip_errorbar), width = 0.5)  +
       bnssgtheme() +
       theme(legend.position = "off") +
-      scale_fill_manual(values = c("Other" = "#853358", "P3" = "#8d488d", "P2" = "#8AC0E5", "P1" = "#003087")) +
-      labs(title = "Predicted NCTR tomorrow",
+      scale_fill_manual(values = c("NTCR without D2A referral" = "#853358", "P3" = "#8d488d", "P2" = "#8AC0E5", "P1" = "#003087")) +
+      labs(title = glue::glue("Current CTR population\npredicted NCTR by {report_date + ddays(1)}"),
            x = "",
            y = "")
     
     
     ptc <- patchwork::wrap_plots(p_tot, p_pred) +
       patchwork::plot_layout(guides = "collect") &
-      # patchwork::plot_annotation(title = "Current patients by NCTR status") &
-      theme(legend.position = 'bottom')
+      patchwork::plot_annotation(caption = "*Meant to include all patients with LOS over 24 hrs. Data supplied by trusts in daily flows, however we are aware of DQ issues and some patients\nwill be missing.\n
+                          **BRI, Southmead, & Weston.") &
+      theme(legend.position = 'bottom',
+            plot.caption = element_text(hjust = 0, size = rel(1.1)))
     
     
     ptc[[2]] <- ptc[[2]] +
       theme(legend.position = "off")
     
     girafe(ggobj = ptc , 
-           width_svg = 10, 
-           height_svg = 4,
+           width_svg = 12, 
+           height_svg = 5,
            options = list(
              opts_hover(css = "fill: black;"),
              opts_hover_inv(css = "opacity: 0.1;")

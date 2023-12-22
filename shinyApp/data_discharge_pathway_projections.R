@@ -27,8 +27,23 @@ query <- '
 SELECT *
 FROM MODELLING_SQL_AREA.dbo.discharge_pathway_projections'
 
-data_dpp <- sqlQuery(con, query) %>%
-  mutate(across(matches('date'), ~as.POSIXct(.x, tz = 'UTC'))) %>%
-  mutate(pathway = factor(pathway, levels = (c("Other", "P1", "P2", "P3", "Not tomorrow"))))
+data_dpp <- sqlQuery(con, query)
+report_date <- ymd(data_dpp$report_date)[1]
 
-report_date <- data_dpp$report_date[1]
+levels <- c("Not tomorrow")
+levels <- set_names(levels, glue::glue("Still CTR {report_date + ddays(1)}"))
+
+data_dpp <- data_dpp %>%
+  mutate(across(matches('date'), ~ as.POSIXct(.x, tz = 'UTC'))) %>%
+  mutate(pathway = factor(pathway, levels = (
+    c("Other", "P1", "P2", "P3", "Not tomorrow")
+  ))) %>%
+  mutate(pathway = fct_recode(pathway,  !!!levels)) %>%
+  mutate(pathway = fct_recode(pathway,  "NTCR without D2A referral" = "Other")) %>%
+  pivot_wider(names_from = metric,
+              values_from = value) %>%
+  mutate(
+    tooltip_n = glue::glue("Queue {pathway} = {round(n, 0)}"),
+    tooltip_errorbar = glue::glue("({round(u95,0)}, {round(l95,0)})")
+  ) %>%
+  mutate(pathway = fct_relevel(pathway, names(levels), after = 0))
