@@ -42,7 +42,7 @@ server <- shinyServer(function(input, output) {
   
   cols <- c("#853358", "#003087", "#8AC0E5", "#8d488d", "#999999")
   
-  cols <- set_names(cols, c("NTCR not on D2A queue","P1 queue", "P2 queue", "P3 queue", names(levels)))
+  cols <- set_names(cols, c("NTCR but not on D2A queue","P1 queue", "P2 queue", "P3 queue", names(levels)))
   
   
   output$dpp_plot <- renderGirafe({
@@ -57,7 +57,7 @@ server <- shinyServer(function(input, output) {
       theme(legend.position = "bottom") +
       scale_fill_manual(values = unname(cols),
                         breaks = names(cols),
-                        labels = c("NTCR not on D2A queue","P1 queue", "P2 queue", "P3 queue", names(levels))) +
+                        labels = c("NTCR but not on D2A queue","P1 queue", "P2 queue", "P3 queue", names(levels))) +
       labs(title = "Acute patients* in BNSSG system**\nby CTR status",
            #subtitle = str_wrap(glue::glue("CTR is broken down into those who we predict will be NCTR {report_date + ddays(1)} and not", 50)),
            fill = "D2A queue",
@@ -75,7 +75,7 @@ server <- shinyServer(function(input, output) {
       geom_errorbar_interactive(aes(ymin = l95, ymax = u95, tooltip = tooltip_errorbar), width = 0.5)  +
       bnssgtheme() +
       theme(legend.position = "off") +
-      scale_fill_manual(values = c("NTCR not on D2A queue" = "#853358", "P3 queue" = "#8d488d", "P2 queue" = "#8AC0E5", "P1 queue" = "#003087")) +
+      scale_fill_manual(values = c("NTCR but not on D2A queue" = "#853358", "P3 queue" = "#8d488d", "P2 queue" = "#8AC0E5", "P1 queue" = "#003087")) +
       labs(title = glue::glue("Current CTR population\npredicted NCTR by {report_date + ddays(1)}"),
            x = "",
            y = "")

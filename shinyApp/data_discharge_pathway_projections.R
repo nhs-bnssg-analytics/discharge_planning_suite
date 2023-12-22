@@ -37,10 +37,10 @@ data_dpp <- data_dpp %>%
   mutate(across(matches('date'), ~ as.POSIXct(.x, tz = 'UTC'))) %>%
   mutate(pathway = factor(pathway, levels = 
     c("Other", "P1", "P2", "P3", "Not tomorrow"),
-    labels = c("NTCR not on D2A queue","P1 queue", "P2 queue", "P3 queue", names(levels))
+    labels = c("NTCR but not on D2A queue","P1 queue", "P2 queue", "P3 queue", names(levels))
   )) %>%
   # mutate(pathway = fct_recode(pathway,  !!!levels)) %>%
-  # mutate(pathway = fct_recode(pathway,  "NTCR not on D2A queue" = "Other")) %>%
+  # mutate(pathway = fct_recode(pathway,  "NTCR but not on D2A queue" = "Other")) %>%
   pivot_wider(names_from = metric,
               values_from = value) %>%
   mutate(
