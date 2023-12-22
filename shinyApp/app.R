@@ -41,15 +41,18 @@ ui <- shinyUI(fluidPage(
 server <- shinyServer(function(input, output) {
   
   cols <- c("#853358", "#003087", "#8AC0E5", "#8d488d", "#999999")
-  
   cols <- set_names(cols, c("NTCR but not on D2A queue","P1 queue", "P2 queue", "P3 queue", names(levels)))
+  
+  x_labs <- c("N", "Y")
+  x_labs <- set_names(x_labs, c("NCTR\n(with NCTR status)", glue::glue("CTR\n(with CTR status and\npredicted status {report_date+ddays(1)})")))
   
   
   output$dpp_plot <- renderGirafe({
     p_tot <- data_dpp %>%
       mutate(pathway = fct_relevel(pathway, names(levels), after = Inf)) %>%
       filter(!(ctr == "Y" & source == "current_ctr_data")) %>%
-      ggplot(aes(x = fct_recode(ctr, "NCTR\n(with NCTR status)" = "N", "CTR\n(with CTR status)" = "Y"), y = round(n, 0), 
+      ggplot(aes(x = fct_recode(ctr, !!!x_labs), y = round(n, 0), 
+      # ggplot(aes(x = fct_recode(ctr, "NCTR\n(with NCTR status)" = "N", "CTR\n(with CTR status)" = "Y"), y = round(n, 0), 
                  fill = fct_rev(pathway), 
                  group = fct_rev(pathway))) +
       geom_col_interactive(aes(tooltip = tooltip_n))  +
@@ -94,7 +97,7 @@ server <- shinyServer(function(input, output) {
     
     girafe(ggobj = ptc , 
            width_svg = 12, 
-           height_svg = 5,
+           height_svg = 6,
            options = list(
              opts_hover(css = "fill: black;"),
              opts_hover_inv(css = "opacity: 0.1;")
