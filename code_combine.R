@@ -212,6 +212,15 @@ plot_df <- bind_rows(plot_df_pred,
 # delete old data
 query_delete <- "DELETE FROM MODELLING_SQL_AREA.dbo.discharge_pathway_projections"
 RODBC::sqlQuery(con, query_delete)
+
+# change con to write to modelling sql area
+RODBC::odbcClose(con)
+con <- switch(.Platform$OS.type,
+              windows = RODBC::odbcConnect(dsn = "xsw"),
+              unix = {"/root/sql/sql_modelling_connect_string_linux" |>
+                  readr::read_lines() |>
+                  RODBC::odbcDriverConnect()}
+)
 # save data to SQL
 # Note you have to change your con to include the modelling database
 # con_string <- c("driver={SQL Server};server=Xsw-00-ash01;
