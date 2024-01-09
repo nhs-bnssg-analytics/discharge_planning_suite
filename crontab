@@ -1,2 +1,2 @@
-## Run the training once every day, starting 9pm 
-0 17 * * * /usr/local/bin/Rscript /root/code_combine.R > /proc/1/fd/1 2>/proc/1/fd/2
+## Run the forecast once every day, starting 1pm 
+0 13 * * * /usr/local/bin/Rscript /root/code_combine.R > /proc/1/fd/1 2>/proc/1/fd/2
