@@ -220,6 +220,11 @@ RODBC::sqlQuery(con, query_delete)
 RODBC::sqlSave(con, plot_df, tablename = 'dbo.discharge_pathway_projections', rownames = FALSE, append = TRUE)
 
 
+con_string <- c("driver={SQL Server};server=Xsw-00-ash01;
+database=MODELLING_SQL_AREA;
+trusted_connection=true")
+
+
 # # make plots
 # # total plot (current NCTR, CTR, and predicted NCTR tomorrow)
 # p_tot <- plot_df %>%
