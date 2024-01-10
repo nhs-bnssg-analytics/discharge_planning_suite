@@ -18,7 +18,7 @@ source("colour_functions.R")
 
 n_rep <- 1E4
 
-report_date <- today()
+run_date <- today()
 
 nctr_df <-
   RODBC::sqlQuery(
@@ -78,6 +78,8 @@ nctr_df <- nctr_df %>%
          Date_Of_Admission = as.Date(Date_Of_Admission)) %>%
   group_by(Organisation_Site_Code) %>%
   filter(Census_Date == max(Census_Date)) %>% 
+  ungroup() %>%
+  mutate(report_date = max(Census_Date)) %>% 
   mutate(los = (report_date - Date_Of_Admission)/ddays(1)) %>%
   mutate(pathway = recode(Current_Delay_Code_Standard,
                           "Uncoded" = "Other",
@@ -87,7 +89,13 @@ nctr_df <- nctr_df %>%
                           "xviii. Awaiting discharge to a care home but have not had a COVID 19 test (in 48 hrs preceding discharge)." = "Other",
                           "15b  Repat  bxv  WGH" = "Other"),
          pathway = coalesce(pathway, "Other")) %>%
-  dplyr::select(nhs_number = NHS_Number, ctr = Criteria_To_Reside, site, bed_type = Bed_Type, los, pathway) %>%
+  dplyr::select(report_date, # this is a workaround for bad DQ / census date is not always consistent at time of running
+                nhs_number = NHS_Number,
+                ctr = Criteria_To_Reside,
+                site,
+                bed_type = Bed_Type,
+                los,
+                pathway) %>%
   ungroup()
 
 
@@ -175,8 +183,6 @@ df_pred <- los_df %>%
 
 # dataset for plotting (and storing on SQL)
 
-
-
 plot_df_pred <- df_pred %>%
   mutate(pathway = ifelse(los_remaining == 0, pathway, "Not tomorrow")) %>%
   group_by(pathway) %>%
@@ -185,7 +191,7 @@ plot_df_pred <- df_pred %>%
             l95 = sum(l95)) %>%
   mutate(ctr = "Y",
          source = "model_pred",
-         report_date = report_date) %>%
+         report_date = max(nctr_df$report_date)) %>%
   pivot_longer(cols = c(n, u95, l95),
                names_to = "metric",
                values_to = "value")
@@ -195,7 +201,7 @@ plot_df_current <- nctr_df %>%
   group_by(ctr, pathway) %>%
   count() %>%
   mutate(source = "current_ctr_data",
-         report_date = report_date) %>%
+         report_date = max(nctr_df$report_date)) %>%
   pivot_longer(cols = c(n),
                names_to = "metric",
                values_to = "value")
@@ -209,68 +215,22 @@ plot_df <- bind_rows(plot_df_pred,
 # create the table
 # RODBC::sqlQuery(con, query = 'USE modelling_sql_area CREATE TABLE dbo.discharge_pathway_projections  ("pathway" varchar(255), "ctr" varchar(255), "source" varchar(255), "report_date" float, "metric" varchar(255), "value" float)')
 
+# change con to write to modelling sql area
+RODBC::odbcClose(con)
+con <- switch(.Platform$OS.type,
+              windows = {
+                "driver={SQL Server};server=Xsw-00-ash01;
+                 database=MODELLING_SQL_AREA;
+                 trusted_connection=true" |>
+                 RODBC::odbcDriverConnect()
+                },
+              unix = {
+                "/root/sql/sql_modelling_connect_string_linux" |>
+                  readr::read_lines() |>
+                  RODBC::odbcDriverConnect()
+                }
+)
 # delete old data
 query_delete <- "DELETE FROM MODELLING_SQL_AREA.dbo.discharge_pathway_projections"
 RODBC::sqlQuery(con, query_delete)
-# save data to SQL
-# Note you have to change your con to include the modelling database
-# con_string <- c("driver={SQL Server};server=Xsw-00-ash01;
-# database=MODELLING_SQL_AREA;
-# trusted_connection=true")
 RODBC::sqlSave(con, plot_df, tablename = 'dbo.discharge_pathway_projections', rownames = FALSE, append = TRUE)
-
-
-con_string <- c("driver={SQL Server};server=Xsw-00-ash01;
-database=MODELLING_SQL_AREA;
-trusted_connection=true")
-
-
-# # make plots
-# # total plot (current NCTR, CTR, and predicted NCTR tomorrow)
-# p_tot <- plot_df %>%
-#   filter(!(ctr == "Y" & source == "current_ctr_data")) %>%
-#   pivot_wider(names_from = metric,
-#               values_from = value) %>%
-#   mutate(pathway = fct_reorder(pathway, n),
-#          pathway = fct_relevel(pathway, rev(c("Other", "P1", "P2", "P3", "Not tomorrow")), after = 0)) %>%
-#   ggplot(aes(x = fct_recode(ctr, "NCTR" = "N", "CTR" = "Y"), y = n, fill = pathway)) +
-#   geom_col() +
-#   bnssgtheme() +
-#   theme(legend.position = "bottom") +
-#   scale_fill_bnssg() +
-#   labs(title = "Current patients by CTR status",
-#        #subtitle = str_wrap("CTR is broken down into those who we predict will be NCTR tomorrow and not", 50),
-#        x = "",
-#        y = ""
-#        )
-#   
-# 
-# 
-# p_pred <- plot_df %>%
-#   pivot_wider(names_from = metric,
-#               values_from = value) %>%
-#   filter(source == "model_pred") %>%
-#   # mutate(pathway = factor(pathway, levels = (c("Other", "P1", "P2", "P3", "Not tomorrow")))) %>%
-#   # filter(los_remaining == 0) %>%
-#   filter(pathway %in% c("P1", "P2", "P3")) %>%
-#   ggplot(aes(x = pathway, y = n, fill = pathway)) +
-#   geom_col() + 
-#   geom_errorbar(aes(ymin = l95, ymax = u95), size = 0.9, width = 0.5)  +
-#   bnssgtheme() +
-#   theme(legend.position = "off") +
-#   scale_fill_manual(values = c("Other" = "#853358", "P3" = "#8d488d", "P2" = "#8AC0E5", "P1" = "#003087")) +
-#   labs(title = "Predicted NCTR tomorrow",
-#        x = "",
-#        y = "")
-# 
-# 
-# ptc <- patchwork::wrap_plots(p_tot, p_pred) +
-#   patchwork::plot_layout(guides = "collect") &
-#   # patchwork::plot_annotation(title = "Current patients by NCTR status") &
-#   theme(legend.position = 'bottom')
-# 
-# 
-# ptc[[2]] <- ptc[[2]] +
-#   theme(legend.position = "off")
-# 
-# ptc
