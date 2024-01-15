@@ -58,20 +58,21 @@ nctr_df <-
   )
 
 
-
 nctr_ts <- nctr_df %>%
   filter(!is.na(NHS_Number)) %>%
-  group_by(nhs_number = NHS_Number, arrival_date = Date_Of_Admission) %>%
+  group_by(NHS_Number, arrival_date = Date_Of_Admission) %>%
   mutate(id = cur_group_id()) %>%
-  group_by(nhs_number) %>%
+  group_by(NHS_Number) %>%
   arrange(Census_Date) %>%
-  group_by(nhs_number, arrival_date) %>%
+  group_by(NHS_Number, arrival_date) %>%
   summarise(date_nctr = as.Date(if_else(any(!is.na(Date_NCTR)), Date_NCTR[!is.na(Date_NCTR)][1], max(Census_Date) + days(1)))) %>%
   group_by(date_nctr) %>%
   count() %>%
   arrange(date_nctr) %>%
   filter(year(date_nctr) < 2024, date_nctr > ymd("2023-09-01")) 
   
+
+nctr_df <- 
 ## atrributes
 
 attr_df <-
@@ -84,18 +85,25 @@ select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period
 
 
 
+
+
 los_df <- nctr_df %>%
   # filter for our main sites / perhaps I shouldn't do this?
   # filter for CTR, we wont predict the NCTR outcome for those already NCTR/on a queue
-  filter(Criteria_To_Reside == "Y",
-         !is.na(NHS_Number)) %>%
-  mutate(site = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt', 
-                          Organisation_Site_Code == 'RA701' ~ 'bri', 
-                          Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston', 
-                          TRUE ~ ''),
-         Date_Of_Admission = as.Date(Date_Of_Admission)) %>%
-  mutate(los = (Census_Date - Date_Of_Admission)/ddays(1),
-         date = as.Date(Census_Date)) %>%
+  filter(Criteria_To_Reside == "Y",!is.na(NHS_Number)) %>%
+  mutate(
+    site = case_when(
+      Organisation_Site_Code == 'RVJ01' ~ 'nbt',
+      Organisation_Site_Code == 'RA701' ~ 'bri',
+      Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
+      TRUE ~ ''
+    ),
+    Date_Of_Admission = as.Date(Date_Of_Admission)
+  ) %>%
+  mutate(
+    los = (Census_Date - Date_Of_Admission) / ddays(1),
+    date = as.Date(Census_Date)
+  ) %>%
   dplyr::select(date, nhs_number = NHS_Number, site, bed_type = Bed_Type, los) %>%
   left_join(attr_df, by = join_by(nhs_number == nhs_number)) %>%
   select(date, age, sex, cambridge_score, bed_type, los) %>%
