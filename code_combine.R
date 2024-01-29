@@ -23,79 +23,117 @@ run_date <- today()
 nctr_df <-
   RODBC::sqlQuery(
     con,
-    "SELECT
-       [RN]
-      ,[Organisation_Code_Provider]
-      ,[Organisation_Code_Commissioner]
-      ,[Census_Date]
-      ,[Month_Date]
-      ,[Month]
-      ,[Day_Of_Week]
-      ,[Week_Start_Date]
-      ,[NHS_Number]
-      ,[Person_Stated_Gender_Code]
-      ,[Person_Age]
-      ,[CDS_Unique_Identifier]
-      ,[Sub_ICB_Location]
-      ,[Organisation_Site_Code]
-      ,[Current_Ward]
-      ,[Specialty_Code]
-      ,[Bed_Type]
-      ,[Date_Of_Admission]
-      ,[BNSSG]
-      ,[Local_Authority]
-      ,[Criteria_To_Reside]
-      ,[Date_NCTR]
-      ,[Current_LOS]
-      ,[Days_NCTR]
-      ,[Days_NCTR_On_Current_Code]
-      ,[Current_Delay_Code]
-      ,[Local_Authority_grouped]
-      ,[Site_Name]
-      ,[Current_Delay_Code_Standard]
-      ,[Current_Delay_Code_Detailed]
-      ,[Acute Community split]
-      ,[Current_Covid_Status]
-      ,[Planned_Date_Of_Discharge]
-      ,[Date_Toc_Form_Completed]
-      ,[Toc_Form_Status]
-      ,[Discharge_Pathway]
-      ,[DER_File_Name]
-      ,[DER_Load_Timestamp]
-  FROM Analyst_SQL_Area.dbo.vw_NCTR_Status_Report_Daily_JI"
+    "SELECT 
+       a.HOSPITAL_PROVIDER_SPELL_IDENTIFIER
+      ,a.[ACTIVITY_TREATMENT_FUNCTION_CODE]
+      ,a.[ADMINISTRATIVE_CATEGORY_CODE_ON_ADMISSION]
+      ,a.[CRITERIA_TO_RESIDE]
+      ,a.[DESTINATION_OF_DISCHARGE_HOSPITAL_PROVIDER_SPELL]
+      ,a.[DISCHARGE_PATHWAY]
+      ,a.[DISCHARGE_READY_DATE_HOSPITAL_PROVIDER_SPELL]
+      ,a.[Pseudo_NHS_NUMBER]
+      ,a.[ORGANISATION_IDENTIFIER_CODE_OF_PROVIDER]
+      ,a.[ORGANISATION_SITE_IDENTIFIER_OF_TREATMENT]
+      ,a.[PATIENT_CLASSIFICATION_CODE]
+      ,a.[PRIMARY_DIAGNOSIS_ICD]
+      ,a.[PRIMARY_PROCEDURE_OPCS]
+      ,a.[REMAIN_REASON]
+      ,a.[REPORTING_PERIOD_END_DATE]
+      ,a.[REPORTING_PERIOD_START_DATE]
+	    ,b.[START_DATE_HOSPITAL_PROVIDER_SPELL]
+	    ,b.[START_TIME_HOSPITAL_PROVIDER_SPELL]
+      ,a.[START_DATE_EPISODE]
+      ,a.[START_TIME_EPISODE]
+      ,a.[WARD_CODE]
+      ,a.[WARD_INTENDED_CLINICAL_CARE_INTENSITY]
+  FROM [ABI].[FDF].[Inpatient] a
+  left join [ABI].[FDF].[Admission] b
+  on a.HOSPITAL_PROVIDER_SPELL_IDENTIFIER = b.HOSPITAL_PROVIDER_SPELL_IDENTIFIER"
   )
 
 
+
 nctr_df <- nctr_df %>%
+  mutate(spec = factor(ACTIVITY_TREATMENT_FUNCTION_CODE)) %>%
   # filter for our main sites / perhaps I shouldn't do this?
-  # filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
+  filter(
+    ORGANISATION_SITE_IDENTIFIER_OF_TREATMENT %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')
+  ) %>%
   # filter for CTR, we wont predict the NCTR outcome for those already NCTR/on a queue
   # filter(Criteria_To_Reside == "N") %>%
-  mutate(site = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt', 
-                          Organisation_Site_Code == 'RA701' ~ 'bri', 
-                          Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston', 
-                          TRUE ~ 'other'),
-         Date_Of_Admission = as.Date(Date_Of_Admission)) %>%
-  group_by(Organisation_Site_Code) %>%
-  filter(Census_Date == max(Census_Date)) %>% 
+  mutate(
+    site = case_when(
+      ORGANISATION_SITE_IDENTIFIER_OF_TREATMENT == 'RVJ01' ~ 'nbt',
+      ORGANISATION_SITE_IDENTIFIER_OF_TREATMENT == 'RA701' ~ 'bri',
+      ORGANISATION_SITE_IDENTIFIER_OF_TREATMENT %in% c('RA301', 'RA7C2') ~ 'weston',
+      TRUE ~ 'other'
+    ),
+    Date_Of_Admission = as.Date(START_DATE_HOSPITAL_PROVIDER_SPELL),
+    REPORTING_PERIOD_START_DATE = as.Date(parse_date_time(
+      REPORTING_PERIOD_START_DATE, orders = c("ymd", "dmy HMS")
+    ))
+  ) %>%
+  group_by(site) %>%
+  filter(REPORTING_PERIOD_START_DATE == max(REPORTING_PERIOD_START_DATE)) %>%
+  # distinct(HOSPITAL_PROVIDER_SPELL_IDENTIFIER) %>%
   ungroup() %>%
-  mutate(report_date = max(Census_Date)) %>% 
-  mutate(los = (report_date - Date_Of_Admission)/ddays(1)) %>%
-  mutate(pathway = recode(Current_Delay_Code_Standard,
-                          "Uncoded" = "Other",
-                          "Repatriation" = "Other",
-                          "NCTR Null" = "Other",
-                          "Not Set" = "Other",
-                          "xviii. Awaiting discharge to a care home but have not had a COVID 19 test (in 48 hrs preceding discharge)." = "Other",
-                          "15b  Repat  bxv  WGH" = "Other"),
-         pathway = coalesce(pathway, "Other")) %>%
-  dplyr::select(report_date, # this is a workaround for bad DQ / census date is not always consistent at time of running
-                nhs_number = NHS_Number,
-                ctr = Criteria_To_Reside,
-                site,
-                bed_type = Bed_Type,
-                los,
-                pathway) %>%
+  distinct() %>%
+  # mutate(report_date = max(REPORTING_PERIOD_START_DATE)) %>%
+  mutate(los = (REPORTING_PERIOD_START_DATE - Date_Of_Admission) / ddays(1)) %>%
+  mutate(
+    pathway = recode(
+      DISCHARGE_PATHWAY,
+      "iv" = "Other",
+      "z" = "Other",
+      "1C" = "P1",
+      "ixc" = "Other",
+      "viii" = "Other",
+      "x" = "Other",
+      "0A" = "P0",
+      "v" = "Other",
+      "vii" = "Other",
+      "ii" = "Other",
+      "iii" = "Other",
+      "xv" = "Other",
+      "xr" = "Other",
+      "xii" = "Other",
+      "ix" = "Other",
+      "3J" = "P3",
+      "xi" = "Other",
+      "viiio" = "Other",
+      "xiii" = "Other",
+      "xvii" = "Other",
+      "i" = "Other",
+      "2G" = "P2",
+      "2H" = "P2",
+      "xviii" = "Other",
+      "99" = "Other",
+      "xiv" = "Other",
+      "vi" = "Other",
+      "xvi" = "Other",
+      "1E" = "P1",
+      "1A" = "P1",
+      "3B" = "P3",
+      "2E" = "P2",
+      "0B" = "P0",
+      "viiih" = "Other",
+      "ixh" = "Other",
+      "2F" = "P2",
+      "1D" = "P1"
+    ),
+    pathway = coalesce(pathway, "Other")
+  ) %>%
+  dplyr::select(
+    report_date = REPORTING_PERIOD_START_DATE,
+    # this is a workaround for bad DQ / census date is not always consistent at time of running
+    nhs_number = Pseudo_NHS_NUMBER,
+    ctr = CRITERIA_TO_RESIDE,
+    site,
+    spec,
+    # bed_type = Bed_Type,
+    los,
+    pathway
+  ) %>%
   ungroup()
 
 
@@ -105,7 +143,7 @@ los_df <- nctr_df %>%
   # filter for our main sites / perhaps I shouldn't do this?
   # filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   # filter for CTR, we wont predict the NCTR outcome for those already NCTR/on a queue
-  filter(ctr == "Y") 
+  filter(ctr != "X") 
 
 
 # attributes
@@ -120,13 +158,27 @@ select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period
 
 los_df <- los_df %>%
   left_join(attr_df, by = join_by(nhs_number == nhs_number)) %>%
-  select(age, sex, cambridge_score, bed_type, los) %>%
+  select(
+    -c(
+      "nhs_number",
+      "site",
+      #"spec",
+      "attribute_period",
+      "spend_12_months",
+      "smoking",
+      "bmi",
+      "ethnicity",
+      "practice_code",
+      "lsoa",
+      "Version",
+      "rn"
+    )
+    ) %>%
   na.omit() 
 
 # pathway model
 
 rf_wf <- readRDS("data/rf_wf.RDS")
-
 
 
 # los_tree
@@ -137,7 +189,15 @@ los_df <- los_df %>%
   bake(extract_recipe(los_wf), .) %>%
   mutate(leaf = as.character(treeClust::rpart.predict.leaves(extract_fit_engine(los_wf), .))) %>%
   # bind RF pathway predicted probabilities
-  bind_cols(predict(rf_wf, los_df, type = "prob"))
+  bind_cols(extract_recipe(rf_wf) %>%
+              bake(los_df) %>%
+              predict(extract_fit_engine(rf_wf), data = .) %>%
+              pluck("predictions") %>%
+              as_tibble() %>%
+              rename_with(.fn = ~paste0(".pred_", .x)))
+
+
+
 
 # los distributions
 
@@ -197,7 +257,9 @@ plot_df_pred <- df_pred %>%
                values_to = "value")
 
 plot_df_current <- nctr_df %>%
-  filter(!is.na(nhs_number), !is.na(ctr)) %>%
+  filter(!is.na(nhs_number)#,
+         # !is.na(ctr)
+         ) %>%
   group_by(ctr, pathway) %>%
   count() %>%
   mutate(source = "current_ctr_data",

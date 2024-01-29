@@ -44,6 +44,7 @@ nctr_df <-
 
 
 los_df <- nctr_df %>%
+  mutate(spec = factor(Specialty_Code)) %>%
   group_by(NHS_Number) %>%
   # take maximum date we have data for each patient
   filter(Census_Date == max(Census_Date)) %>%
@@ -65,8 +66,8 @@ los_df <- nctr_df %>%
                 site = Organisation_Site_Code,
                 # gender = Person_Stated_Gender_Code, # will get these from another table
                 # age = Person_Age,
-                spec = Specialty_Code,
-                bed_type = Bed_Type,
+                spec,
+                # bed_type = Bed_Type,
                 los = discharge_los
                 ) %>%
   # filter outlier LOS
@@ -86,20 +87,26 @@ select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period
 
 # modelling
 model_df <- los_df %>%
-   left_join(attr_df, by = join_by(nhs_number == nhs_number)) %>%
-   na.omit() %>%
-   select(los,
-          #site,
-          cambridge_score,
-          age,
-          sex,
-          #spec, # spec has too many levels, some of which don't get seen enough to reliably create a model pipeline
-          bed_type
-          # smoking,
-          # ethnicity,
-          #segment
-          ) %>%
+  left_join(attr_df, by = join_by(nhs_number == nhs_number)) %>%
+  na.omit() %>%
+  select(
+    -c(
+      "nhs_number",
+      "site",
+      #"spec",
+      "attribute_period",
+      "spend_12_months",
+      "smoking",
+      "bmi",
+      "ethnicity",
+      "practice_code",
+      "lsoa",
+      "Version",
+      "rn"
+    )
+  ) %>%
   filter(sex != "Unknown") # remove this as only 1 case
+
 
 
 
@@ -123,13 +130,13 @@ tree_spec <- decision_tree(
 
 
 tree_grid <- grid_regular(cost_complexity(),
-                          tree_depth(range = c(1, 3)),
-                          min_n(range = c(15, 100)), levels = 4)
+                          tree_depth(range = c(1, 4)),
+                          min_n(range = c(50, 100)), levels = 4)
 
 
 tree_rec <- recipe(los ~ ., data = los_train)  %>%
     step_novel(all_nominal_predictors(), new_level = "other") %>%
-    step_other(all_nominal_predictors(), threshold = 0.1)
+    step_other(all_nominal_predictors(), threshold = 0.05)
 
 
 tree_wf <- workflow() %>%
@@ -161,9 +168,6 @@ tree_fit <- fit(tuned_wf, model_df)
 
 tree <- extract_fit_engine(tree_fit)
 rpart.plot::rpart.plot(tree)
-
-
-
 
 # append leaf number onto original data:
 

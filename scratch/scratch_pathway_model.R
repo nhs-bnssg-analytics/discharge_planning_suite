@@ -65,12 +65,14 @@ pathway_df <- nctr_df %>%
   group_by(NHS_Number) %>%
   arrange(Census_Date) %>%
   reframe(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other"),
-          spec = Specialty_Code[1],
+          spec = factor(Specialty_Code[1]),
           bed_type = Bed_Type[1]) %>%
   select(nhs_number = NHS_Number,
          pathway,
+         spec,
          #spec, # spec is too multinomial
-         bed_type)
+        # bed_type
+         )
 
 
 # attributes to join
@@ -89,18 +91,23 @@ select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period
 # modelling
 model_df <- pathway_df %>%
   left_join(attr_df, by = join_by(nhs_number == nhs_number)) %>%
-  select(pathway,
-         #site,
-         cambridge_score,
-         age,
-         sex,
-         #spec,
-         bed_type
-         # smoking,
-         # ethnicity,
-         #segment
+  select(
+    -c(
+      "nhs_number",
+      #"site",
+      #"spec",
+      "attribute_period",
+      "spend_12_months",
+      "smoking",
+      "bmi",
+      "ethnicity",
+      "practice_code",
+      "lsoa",
+      "Version",
+      "rn"
+    )
   ) %>%
-  na.omit()
+  filter(sex != "Unknown")
 
 
 
@@ -117,9 +124,9 @@ mod_rec <- recipe(pathway ~ ., data = model_df_split) %>%
   # step_unknown(all_nominal_predictors()) %>%
   step_nzv(all_predictors()) %>%
   # step_other(all_nominal_predictors(), threshold = 0.05) %>%
-  step_dummy(all_nominal_predictors()) %>%
+  step_dummy(all_nominal_predictors()) #%>%
   # embed::step_lencode_glm(all_nominal_predictors(), outcome = vars(pathway)) %>%
-  themis::step_smote(pathway)
+  #themis::step_smote(pathway)
 
 
 rf_spec <- rand_forest(
