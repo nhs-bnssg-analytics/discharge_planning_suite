@@ -68,7 +68,7 @@ nctr_df <-
 
 nctr_df <- nctr_df %>%
   # filter for our main sites / perhaps I shouldn't do this?
-  # filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
+  filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   # filter for CTR, we wont predict the NCTR outcome for those already NCTR/on a queue
   # filter(Criteria_To_Reside == "N") %>%
   mutate(site = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt', 
@@ -120,7 +120,7 @@ select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period
 
 los_df <- los_df %>%
   left_join(attr_df, by = join_by(nhs_number == nhs_number)) %>%
-  select(age, sex, cambridge_score, bed_type, los) %>%
+  select(age, sex, cambridge_score, bed_type, site, los) %>%
   na.omit() 
 
 # pathway model
@@ -159,22 +159,22 @@ df_pred <- los_df %>%
         range = c(..1, Inf)
       ) - ..1
   )) %>%
-  select(id, los_remaining, starts_with(".pred")) %>%
+  select(id, site, los_remaining, starts_with(".pred")) %>%
   unnest(los_remaining) %>%
   mutate(los_remaining = ifelse(los_remaining < 0, 0, los_remaining)) %>%
   mutate(los_remaining = los_remaining %/% 1) %>%
-  group_by(id) %>%
+  group_by(site, id) %>%
   mutate(rep = 1:n()) %>%
-  group_by(rep, los_remaining) %>%
+  group_by(rep, site, los_remaining) %>%
   summarise(across(starts_with(".pred"), list(count = {\(x) sum(x)}))) %>%
-  group_by(los_remaining) %>%
+  group_by(site, los_remaining) %>%
   summarise(across(starts_with(".pred"), list(
                                               mean = mean,
                                               u95 = {\(x) quantile(x, 0.975)},
                                               l95 = {\(x) quantile(x, 0.025)}
                                               ))) %>% 
   rename_with(.cols = starts_with(".pred"), .fn = \(x) str_remove_all(x, "_count")) %>%
-  pivot_longer(cols = -c(los_remaining),
+  pivot_longer(cols = -c(site, los_remaining),
                names_to = c("pathway", "metric"),
                names_prefix = ".pred_",
                names_sep = "_") %>%
@@ -184,8 +184,9 @@ df_pred <- los_df %>%
 # dataset for plotting (and storing on SQL)
 
 plot_df_pred <- df_pred %>%
-  mutate(pathway = ifelse(los_remaining == 0, pathway, "Not tomorrow")) %>%
-  group_by(pathway) %>%
+  filter(los_remaining %in% 0:5) %>%
+  # mutate(pathway = ifelse(los_remaining == 0, pathway, "Not tomorrow")) %>%
+  group_by(site, pathway) %>%
   summarise(n = sum(mean),
             u95 = sum(u95),
             l95 = sum(l95)) %>%
@@ -198,7 +199,7 @@ plot_df_pred <- df_pred %>%
 
 plot_df_current <- nctr_df %>%
   filter(!is.na(nhs_number), !is.na(ctr)) %>%
-  group_by(ctr, pathway) %>%
+  group_by(site, ctr, pathway) %>%
   count() %>%
   mutate(source = "current_ctr_data",
          report_date = max(nctr_df$report_date)) %>%

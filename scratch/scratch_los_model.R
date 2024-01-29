@@ -93,6 +93,7 @@ model_df <- los_df %>%
           cambridge_score,
           age,
           sex,
+          site,
           #spec, # spec has too many levels, some of which don't get seen enough to reliably create a model pipeline
           bed_type
           # smoking,
@@ -128,6 +129,7 @@ tree_grid <- grid_regular(cost_complexity(),
 
 
 tree_rec <- recipe(los ~ ., data = los_train)  %>%
+    update_role(site, new_role = "site id") %>%  
     step_novel(all_nominal_predictors(), new_level = "other") %>%
     step_other(all_nominal_predictors(), threshold = 0.1)
 
