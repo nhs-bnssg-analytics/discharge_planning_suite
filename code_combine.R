@@ -143,7 +143,7 @@ los_df <- nctr_df %>%
   # filter for our main sites / perhaps I shouldn't do this?
   # filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   # filter for CTR, we wont predict the NCTR outcome for those already NCTR/on a queue
-  filter(ctr != "X") 
+  filter(ctr != "No") 
 
 
 # attributes
