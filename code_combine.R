@@ -86,6 +86,7 @@ nctr_df <- nctr_df %>%
                           "Repatriation" = "Other",
                           "NCTR Null" = "Other",
                           "Not Set" = "Other",
+                          "18a  Infection  bxviii  Standard" = "Other",
                           "xviii. Awaiting discharge to a care home but have not had a COVID 19 test (in 48 hrs preceding discharge)." = "Other",
                           "15b  Repat  bxv  WGH" = "Other"),
          pathway = coalesce(pathway, "Other")) %>%
@@ -186,7 +187,7 @@ df_pred <- los_df %>%
 plot_df_pred <- df_pred %>%
   filter(los_remaining %in% 0:5) %>%
   # mutate(pathway = ifelse(los_remaining == 0, pathway, "Not tomorrow")) %>%
-  group_by(site, pathway) %>%
+  group_by(site, pathway, day = los_remaining) %>%
   summarise(n = sum(mean),
             u95 = sum(u95),
             l95 = sum(l95)) %>%
@@ -202,7 +203,8 @@ plot_df_current <- nctr_df %>%
   group_by(site, ctr, pathway) %>%
   count() %>%
   mutate(source = "current_ctr_data",
-         report_date = max(nctr_df$report_date)) %>%
+         report_date = max(nctr_df$report_date),
+         day = 0) %>%
   pivot_longer(cols = c(n),
                names_to = "metric",
                values_to = "value")
@@ -210,11 +212,22 @@ plot_df_current <- nctr_df %>%
 
 plot_df <- bind_rows(plot_df_pred, 
                      plot_df_current) %>%
-  mutate(pathway = factor(pathway, levels = (c("Other", "P1", "P2", "P3", "Not tomorrow"))),
+  mutate(pathway = factor(pathway, levels = (c("Other", "P1", "P2", "P3 / Other Complex Discharge", "Not tomorrow"))),
          report_date = as.character(report_date)) # convert date to character because RODBC/R/SQL can't handle writing this in a consistent way
 
 # create the table
-# RODBC::sqlQuery(con, query = 'USE modelling_sql_area CREATE TABLE dbo.discharge_pathway_projections  ("pathway" varchar(255), "ctr" varchar(255), "source" varchar(255), "report_date" float, "metric" varchar(255), "value" float)')
+# RODBC::sqlQuery(con,
+#                 query = 'USE modelling_sql_area CREATE TABLE dbo.discharge_pathway_projections
+#                 (
+#                 "site" varchar(255),
+#                 "pathway" varchar(255),
+#                 "day" float,
+#                 "ctr" varchar(255),
+#                 "source" varchar(255),
+#                 "report_date" varchar(255),
+#                 "metric" varchar(255),
+#                 "value" float)'
+#                 )
 
 # change con to write to modelling sql area
 RODBC::odbcClose(con)
@@ -234,4 +247,5 @@ con <- switch(.Platform$OS.type,
 # delete old data
 query_delete <- "DELETE FROM MODELLING_SQL_AREA.dbo.discharge_pathway_projections"
 RODBC::sqlQuery(con, query_delete)
-RODBC::sqlSave(con, plot_df, tablename = 'dbo.discharge_pathway_projections', rownames = FALSE, append = TRUE)
+RODBC::sqlSave(con, plot_df, tablename = 'discharge_pathway_projections', rownames = FALSE, append = TRUE)
+
