@@ -90,6 +90,7 @@ nctr_df <- nctr_df %>%
                           "xviii. Awaiting discharge to a care home but have not had a COVID 19 test (in 48 hrs preceding discharge)." = "Other",
                           "15b  Repat  bxv  WGH" = "Other"),
          pathway = coalesce(pathway, "Other")) %>%
+  mutate(pathway = if_else(!pathway %in% c("P1", "P2", "P3", "P3 / Other Complex Discharge" ,"Other"), "Other", pathway)) %>%
   dplyr::select(report_date, # this is a workaround for bad DQ / census date is not always consistent at time of running
                 nhs_number = NHS_Number,
                 ctr = Criteria_To_Reside,
@@ -121,14 +122,12 @@ select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period
 
 los_df <- los_df %>%
   left_join(attr_df, by = join_by(nhs_number == nhs_number)) %>%
-  select(age, sex, cambridge_score, bed_type, site, los) %>%
+dplyr::select(age, sex, cambridge_score, bed_type, site, los) %>%
   na.omit() 
 
 # pathway model
 
 rf_wf <- readRDS("data/rf_wf.RDS")
-
-
 
 # los_tree
 
@@ -160,7 +159,7 @@ df_pred <- los_df %>%
         range = c(..1, Inf)
       ) - ..1
   )) %>%
-  select(id, site, los_remaining, starts_with(".pred")) %>%
+  dplyr::select(id, site, los_remaining, starts_with(".pred")) %>%
   unnest(los_remaining) %>%
   mutate(los_remaining = ifelse(los_remaining < 0, 0, los_remaining)) %>%
   mutate(los_remaining = los_remaining %/% 1) %>%
