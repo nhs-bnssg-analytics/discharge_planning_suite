@@ -57,10 +57,10 @@ server <- shinyServer(function(input, output) {
       ggplot(aes(x = day, y = n, fill = pathway, group = pathway)) +
       geom_col_interactive(aes(tooltip = tooltip_n)) +
       geom_errorbar_interactive(aes(ymin = l95, ymax = u95, tooltip = tooltip_errorbar), width = 0.5)  +
-      ggh4x::facet_grid2(site~pathway, independent = "y", scales = "free_y") +
+      ggh4x::facet_grid2(site~pathway, independent = "y", scales = "free_y", switch = "y") +
       bnssgtheme() +
       scale_fill_bnssg(breaks = cols_curr) +
-      # theme(legend.position = "bottom") +
+      theme(strip.placement = "outside") +
       labs(title = "NCTR patient forecasts, per site/pathway",
            x = "",
            y = "")
@@ -82,7 +82,7 @@ server <- shinyServer(function(input, output) {
       geom_col_interactive(aes(tooltip = tooltip_n))  +
       bnssgtheme() +
       theme(legend.position = "bottom") +
-      scale_fill_manual(values = cols_curr) +
+      scale_fill_manual(values = cols_curr, limits = rev(names(cols_curr))) +
       labs(title = "NCTR patients* in BNSSG system today",
            #subtitle = str_wrap(glue::glue("CTR is broken down into those who we predict will be NCTR {report_date + ddays(1)} and not", 50)),
            fill = "D2A queue",
