@@ -16,10 +16,16 @@ source("utils.R")
 source("theme.R")
 source("colour_functions.R")
 
+plot_int <- TRUE
+
 n_rep <- 1E4
 
 run_date <- today()
+n_days <- 5
 
+
+
+# latest nctr data
 nctr_df <-
   RODBC::sqlQuery(
     con,
@@ -64,6 +70,22 @@ nctr_df <-
       ,[DER_Load_Timestamp]
   FROM Analyst_SQL_Area.dbo.vw_NCTR_Status_Report_Daily_JI"
   )
+
+# max census date
+
+max_date <- nctr_df %>%
+  filter(!is.na(NHS_Number)) %>%
+  filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
+  # pull(Census_Date) %>%
+  group_by(Organisation_Site_Code) %>%
+  summarise(max(Census_Date))
+  max()
+
+report_start <- max_date + ddays(1)
+report_end <- report_start + ddays(n_days)
+
+source("code_new_admits.R")
+
 
 
 nctr_df <- nctr_df %>%
