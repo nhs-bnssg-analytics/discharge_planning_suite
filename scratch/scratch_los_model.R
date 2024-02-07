@@ -190,6 +190,18 @@ fit_lnorm <- los_model_df %>%
              select(leaf, fit) %>%
              mutate(fit = set_names(fit, leaf))
 
+# adding a 'leaf' for full population distribution
+
+fit_lnorm <- fit_lnorm %>%
+  bind_rows(los_model_df %>%
+  mutate(leaf = -1) %>%
+  group_by(leaf) %>%
+  nest() %>%
+  mutate(fit = map(data, ~fitdist(.x$los, "lnorm"))) %>%
+  mutate(fit = map(fit, pluck, "estimate"))  %>%
+  select(leaf, fit) %>%
+  mutate(fit = set_names(fit, leaf)))
+
 
 saveRDS(fit_lnorm$fit, "data/dist_split.RDS")
 saveRDS(tree_fit, "data/los_wf.RDS")

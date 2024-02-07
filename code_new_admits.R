@@ -8,47 +8,16 @@ df_admit_fcast <- local({
 arima_train_length <- 18 # (train length in weeks)
 arima_end <- report_start
 arima_start <- arima_end  - dweeks(arima_train_length)
-arima_fcast_days <- ceiling((report_end - arima_end)/ddays(1))
 
-con <- switch(.Platform$OS.type,
-              windows = RODBC::odbcConnect(dsn = "xsw"),
-              unix = xswauth::modelling_sql_area()
-)
+min_adm_date <- nctr_df %>%
+  filter(!is.na(NHS_Number)) %>%
+  filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
+  group_by(Organisation_Site_Code) %>%
+  summarise(date = as.Date(max(Date_Of_Admission))) %>%
+  pull(date) %>%
+  min()
 
-
-nctr_df <-
-  RODBC::sqlQuery(
-    con,
-    "SELECT
-       [Organisation_Code_Provider]
-      ,[Organisation_Code_Commissioner]
-      ,[Census_Date]
-      ,[NHS_Number]
-      ,[Person_Stated_Gender_Code]
-      ,[Person_Age]
-      ,[CDS_Unique_Identifier]
-      ,[Sub_ICB_Location]
-      ,[Organisation_Site_Code]
-      ,[Current_Ward]
-      ,[Specialty_Code]
-      ,[Bed_Type]
-      ,[Date_Of_Admission]
-      ,[BNSSG]
-      ,[Local_Authority]
-      ,[Criteria_To_Reside]
-      ,[Date_NCTR]
-      ,[Current_LOS]
-      ,[Days_NCTR]
-      ,[Current_Delay_Code]
-      ,[Current_Covid_Status]
-      ,[Planned_Date_Of_Discharge]
-      ,[Date_Toc_Form_Completed]
-      ,[Toc_Form_Status]
-      ,[Discharge_Pathway]
-      ,[DER_File_Name]
-      ,[DER_Load_Timestamp]
-  FROM Analyst_SQL_Area.dbo.vw_NCTR_Status_Report_Daily_JI"
-  )
+arima_fcast_days <- ceiling((report_end - min_adm_date)/ddays(1))
 
 
 admissions <- nctr_df %>%
@@ -62,7 +31,7 @@ admissions <- nctr_df %>%
   distinct(Date_Of_Admission, .keep_all = TRUE) %>%
   group_by(site , date = as.Date(Date_Of_Admission)) %>%
   count() %>%
-  filter(date > ymd("2023-07-01")) 
+  filter(date > ymd("2023-07-01")) # data before this are spurious 
   
 
 models <- admissions %>%

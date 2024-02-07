@@ -23,8 +23,6 @@ n_rep <- 1E4
 run_date <- today()
 n_days <- 5
 
-
-
 # latest nctr data
 nctr_df <-
   RODBC::sqlQuery(
@@ -76,11 +74,10 @@ nctr_df <-
 max_date <- nctr_df %>%
   filter(!is.na(NHS_Number)) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
-  # pull(Census_Date) %>%
-  group_by(Organisation_Site_Code) %>%
-  summarise(max(Census_Date))
+  pull(Census_Date) %>%
   max()
 
+# report start (i.e. date we start reporting new D2A, i.e. 1 day after max_date)
 report_start <- max_date + ddays(1)
 report_end <- report_start + ddays(n_days)
 

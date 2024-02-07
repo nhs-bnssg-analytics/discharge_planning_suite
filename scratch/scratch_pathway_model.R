@@ -102,7 +102,15 @@ model_df <- pathway_df %>%
   ) %>%
   na.omit()
 
+# save full proportions
 
+model_df %>%
+  pull(pathway) %>%
+  table() %>%
+  proportions() %>%
+  as.list() %>%
+  unlist() %>%
+  saveRDS("data/pathway_prop.RDS")
 
 model_df_split <- initial_split(model_df, strata = pathway)
 model_df_train <- training(model_df_split)
