@@ -55,6 +55,7 @@ nctr_df <-
 
 pathway_df <- nctr_df %>%
   mutate(pathway = recode(Current_Delay_Code_Standard,
+                                              "P3 / Other Complex Discharge" = "P3",
                                               "Uncoded" = "Other",
                                               "Repatriation" = "Other",
                                               "NCTR Null" = "Other",

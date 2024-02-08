@@ -77,151 +77,113 @@ max_date <- nctr_df %>%
   pull(Census_Date) %>%
   max()
 
-# report start (i.e. date we start reporting new D2A, i.e. 1 day after max_date)
-report_start <- max_date + ddays(1)
-report_end <- report_start + ddays(n_days)
+# NCTR data summary
 
-source("code_new_admits.R")
-
-
-
-nctr_df <- nctr_df %>%
+nctr_sum <- nctr_df %>%
   # filter for our main sites / perhaps I shouldn't do this?
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   # filter for CTR, we wont predict the NCTR outcome for those already NCTR/on a queue
   # filter(Criteria_To_Reside == "N") %>%
-  mutate(site = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt', 
-                          Organisation_Site_Code == 'RA701' ~ 'bri', 
-                          Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston', 
-                          TRUE ~ 'other'),
-         Date_Of_Admission = as.Date(Date_Of_Admission)) %>%
+  mutate(
+    site = case_when(
+      Organisation_Site_Code == 'RVJ01' ~ 'nbt',
+      Organisation_Site_Code == 'RA701' ~ 'bri',
+      Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
+      TRUE ~ 'other'
+    ),
+    Date_Of_Admission = as.Date(Date_Of_Admission)
+  ) %>%
   group_by(Organisation_Site_Code) %>%
-  filter(Census_Date == max(Census_Date)) %>% 
+  filter(Census_Date == max(Census_Date)) %>%
   ungroup() %>%
-  mutate(report_date = max(Census_Date)) %>% 
-  mutate(los = (report_date - Date_Of_Admission)/ddays(1)) %>%
-  mutate(pathway = recode(Current_Delay_Code_Standard,
-                          "Uncoded" = "Other",
-                          "Repatriation" = "Other",
-                          "NCTR Null" = "Other",
-                          "Not Set" = "Other",
-                          "18a  Infection  bxviii  Standard" = "Other",
-                          "xviii. Awaiting discharge to a care home but have not had a COVID 19 test (in 48 hrs preceding discharge)." = "Other",
-                          "15b  Repat  bxv  WGH" = "Other"),
-         pathway = coalesce(pathway, "Other")) %>%
-  mutate(pathway = if_else(!pathway %in% c("P1", "P2", "P3", "P3 / Other Complex Discharge" ,"Other"), "Other", pathway)) %>%
-  dplyr::select(report_date, # this is a workaround for bad DQ / census date is not always consistent at time of running
-                nhs_number = NHS_Number,
-                ctr = Criteria_To_Reside,
-                site,
-                bed_type = Bed_Type,
-                los,
-                pathway) %>%
+  mutate(report_date = max(Census_Date)) %>%
+  mutate(los = (report_date - Date_Of_Admission) / ddays(1)) %>%
+  mutate(
+    pathway = recode(
+      Current_Delay_Code_Standard,
+      "P3 / Other Complex Discharge" = "P3",
+      "Uncoded" = "Other",
+      "Repatriation" = "Other",
+      "NCTR Null" = "Other",
+      "Not Set" = "Other",
+      "18a  Infection  bxviii  Standard" = "Other",
+      "xviii. Awaiting discharge to a care home but have not had a COVID 19 test (in 48 hrs preceding discharge)." = "Other",
+      "15b  Repat  bxv  WGH" = "Other"
+    ),
+    pathway = coalesce(pathway, "Other")
+  ) %>%
+  mutate(pathway = if_else(
+    !pathway %in% c("P1", "P2", "P3", "P3" , "Other"),
+    "Other",
+    pathway
+  )) %>%
+  dplyr::select(
+    report_date,
+    # this is a workaround for bad DQ / census date is not always consistent at time of running
+    nhs_number = NHS_Number,
+    ctr = Criteria_To_Reside,
+    site,
+    bed_type = Bed_Type,
+    los,
+    pathway
+  ) %>%
   ungroup()
 
+# report start (i.e. date we start reporting new D2A, i.e. 1 day after max_date)
+report_start <- max_date + ddays(1)
+report_end <- report_start + ddays(n_days)
 
-# LOS predictions
-
-los_df <- nctr_df %>%
-  # filter for our main sites / perhaps I shouldn't do this?
-  # filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
-  # filter for CTR, we wont predict the NCTR outcome for those already NCTR/on a queue
-  filter(ctr == "Y") 
-
-
-# attributes
-
-attr_df <-
-  RODBC::sqlQuery(
-    con,
-    "select * from (
-select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
-[MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
-  )
-
-los_df <- los_df %>%
-  left_join(attr_df, by = join_by(nhs_number == nhs_number)) %>%
-dplyr::select(age, sex, cambridge_score, bed_type, site, los) %>%
-  na.omit() 
-
-# pathway model
-
-rf_wf <- readRDS("data/rf_wf.RDS")
-
-# los_tree
-
-los_wf <- readRDS("data/los_wf.RDS")
-
-los_df <- los_df %>%
-  bake(extract_recipe(los_wf), .) %>%
-  mutate(leaf = as.character(treeClust::rpart.predict.leaves(extract_fit_engine(los_wf), .))) %>%
-  # bind RF pathway predicted probabilities
-  bind_cols(predict(rf_wf, los_df, type = "prob"))
-
-# los distributions
-
-los_dist <- readRDS("data/dist_split.RDS") %>%
-  enframe() %>%
-  unnest_wider(value)
+source("code_admits_fcast.R")
+source("code_new_admits.R")
+source("code_curr_admits.R")
 
 
-df_pred <- los_df %>%
-  mutate(id = 1:n()) %>%
-  left_join(los_dist, by = join_by(leaf == name)) %>%
-  mutate(los_remaining = pmap(
-    list(los, meanlog, sdlog),
-    ~
-      rlnormt(
-        n_rep,
-        meanlog = ..2,
-        sdlog = ..3,
-        range = c(..1, Inf)
-      ) - ..1
-  )) %>%
-  dplyr::select(id, site, los_remaining, starts_with(".pred")) %>%
-  unnest(los_remaining) %>%
-  mutate(los_remaining = ifelse(los_remaining < 0, 0, los_remaining)) %>%
-  mutate(los_remaining = los_remaining %/% 1) %>%
-  group_by(site, id) %>%
-  mutate(rep = 1:n()) %>%
-  group_by(rep, site, los_remaining) %>%
-  summarise(across(starts_with(".pred"), list(count = {\(x) sum(x)}))) %>%
-  group_by(site, los_remaining) %>%
-  summarise(across(starts_with(".pred"), list(
-                                              mean = mean,
-                                              u95 = {\(x) quantile(x, 0.975)},
-                                              l95 = {\(x) quantile(x, 0.025)}
-                                              ))) %>% 
-  rename_with(.cols = starts_with(".pred"), .fn = \(x) str_remove_all(x, "_count")) %>%
-  pivot_longer(cols = -c(site, los_remaining),
-               names_to = c("pathway", "metric"),
-               names_prefix = ".pred_",
-               names_sep = "_") %>%
-  # filter(los_remaining == 0) %>%
-  pivot_wider(names_from = "metric")
+if(plot_int){
+  bind_rows(df_curr_admits, df_new_admit) %>%
+    group_by(site, day, pathway, source) %>%
+    summarise(across(count, list(
+      mean = mean,
+      u95 = {\(x) quantile(x, 0.975)},
+      l95 = {\(x) quantile(x, 0.025)}
+    ))) %>% 
+    filter(day <= 5)  %>%
+    ggplot(aes(x = day, y = count_mean, fill = source)) +
+    geom_col() +
+    facet_grid(pathway ~ site, scales = "free") +
+    labs(title = "New additions to D2A queue, by forecast source")
+}
+
+
+df_pred <- bind_rows(df_curr_admits, df_new_admit) %>%
+  group_by(site, rep, day, pathway) %>%
+  summarise(n = sum(count)) %>% # aggregate over source (current/new admits)
+  group_by(site, day, pathway) %>% # compute CIs/mean over reps
+  summarise(across(n, list(mean = mean,
+                               u95 = {\(x) quantile(x, 0.975)},
+                               l95 = {\(x) quantile(x, 0.025)}
+                               ))) %>% 
+  filter(day <= 5) %>%
+  rename(n = n_mean,
+         u95 = n_u95,
+         l95 = n_l95)
+
 
 # dataset for plotting (and storing on SQL)
 
 plot_df_pred <- df_pred %>%
-  filter(los_remaining %in% 0:5) %>%
-  # mutate(pathway = ifelse(los_remaining == 0, pathway, "Not tomorrow")) %>%
-  group_by(site, pathway, day = los_remaining) %>%
-  summarise(n = sum(mean),
-            u95 = sum(u95),
-            l95 = sum(l95)) %>%
   mutate(ctr = "Y",
          source = "model_pred",
-         report_date = max(nctr_df$report_date)) %>%
+         report_date = max_date) %>%
   pivot_longer(cols = c(n, u95, l95),
                names_to = "metric",
                values_to = "value")
 
-plot_df_current <- nctr_df %>%
+plot_df_current <- nctr_sum %>%
   filter(!is.na(nhs_number), !is.na(ctr)) %>%
   group_by(site, ctr, pathway) %>%
   count() %>%
   mutate(source = "current_ctr_data",
-         report_date = max(nctr_df$report_date),
+         report_date = max_date,
          day = 0) %>%
   pivot_longer(cols = c(n),
                names_to = "metric",
@@ -230,7 +192,7 @@ plot_df_current <- nctr_df %>%
 
 plot_df <- bind_rows(plot_df_pred, 
                      plot_df_current) %>%
-  mutate(pathway = factor(pathway, levels = (c("Other", "P1", "P2", "P3 / Other Complex Discharge", "Not tomorrow"))),
+  mutate(pathway = factor(pathway, levels = (c("Other", "P1", "P2", "P3"))),
          report_date = as.character(report_date)) # convert date to character because RODBC/R/SQL can't handle writing this in a consistent way
 
 # create the table

@@ -33,7 +33,7 @@ report_date <- ymd(data_dpp$report_date)[1]
 data_dpp <- data_dpp %>%
   mutate(across(matches('date'), ~ as.POSIXct(.x, tz = 'UTC'))) %>%
   mutate(pathway = factor(pathway, levels =
-    c("Other", "P1", "P2", "P3 / Other Complex Discharge"),
+    c("Other", "P1", "P2", "P3"),
     labels = c("NCTR but not on D2A queue",
                "Additional P1",
                "Additional P2",
