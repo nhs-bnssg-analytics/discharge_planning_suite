@@ -1,6 +1,10 @@
 library(fitdistrplus)
 library(tidyverse)
 library(forecast)
+library(tsibble)
+library(fable)
+library(fabletools)
+library(fable.prophet)
 
 df_admit_fcast <- local({
   
@@ -40,6 +44,12 @@ models <- admissions %>%
   group_by(site) %>%
   arrange(date) %>%
   nest() %>%
+  mutate(data = map(data, as_tsibble, index = date)) %>%
+  mutate(model = map(data, ~model(.x, mdl = prophet(n))),
+         fc = map(model, forecast, h = n_days))
+
+
+
   mutate(ts = map(data, ~ts(pull(.x, n), frequency = 365)),
          arima = map(ts, ~auto.arima(.x) %>% forecast::forecast(h = arima_fcast_days)),
          mean = map(arima, pluck, "mean"),

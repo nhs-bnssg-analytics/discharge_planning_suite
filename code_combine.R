@@ -21,7 +21,7 @@ plot_int <- TRUE
 n_rep <- 1E4
 
 run_date <- today()
-n_days <- 5
+n_days <- 35
 
 # latest nctr data
 nctr_df <-
@@ -146,7 +146,7 @@ if(plot_int){
       u95 = {\(x) quantile(x, 0.975)},
       l95 = {\(x) quantile(x, 0.025)}
     ))) %>% 
-    filter(day <= 5)  %>%
+    filter(day <= n_days)  %>%
     ggplot(aes(x = day, y = count_mean, fill = source)) +
     geom_col() +
     facet_grid(pathway ~ site, scales = "free") +
@@ -162,7 +162,7 @@ df_pred <- bind_rows(df_curr_admits, df_new_admit) %>%
                                u95 = {\(x) quantile(x, 0.975)},
                                l95 = {\(x) quantile(x, 0.025)}
                                ))) %>% 
-  filter(day <= 5) %>%
+  filter(day <= n_days) %>%
   rename(n = n_mean,
          u95 = n_u95,
          l95 = n_l95)
