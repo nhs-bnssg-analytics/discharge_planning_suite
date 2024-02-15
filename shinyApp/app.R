@@ -36,8 +36,8 @@ ui <- shinyUI(#fluidPage(
                           "These data were last updated: <b>{report_date}</b></h5>"))),
       box(width = 12,
           tabsetPanel(id = "tabset",
-                      tabPanel("Discharge Flowcasts", girafeOutput("queue_fc", width = "100%", height = "80%")),
-                      tabPanel("Breakdown", girafeOutput("dpp_plot", width = "100%", height = "80%"))
+                      tabPanel("Discharge Flowcasts", girafeOutput("queue_fc", width = "95%", height = "80%")),
+                      tabPanel("Breakdown", girafeOutput("dpp_plot", width = "95%", height = "80%"))
                       )
       )
   )
@@ -111,7 +111,7 @@ server <- shinyServer(function(input, output) {
             plot.caption = element_text(hjust = 0, size = rel(1.1)))
     
     girafe(ggobj = ptc, 
-           width_svg = 14, 
+           width_svg = 12, 
            height_svg = 5,
            options = list(
              opts_hover(css = "fill: black;"),
@@ -141,7 +141,7 @@ server <- shinyServer(function(input, output) {
            y = "") 
     
     girafe(ggobj = p, 
-           width_svg = 14, 
+           width_svg = 12, 
            height_svg = 5,
            options = list(
              opts_hover(css = "fill: black;"),
