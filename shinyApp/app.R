@@ -36,8 +36,8 @@ ui <- shinyUI(
                           "These data were last updated: <b>{report_date}</b></h5>"))),
       box(width = 12,
           tabsetPanel(id = "tabset",
-                      tabPanel("Discharge Flowcasts", girafeOutput("queue_fc", width = "90%", height = "80%")),
-                      tabPanel("Breakdown", girafeOutput("dpp_plot", width = "90%", height = "80%"))
+                      tabPanel("Discharge Flowcasts", girafeOutput("queue_fc", width = "80%", height = "80%")),
+                      tabPanel("Breakdown", girafeOutput("dpp_plot", width = "80%", height = "80%"))
                       )
       )
   )
