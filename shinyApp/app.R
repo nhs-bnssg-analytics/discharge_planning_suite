@@ -36,8 +36,8 @@ ui <- shinyUI(
                           "These data were last updated: <b>{report_date}</b></h5>"))),
       box(width = 12,
           tabsetPanel(id = "tabset",
-                      tabPanel("Discharge Flowcasts", girafeOutput("queue_fc", width = "80%", height = "80%")),
-                      tabPanel("Breakdown", girafeOutput("dpp_plot", width = "80%", height = "80%"))
+                      tabPanel("Discharge Flowcasts", girafeOutput("queue_fc", width = "85%", height = "80%")),
+                      tabPanel("Breakdown", girafeOutput("dpp_plot", width = "85%", height = "80%"))
                       )
       )
   )
@@ -110,8 +110,8 @@ server <- shinyServer(function(input, output) {
             plot.caption = element_text(hjust = 0, size = rel(1.1)))
     
     girafe(ggobj = ptc, 
-           width_svg = 12, 
-           height_svg = 5,
+           width_svg = 18*0.7, 
+           height_svg = 7.5*0.7,
            options = list(
              opts_hover(css = "fill: black;"),
              opts_hover_inv(css = "opacity: 0.1;")
