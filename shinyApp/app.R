@@ -36,8 +36,8 @@ ui <- shinyUI(
                           "These data were last updated: <b>{report_date}</b></h5>"))),
       box(width = 12,
           tabsetPanel(id = "tabset",
-                      tabPanel("Discharge Flowcasts", girafeOutput("queue_fc", width = "85%", height = "80%")),
-                      tabPanel("Breakdown", girafeOutput("dpp_plot", width = "85%", height = "80%"))
+                      tabPanel("Discharge Flowcasts", girafeOutput("queue_fc", width = "90%", height = "80%")),
+                      tabPanel("Breakdown", girafeOutput("dpp_plot", width = "90%", height = "80%"))
                       )
       )
   )
@@ -68,9 +68,15 @@ server <- shinyServer(function(input, output) {
       # ggplot(aes(x = fct_recode(ctr, "NCTR (with NCTR status)" = "N", "CTR (with CTR status)" = "Y"), y = n, fill = fct_rev(pathway))) +
       ggplot(aes(x = day, y = n, fill = pathway_add, group = pathway_add)) +
       geom_col_interactive(aes(tooltip = tooltip_n)) +
+      geom_hline_interactive(data = {data_dpp %>%
+          filter(source == "queue_sim") %>%
+          select(site, pathway_add, slot_avg, tooltip_slot_avg) %>%
+          distinct() %>%
+          na.omit()}, aes(yintercept = slot_avg, tooltip = tooltip_slot_avg), linetype = 2) + 
       geom_errorbar_interactive(aes(ymin = l95, ymax = u95, tooltip = tooltip_errorbar), width = 0.5)  +
       ggh4x::facet_grid2(site~pathway_add, independent = "y", scales = "free_y", switch = "y") +
       bnssgtheme() +
+      scale_x_datetime(date_breaks = "5 days", labels = date_format('%a\n%d %b')) +
       scale_fill_bnssg(breaks = cols_curr) +
       theme(strip.placement = "outside") +
       labs(title = "NCTR patient forecasts, per site/pathway",
@@ -95,7 +101,7 @@ server <- shinyServer(function(input, output) {
       bnssgtheme() +
       theme(legend.position = "bottom") +
       scale_fill_manual(values = cols_curr, limits = rev(names(cols_curr))) +
-      labs(title = "NCTR patients* in\nBNSSG system today",
+      labs(title = "NCTR patients* in\nBNSSG system\ntoday",
            #subtitle = str_wrap(glue::glue("CTR is broken down into those who we predict will be NCTR {report_date + ddays(1)} and not", 50)),
            fill = "D2A queue",
            x = "",
@@ -103,15 +109,15 @@ server <- shinyServer(function(input, output) {
       )
     
     
-    ptc <- patchwork::wrap_plots(p_curr, p_pred, widths = c(0.25, 0.75)) +
+    ptc <- patchwork::wrap_plots(p_curr, p_pred, widths = c(0.2, 0.8)) +
       patchwork::plot_layout(guides = "collect") &
       patchwork::plot_annotation(caption = "*Meant to include all patients with LOS over 24 hrs. Data supplied by trusts in daily flows, however we are aware of DQ issues and some patients will be missing.") &
       theme(legend.position = 'bottom',
             plot.caption = element_text(hjust = 0, size = rel(1.1)))
     
     girafe(ggobj = ptc, 
-           width_svg = 18*0.7, 
-           height_svg = 7.5*0.7,
+           width_svg = 18*0.8, 
+           height_svg = 7.5*0.8,
            options = list(
              opts_hover(css = "fill: black;"),
              opts_hover_inv(css = "opacity: 0.1;")
@@ -131,6 +137,7 @@ server <- shinyServer(function(input, output) {
       geom_point_interactive(aes(tooltip = tooltip_q, col = pathway_q)) +
       ggh4x::facet_grid2(site~pathway_q, independent = "y", scales = "free_y", switch = "y") +
       bnssgtheme() +
+      scale_x_datetime(date_breaks = "3 days", labels = date_format('%a\n%d %b')) +
       scale_fill_manual(values = cols_q) +
       scale_colour_manual(values = cols_q) +
       theme(strip.placement = "outside",

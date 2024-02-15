@@ -34,7 +34,7 @@ data_dpp <- data_dpp %>%
   mutate(across(matches('date'), ~ as.POSIXct(.x, tz = 'UTC'))) %>%
   mutate(pathway_add = factor(pathway, levels =
     c("Other", "P1", "P2", "P3"),
-    labels = c("NCTR but not on D2A queue",
+    labels = c("NCTR but not\non D2A queue",
                "Additional P1",
                "Additional P2",
                "Additional P3")
@@ -52,6 +52,7 @@ data_dpp <- data_dpp %>%
   pivot_wider(names_from = metric,
               values_from = value) %>%
   mutate(
+    tooltip_slot_avg = glue::glue("6-week average slots per day = {round(slot_avg, 1)}"),
     tooltip_q = glue::glue("{format(report_date + ddays(day+1), '%a %d %b')}<br/>{pathway_q} = {round(n, 0)} ({round(u95,0)}, {round(l95,0)})"),
     tooltip_n = glue::glue("{format(report_date + ddays(day+1), '%a %d %b')}<br/>{pathway_add} = {round(n, 0)}"),
     tooltip_n_noqueue = glue::glue("{str_remove_all(pathway_add, 'queue')} = {round(n, 0)}"),

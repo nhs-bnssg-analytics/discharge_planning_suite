@@ -66,10 +66,12 @@ models <- admissions %>%
                values_to = "value") %>%
   filter(!is.na(value)) %>%
   mutate(value = pmax(value, 0)) %>%
-  mutate(tag = "admit_fcast",
+  mutate(source = "admit_fcast",
+         ctr = "N",
          report_date = run_date) %>%
   filter(date >= fc_start,
          date <= report_end ) %>%
+  mutate(day = (date - run_date)/ddays(1)) %>%
   mutate(site = recode(site, 'SOUTHMEAD HOSPITAL' = 'nbt', 
                        'BRISTOL ROYAL INFIRMARY' = 'bri', 
                        'WESTON GENERAL HOSPITAL' = 'weston'))

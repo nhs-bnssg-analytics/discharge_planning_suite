@@ -125,6 +125,18 @@ df_sim <- pathway_queue %>%
   pivot_longer(cols = c(n, u95, l95),
                names_to = "metric",
                values_to = "value")
+
+
+df_sim <- df_sim %>%
+  bind_rows(discharge_sum %>%
+              pivot_longer(cols = -c(site, pathway),
+                           names_to = "metric", 
+                           values_to = "value") %>%
+              mutate(ctr = "N",
+                     metric = "slot_avg",
+                     source = "queue_sim",
+                     report_date = max_date)
+  )
 df_sim
 })
 
