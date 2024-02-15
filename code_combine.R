@@ -21,7 +21,7 @@ plot_int <- TRUE
 n_rep <- 1E4
 
 run_date <- today()
-n_days <- 35
+n_days <- 14
 
 # latest nctr data
 nctr_df <-
@@ -167,6 +167,9 @@ df_pred <- bind_rows(df_curr_admits, df_new_admit) %>%
          u95 = n_u95,
          l95 = n_l95)
 
+# Now simulate the queue evolution
+source("code_queue_sim.R")
+
 
 # dataset for plotting (and storing on SQL)
 
@@ -191,7 +194,8 @@ plot_df_current <- nctr_sum %>%
 
 
 plot_df <- bind_rows(plot_df_pred, 
-                     plot_df_current) %>%
+                     plot_df_current,
+                     plot_df_queue_sim) %>%
   mutate(pathway = factor(pathway, levels = (c("Other", "P1", "P2", "P3"))),
          report_date = as.character(report_date)) # convert date to character because RODBC/R/SQL can't handle writing this in a consistent way
 

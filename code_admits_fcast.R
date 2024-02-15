@@ -9,9 +9,9 @@ library(fable.prophet)
 df_admit_fcast <- local({
   
 # arima training ends at the start of the reporting
-arima_train_length <- 18 # (train length in weeks)
-arima_end <- report_start
-arima_start <- arima_end  - dweeks(arima_train_length)
+fc_train_length <- 26 # (train length in weeks)
+fc_end <- report_start
+fc_start <- fc_end  - dweeks(fc_train_length)
 
 min_adm_date <- nctr_df %>%
   filter(!is.na(NHS_Number)) %>%
@@ -21,7 +21,7 @@ min_adm_date <- nctr_df %>%
   pull(date) %>%
   min()
 
-arima_fcast_days <- ceiling((report_end - min_adm_date)/ddays(1))
+fcast_days <- ceiling((report_end - min_adm_date)/ddays(1))
 
 
 admissions <- nctr_df %>%
@@ -45,24 +45,20 @@ models <- admissions %>%
   arrange(date) %>%
   nest() %>%
   mutate(data = map(data, as_tsibble, index = date)) %>%
-  mutate(model = map(data, ~model(.x, mdl = prophet(n))),
-         fc = map(model, forecast, h = n_days))
-
-
-
-  mutate(ts = map(data, ~ts(pull(.x, n), frequency = 365)),
-         arima = map(ts, ~auto.arima(.x) %>% forecast::forecast(h = arima_fcast_days)),
-         mean = map(arima, pluck, "mean"),
-         upper = map(arima, ~pluck(.x, "upper") %>%
-                       as.data.frame %>% rename(u_80 = `80%`, u_95 = `95%`)),
-         lower = map(arima, ~pluck(.x, "lower") %>%
-                       as.data.frame %>% rename(l_80 = `80%`, l_95 = `95%`)),
+  mutate(
+         # model = map(data, ~model(.x, mdl = prophet(n))),
+         model = map(data, ~model(.x, mdl = ARIMA(n))),
+         fc = map(model, forecast, h = fcast_days)) %>%
+  mutate(mean = map(fc, pluck, ".mean"),
+         u_95 = map(fc, ~pluck(.x, "n") %>% quantile(0.975)),
+         l_95 = map(fc, ~pluck(.x, "n") %>% quantile(0.025)),
          frame = pmap(list(data, mean), ~tibble(date = seq(max(pluck(..1, "date")) + ddays(1),
-                                                               by = "days",
-                                                               length.out = arima_fcast_days),
-                                                fcast = ..2)),
-         frame = pmap(list(frame, upper, lower), bind_cols),
-         frame = map2(data, frame, bind_rows)) %>%
+                                                          by = "days",
+                                                          length.out = fcast_days),
+                                               fcast = ..2)),
+         frame = pmap(list(frame, u_95, l_95), ~mutate(..1, u_95 = ..2, l_95 = ..3)),
+         frame = map2(data, frame, bind_rows),
+         frame = map(frame, as_tibble)) %>%
   dplyr::select(site, frame) %>%
   unnest(cols = c(frame)) %>%
   pivot_longer(cols = -c(site, date),
@@ -70,13 +66,43 @@ models <- admissions %>%
                values_to = "value") %>%
   filter(!is.na(value)) %>%
   mutate(value = pmax(value, 0)) %>%
-  mutate(tag = "ae_fcast",
+  mutate(tag = "admit_fcast",
          report_date = run_date) %>%
-  filter(date >= arima_start,
+  filter(date >= fc_start,
          date <= report_end ) %>%
   mutate(site = recode(site, 'SOUTHMEAD HOSPITAL' = 'nbt', 
                        'BRISTOL ROYAL INFIRMARY' = 'bri', 
                        'WESTON GENERAL HOSPITAL' = 'weston'))
+
+
+
+  # mutate(ts = map(data, ~ts(pull(.x, n), frequency = 365)),
+  #        arima = map(ts, ~auto.arima(.x) %>% forecast::forecast(h = fcast_days)),
+  #        mean = map(arima, pluck, "mean"),
+  #        upper = map(arima, ~pluck(.x, "upper") %>%
+  #                      as.data.frame %>% rename(u_80 = `80%`, u_95 = `95%`)),
+  #        lower = map(arima, ~pluck(.x, "lower") %>%
+  #                      as.data.frame %>% rename(l_80 = `80%`, l_95 = `95%`)),
+  #        frame = pmap(list(data, mean), ~tibble(date = seq(max(pluck(..1, "date")) + ddays(1),
+  #                                                              by = "days",
+  #                                                              length.out = fcast_days),
+  #                                               fcast = ..2)),
+  #        frame = pmap(list(frame, upper, lower), bind_cols),
+  #        frame = map2(data, frame, bind_rows)) %>%
+  # dplyr::select(site, frame) %>%
+  # unnest(cols = c(frame)) %>%
+  # pivot_longer(cols = -c(site, date),
+  #              names_to = "metric",
+  #              values_to = "value") %>%
+  # filter(!is.na(value)) %>%
+  # mutate(value = pmax(value, 0)) %>%
+  # mutate(tag = "ae_fcast",
+  #        report_date = run_date) %>%
+  # filter(date >= fc_start,
+  #        date <= report_end ) %>%
+  # mutate(site = recode(site, 'SOUTHMEAD HOSPITAL' = 'nbt', 
+  #                      'BRISTOL ROYAL INFIRMARY' = 'bri', 
+  #                      'WESTON GENERAL HOSPITAL' = 'weston'))
 
 
 # if(save_int) saveRDS(models, "data/df_ae_fcast_sql.RDS")
@@ -94,7 +120,7 @@ if(plot_int){
     ggplot(aes(x = date, y = n)) +
     geom_line() +
     geom_line(aes(y = fcast), col = "blue") +
-    geom_ribbon(aes(ymin = l_80, ymax = u_80), alpha = 0.25) +
+    # geom_ribbon(aes(ymin = l_80, ymax = u_80), alpha = 0.25) +
     geom_ribbon(aes(ymin = l_95, ymax = u_95), alpha = 0.25) +
     facet_wrap(vars(site), ncol = 1)
   print(p)
