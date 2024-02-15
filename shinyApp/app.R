@@ -20,11 +20,11 @@ source("./colour_functions.R")
 source("./theme.R")
 
 
-ui <- shinyUI(fluidPage(
+ui <- shinyUI(#fluidPage(
   # fix the font
-  tags$head( tags$style(type="text/css", "text {font-family: sans-serif}")),
   
     dashboardPage(
+    tags$head( tags$style(type="text/css", "text {font-family: sans-serif}")),
     header = dashboardHeader(  titleWidth="30vw",
                                title="BNSSG Discharge Pathway Projections"),
     sidebar = dashboardSidebar(disable = TRUE),
@@ -41,7 +41,8 @@ ui <- shinyUI(fluidPage(
                       )
       )
   )
-)))
+#)
+))
 
 
 server <- shinyServer(function(input, output) {
