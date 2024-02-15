@@ -32,12 +32,19 @@ report_date <- ymd(data_dpp$report_date)[1]
 
 data_dpp <- data_dpp %>%
   mutate(across(matches('date'), ~ as.POSIXct(.x, tz = 'UTC'))) %>%
-  mutate(pathway = factor(pathway, levels =
+  mutate(pathway_add = factor(pathway, levels =
     c("Other", "P1", "P2", "P3"),
     labels = c("NCTR but not on D2A queue",
                "Additional P1",
                "Additional P2",
                "Additional P3")
+  )) %>%
+  mutate(pathway_q = factor(pathway, levels =
+    c("Other", "P1", "P2", "P3"),
+    labels = c("P0 queue or other",
+               "P1 queue",
+               "P2 queue",
+               "P3 queue")
   )) %>%
   mutate(site = factor(recode(site, bri = "BRI", nbt = "NBT", weston = "Weston"), levels = c("NBT", "BRI", "Weston"))) %>% 
   # mutate(pathway = fct_recode(pathway,  !!!levels)) %>%
@@ -45,8 +52,9 @@ data_dpp <- data_dpp %>%
   pivot_wider(names_from = metric,
               values_from = value) %>%
   mutate(
-    tooltip_n = glue::glue("{pathway} = {round(n, 0)}"),
-    tooltip_n_noqueue = glue::glue("{str_remove_all(pathway, 'queue')} = {round(n, 0)}"),
+    tooltip_q = glue::glue("{format(report_date + ddays(day+1), '%a %d %b')}<br/>{pathway_q} = {round(n, 0)} ({round(u95,0)}, {round(l95,0)})"),
+    tooltip_n = glue::glue("{format(report_date + ddays(day+1), '%a %d %b')}<br/>{pathway_add} = {round(n, 0)}"),
+    tooltip_n_noqueue = glue::glue("{str_remove_all(pathway_add, 'queue')} = {round(n, 0)}"),
     tooltip_errorbar = glue::glue("({round(u95,0)}, {round(l95,0)})")
   ) #%>%
   # mutate(pathway = fct_relevel(pathway, names(levels), after = 0))

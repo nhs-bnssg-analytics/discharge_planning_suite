@@ -113,24 +113,24 @@ df_sim <- pathway_queue %>%
                                  }
                           ), rbind)))) %>%
   mutate(sim = map(sim, reduce, rbind)) %>%
-  mutate(q_mean = map(sim, colMeans),
-         q_u95 = map(sim, ~ map_dbl(array_branch(.x, margin = 2), ~ quantile(.x, .975))),
-         q_l95 = map(sim, ~ map_dbl(array_branch(.x, margin = 2), ~ quantile(.x, .025)))) %>%
-  select(site, pathway, q_mean, q_u95, q_l95) %>%
-  unnest(c(q_mean, q_u95, q_l95)) %>%
+  mutate(n = map(sim, colMeans),
+         u95 = map(sim, ~ map_dbl(array_branch(.x, margin = 2), ~ quantile(.x, .975))),
+         l95 = map(sim, ~ map_dbl(array_branch(.x, margin = 2), ~ quantile(.x, .025)))) %>%
+  select(site, pathway, n, u95, l95) %>%
+  unnest(c(n, u95, l95)) %>%
   mutate(day = rep(c(0:n_days), times = n_distinct(site)*n_distinct(pathway))) %>%
   mutate(ctr = "N",
          source = "queue_sim",
          report_date = max_date) %>%
-  pivot_longer(cols = c(q_mean, q_u95, q_l95),
+  pivot_longer(cols = c(n, u95, l95),
                names_to = "metric",
                values_to = "value")
 df_sim
 })
 
 # %>%
-#   ggplot(aes(x = day, y = q_mean)) +
-#   geom_ribbon(aes(ymin = q_l95, ymax = q_u95), alpha = 0.25) +
+#   ggplot(aes(x = day, y = n)) +
+#   geom_ribbon(aes(ymin = l95, ymax = u95), alpha = 0.25) +
 #   geom_step() +
 #   facet_grid(site ~ pathway)
 #   
