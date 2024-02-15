@@ -20,7 +20,7 @@ source("./colour_functions.R")
 source("./theme.R")
 
 
-ui <- shinyUI(#fluidPage(
+ui <- shinyUI(
   # fix the font
   
     dashboardPage(
@@ -36,12 +36,11 @@ ui <- shinyUI(#fluidPage(
                           "These data were last updated: <b>{report_date}</b></h5>"))),
       box(width = 12,
           tabsetPanel(id = "tabset",
-                      tabPanel("Discharge Flowcasts", girafeOutput("queue_fc", width = "95%", height = "80%")),
-                      tabPanel("Breakdown", girafeOutput("dpp_plot", width = "95%", height = "80%"))
+                      tabPanel("Discharge Flowcasts", girafeOutput("queue_fc", width = "90%", height = "80%")),
+                      tabPanel("Breakdown", girafeOutput("dpp_plot", width = "90%", height = "80%"))
                       )
       )
   )
-#)
 ))
 
 
