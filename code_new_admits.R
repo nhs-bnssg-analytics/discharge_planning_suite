@@ -22,8 +22,6 @@ df_new_admit <- local({
     left_join(df_admit_fcast_flt, join_by(site, date == date)) %>%
     rowwise() %>%
     mutate(fcast_samp = rnorm(1, mean = fcast, sd = get_sd_from_ci(ci = c(l_95, u_95)))) %>%
-    # duplicate each row 24 times (each day is broken in to 24 hours and then
-    # scaled by the appropriate proportion)
     ungroup() %>%
     mutate(arrivals = coalesce(map_dbl(fcast_samp, rpois, n = 1), 0),
            # coalesce in case we sample below zero

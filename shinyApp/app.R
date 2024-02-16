@@ -120,7 +120,7 @@ server <- shinyServer(function(input, output) {
       patchwork::plot_layout(guides = "collect") &
       patchwork::plot_annotation(caption = "*Meant to include all patients with LOS over 24 hrs.\n**Dashed line represents 6-week average number of patients discharged to D2A pathway") &
       theme(legend.position = 'bottom',
-            plot.caption = element_text(hjust = 0, size = rel(1.1)))
+            plot.caption = element_text(hjust = 0, size = rel(1.1), colour = "#777777"))
     
     # hack the first legend off
     ptc[[1]] <- ptc[[1]] + theme(legend.position = "off", axis.ticks.x =  element_blank(), axis.text.x = element_text(vjust = +15)) 
