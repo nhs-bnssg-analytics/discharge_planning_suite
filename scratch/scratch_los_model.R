@@ -44,7 +44,12 @@ nctr_df <-
 
 
 los_df <- nctr_df %>%
-  group_by(NHS_Number) %>%
+  filter(Person_Stated_Gender_Code %in% 1:2) %>%
+  mutate(nhs_number = as.character(NHS_Number),
+         nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
+         sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>% 
+  # mutate(nhs_number[is.na(nhs_number)] = glue::glue("unknown_{seq_along(nhs_number[is.na(nhs_number)])}"))
+  group_by(nhs_number) %>%
   # take maximum date we have data for each patient
   filter(Census_Date == max(Census_Date)) %>%
   ungroup() %>%
@@ -61,10 +66,10 @@ los_df <- nctr_df %>%
                            Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
                            TRUE ~ '')) %>%
   dplyr::select(
-                nhs_number = NHS_Number,
+                nhs_number = nhs_number,
                 site = Organisation_Site_Code,
-                # gender = Person_Stated_Gender_Code, # will get these from another table
-                # age = Person_Age,
+                sex,
+                age = Person_Age,
                 spec = Specialty_Code,
                 bed_type = Bed_Type,
                 los = discharge_los
@@ -86,8 +91,9 @@ select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period
 
 # modelling
 model_df <- los_df %>%
-   left_join(attr_df, by = join_by(nhs_number == nhs_number)) %>%
-   na.omit() %>%
+   full_join(select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
+             by = join_by(nhs_number == nhs_number)) %>%
+   # na.omit() %>%
    select(los,
           #site,
           cambridge_score,
@@ -100,7 +106,8 @@ model_df <- los_df %>%
           # ethnicity,
           #segment
           ) %>%
-  filter(sex != "Unknown") # remove this as only 1 case
+  filter(sex != "Unknown",
+         !is.na(los)) # remove this as only 1 case
 
 
 
@@ -175,6 +182,10 @@ los_model_df <- model_df %>%
 
 ggplot(los_model_df, aes(x = los)) +
   geom_histogram() +
+  stat_summary(aes(x = 0, y = los, xintercept = stat(y), group = leaf), 
+               fun = median, geom = "vline", col = "blue") +
+  stat_summary(aes(x = 0, y = los, xintercept = stat(y), group = leaf), 
+               fun = mean, geom = "vline", col = "red") +
   facet_wrap(vars(leaf), scales = "free_y")
 
 

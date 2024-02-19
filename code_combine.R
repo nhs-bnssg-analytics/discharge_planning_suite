@@ -80,6 +80,10 @@ max_date <- nctr_df %>%
 # NCTR data summary
 
 nctr_sum <- nctr_df %>%
+  filter(Person_Stated_Gender_Code %in% 1:2) %>%
+  mutate(nhs_number = as.character(NHS_Number),
+         nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
+         sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
   # filter for our main sites / perhaps I shouldn't do this?
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   # filter for CTR, we wont predict the NCTR outcome for those already NCTR/on a queue
@@ -120,7 +124,9 @@ nctr_sum <- nctr_df %>%
   dplyr::select(
     report_date,
     # this is a workaround for bad DQ / census date is not always consistent at time of running
-    nhs_number = NHS_Number,
+    nhs_number,
+    sex,
+    age = Person_Age,
     ctr = Criteria_To_Reside,
     site,
     bed_type = Bed_Type,

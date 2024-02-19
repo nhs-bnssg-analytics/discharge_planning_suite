@@ -56,6 +56,7 @@ nctr_df <-
 pathway_df <- nctr_df %>%
   mutate(pathway = recode(Current_Delay_Code_Standard,
                                               "P3 / Other Complex Discharge" = "P3",
+                                              "18a  Infection  bxviii  Standard" = "Other",
                                               "Uncoded" = "Other",
                                               "Repatriation" = "Other",
                                               "NCTR Null" = "Other",
@@ -63,16 +64,24 @@ pathway_df <- nctr_df %>%
                                               "xviii. Awaiting discharge to a care home but have not had a COVID 19 test (in 48 hrs preceding discharge)." = "Other",
                                               "15b  Repat  bxv  WGH" = "Other"),
          pathway = coalesce(pathway, "Other")) %>%
-  group_by(NHS_Number) %>%
+  mutate(pathway = if_else(pathway %in% c("Other", "P1", "P2", "P3"), pathway, "Other")) %>%
+  filter(Person_Stated_Gender_Code %in% 1:2) %>%
+  mutate(nhs_number = as.character(NHS_Number),
+         nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
+         sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
+  group_by(nhs_number) %>%
   arrange(Census_Date) %>%
   reframe(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other"),
+          sex = sex[1],
+          age = Person_Age[1],
           spec = Specialty_Code[1],
           bed_type = Bed_Type[1]) %>%
-  select(nhs_number = NHS_Number,
+  select(nhs_number,
+         sex,
+         age,
          pathway,
          #spec, # spec is too multinomial
          bed_type)
-
 
 # attributes to join
 
@@ -89,7 +98,8 @@ select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period
 
 # modelling
 model_df <- pathway_df %>%
-  left_join(attr_df, by = join_by(nhs_number == nhs_number)) %>%
+  left_join(select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
+            by = join_by(nhs_number == nhs_number)) %>%
   select(pathway,
          #site,
          cambridge_score,
@@ -101,7 +111,8 @@ model_df <- pathway_df %>%
          # ethnicity,
          #segment
   ) %>%
-  na.omit()
+  filter(!is.na(pathway))
+  #na.omit()
 
 # save full proportions
 
@@ -120,10 +131,11 @@ model_df_test <- testing(model_df_split)
 
 mod_rec <- recipe(pathway ~ ., data = model_df_split) %>%
   step_zv() %>%
+  step_impute_mean(all_numeric_predictors()) %>%
   step_normalize(all_numeric_predictors()) %>%
   step_novel(all_nominal_predictors(), new_level = "other") %>%
   step_other(all_nominal_predictors(), threshold = 0.1) %>%
-  # step_unknown(all_nominal_predictors()) %>%
+  step_unknown(all_nominal_predictors()) %>%
   step_nzv(all_predictors()) %>%
   # step_other(all_nominal_predictors(), threshold = 0.05) %>%
   step_dummy(all_nominal_predictors())# %>%
