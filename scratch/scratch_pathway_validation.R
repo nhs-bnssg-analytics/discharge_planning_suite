@@ -107,21 +107,108 @@ test_df <- pathway_df %>%
   # bind RF pathway predicted probabilities
   bind_cols(predict(rf_wf, ., type = "prob")) %>%
   select(Census_Date, pathway, starts_with(".pred")) %>%
-  filter(Census_Date < max(Census_Date) - ddays(50)) %>%
-  filter(Census_Date > ymd("2023-07-01")) # data before this are spurious 
+  # filter(Census_Date < max(Census_Date) - ddays(50)) %>%
+  # filter(Census_Date > ymd("2023-07-01")) 
+  filter(Census_Date %within%  interval(ymd("2023-07-01"), max(pathway_df$Census_Date) - ddays(50)))
 
 
 
 date_samp <- seq.Date(from = min(test_df$Census_Date), to = max(test_df$Census_Date), by = "2 weeks")
 
 
-map(date_samp, ~filter(test_df, Census_Date == .x) %>%
-      rowwise() %>%
-      mutate(samp = sample(x = c("Other", "P1", "P2", "P3"), size = 1, prob = c(.pred_Other, .pred_P1, .pred_P2, .pred_P3 ))) %>%
-      ungroup() %>%
-      mutate(pathway = factor(pathway),
-             samp = factor(samp))) 
+test_df_1 <- test_df %>%
+  filter(Census_Date %in% date_samp[3])
+
+
+samps <-
+  pmap(
+    list(test_df_1$.pred_Other, test_df_1$.pred_P1, test_df_1$.pred_P2, test_df_1$.pred_P3),
+    ~ sample(
+      size = 100,
+      replace = TRUE,
+      x = c("Other", "P1", "P2", "P3"),
+      prob = c(..1, ..2, ..3, ..4)
+    )
+  ) %>%
+  reduce(rbind) %>%
+  array_tree(margin = 2)
+
+
+cross_tab <- map(samps, ~tibble(pathway = factor(test_df_1$pathway), samp = factor(.x)) %$%
+                           table(pathway, samp)# %>%
+                  # as.numeric()
+                 ) %>%
+              reduce(rbind) %>%
+  colMeans() %>%
+  matrix(nrow = 4, byrow = FALSE)
+
+
+
+
+
+
+
+samp_tbl <- map(samps, ~tibble(pathway = factor(test_df_1$pathway), samp = factor(.x))) %>%
+            map(split, f = foo$Census_Date)
+
+
+
+
+bar <- map(samp_tbl,
+           # loop over samples
+           function(date_split)
+             map(
+               date_split,
+               # loop over dates
+               ~ yardstick::conf_mat(.x, truth = pathway, estimate = samp) %>%
+                 tidy() %>%
+                 mutate(value = value/sum(value)) %>%
+                 pull(value)) %>%
+             reduce(rbind) %>%
+             colMeans()) %>%
+         reduce(rbind) %>%
+         colMeans()
+        
+
+
+confmat <- structure(list(table = structure(
+  bar,
+  dim = c(4L, 4L),
+  dimnames = list(
+    Prediction = c("Other", "P1", "P2", "P3"),
+    Truth = c("Other",
+              "P1", "P2", "P3")
+  ),
+  class = "table"
+)), class = "conf_mat")
+
+
+%>%
+  rowwise() %>%
+  mutate(samp = list(sample(size = 1E3, replace = TRUE, x = c("Other", "P1", "P2", "P3"),
+                            prob = c(.pred_Other, .pred_P1, .pred_P2, .pred_P3 ))))
   
+
+bar <- foo$samp %>% reduce(cbind)
+
+
+%>% # data before this are spurious 
+  mutate(samp = list(sample(size = 1E3, replace = TRUE, x = c("Other", "P1", "P2", "P3"),
+                            prob = c(.pred_Other, .pred_P1, .pred_P2, .pred_P3 ))))
+
+
+
+
+foo <- map(date_samp[1], ~filter(test_df, Census_Date == .x) %>%
+      rowwise() %>%
+      mutate(samp = list(sample(size = 1E3, replace = TRUE, x = c("Other", "P1", "P2", "P3"),
+                           prob = c(.pred_Other, .pred_P1, .pred_P2, .pred_P3 )))
+             ) %>%
+      ungroup()) %>%
+      map(~list(pathway = pull(.x, pathway), samp = pull(.x, samp)))
+
+
+map(foo, function(day) map(day$samp, ~tibble(truth = day$pathway, esitmate = .x)))
 
 
 %>%

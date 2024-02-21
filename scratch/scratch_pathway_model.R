@@ -156,6 +156,18 @@ rf_wf <- workflow() %>%
 
 rf_fit <- last_fit(rf_wf, model_df_split)
 
+roc_df <- rf_fit$.predictions[[1]] %>%
+  select(starts_with(".pred"), pathway, -.pred_class) %>%
+  pivot_longer(cols = starts_with(".pred"), names_to = "pathway_pred", values_to = "prob", names_prefix = ".pred_") %>%
+  group_by(pathway_pred) %>%
+  nest()
+  
+foo <- tibble(cutoff = seq(0, 1, 0.1)) %>%
+       rowwise() %>%
+       mutate(foo = list(map_chr(roc_df$data[[2]]$prob, ~if_else(.x > cutoff, "P1", "Not P1"))))
+
+
+
 rf_fit$.predictions[[1]] %>% conf_mat(truth = pathway, estimate = .pred_class) %>% 
   summary()
 
