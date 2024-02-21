@@ -2,6 +2,7 @@ library(fitdistrplus)
 library(tidyverse)
 library(tidymodels)
 library(lubridate)
+library(magrittr)
 
 source("utils.R")
 
@@ -81,16 +82,14 @@ pathway_df <- nctr_df %>%
          sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
   group_by(nhs_number) %>%
   arrange(Census_Date) %>%
-  reframe(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other"),
-          sex = sex[1],
-          age = Person_Age[1],
-          spec = Specialty_Code[1],
-          bed_type = Bed_Type[1]) %>%
-  select(nhs_number,
+  # pathway is FIRST assigned pathway - under the assumption that this best reflects the paitents needs at time of NCTR
+  mutate(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other")) %>%
+  select(Census_Date,
+         nhs_number,
          sex,
-         age,
+         age = Person_Age,
          pathway,
-         bed_type)
+         bed_type = Bed_Type)
 
 
 attr_df <-
@@ -107,7 +106,25 @@ test_df <- pathway_df %>%
   left_join(mutate(attr_df, nhs_number = as.character(nhs_number))) %>% 
   # bind RF pathway predicted probabilities
   bind_cols(predict(rf_wf, ., type = "prob")) %>%
-  select(pathway, starts_with(".pred")) %>%
+  select(Census_Date, pathway, starts_with(".pred")) %>%
+  filter(Census_Date < max(Census_Date) - ddays(50)) %>%
+  filter(Census_Date > ymd("2023-07-01")) # data before this are spurious 
+
+
+
+date_samp <- seq.Date(from = min(test_df$Census_Date), to = max(test_df$Census_Date), by = "2 weeks")
+
+
+map(date_samp, ~filter(test_df, Census_Date == .x) %>%
+      rowwise() %>%
+      mutate(samp = sample(x = c("Other", "P1", "P2", "P3"), size = 1, prob = c(.pred_Other, .pred_P1, .pred_P2, .pred_P3 ))) %>%
+      ungroup() %>%
+      mutate(pathway = factor(pathway),
+             samp = factor(samp))) 
+  
+
+
+%>%
   rowwise() %>%
   mutate(samp = sample(x = c("Other", "P1", "P2", "P3"), size = 1, prob = c(.pred_Other, .pred_P1, .pred_P2, .pred_P3 ))) %>%
   ungroup() %>%
@@ -116,14 +133,29 @@ test_df <- pathway_df %>%
 
 map(
   1:100,
-  ~ slice_sample(test_df, n = 50) %>%
+  ~ slice_sample(test_df, n = 10) %>%
     select(pathway, samp) %>%
     map(table) %>%
-    # map(proportions) %>%
+    map(proportions) %>%
     map(as.numeric) %>%
-    reduce(`-`) %>%
-    abs()
+    reduce(`-`)# %>%
+    #abs()
 ) %>%
  reduce(rbind) %>%
  colMeans() 
 
+
+  test_df %>%
+    select(pathway, samp) %$%
+    table(pathway, samp) %>%
+    proportions
+
+
+  
+  yardstick::conf_mat(test_df, truth = pathway, estimate = samp) %>%
+    autoplot()
+  
+  
+  yardstick::conf_mat(test_df, truth = pathway, estimate = samp) %>%
+    summary()
+  
