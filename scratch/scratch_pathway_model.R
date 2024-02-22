@@ -157,22 +157,42 @@ rf_wf <- workflow() %>%
 rf_fit <- last_fit(rf_wf, model_df_split)
 
 roc_df <- rf_fit$.predictions[[1]] %>%
-  select(starts_with(".pred"), pathway, -.pred_class) %>%
-  pivot_longer(cols = starts_with(".pred"), names_to = "pathway_pred", values_to = "prob", names_prefix = ".pred_") %>%
-  group_by(pathway_pred) %>%
-  nest()
-  
-foo <- tibble(cutoff = seq(0, 1, 0.1)) %>%
-       rowwise() %>%
-       mutate(foo = list(map_chr(roc_df$data[[2]]$prob, ~if_else(.x > cutoff, "P1", "Not P1"))))
+  select(starts_with(".pred"), truth = pathway, -.pred_class) %>%
+  pivot_longer(
+    cols = starts_with(".pred"),
+    names_to = "class",
+    values_to = "prob",
+    names_prefix = ".pred_"
+  ) %>%
+  mutate(truth = factor(truth), class = factor(class)) %>%
+  group_by(class) %>%
+  nest() %>%
+  mutate(data = map2(data,
+                     class,
+                     ~ mutate(.x, truth = factor(
+                       if_else(truth == .y, truth, "X")
+                     )))) %>%
+  mutate(roc = map(data, ~roc_curve(.x, truth = truth, prob))) %>%
+  mutate(auc = map(data, ~roc_auc(.x, truth = truth, prob))) %>%
+  select(class, roc, auc) %>%
+  unnest(cols = c(roc, auc))
 
 
+ggplot(roc_df, aes(x = 1 - specificity,
+                   y = sensitivity,
+                   col = glue::glue("{class}\nAUC: {round(.estimate, 2)}"))) +
+  geom_line() + 
+  ggplot2::geom_abline(lty = 3) +
+  ggplot2::coord_equal() + 
+  ggplot2::theme_bw() +
+  theme(legend.position = "bottom") +
+  labs(colour = "")
 
-rf_fit$.predictions[[1]] %>% conf_mat(truth = pathway, estimate = .pred_class) %>% 
-  summary()
-
-rf_fit$.predictions[[1]] %>% conf_mat(truth = pathway, estimate = .pred_class) %>%
-  autoplot()
+# rf_fit$.predictions[[1]] %>% conf_mat(truth = pathway, estimate = .pred_class) %>% 
+#   summary()
+# 
+# rf_fit$.predictions[[1]] %>% conf_mat(truth = pathway, estimate = .pred_class) %>%
+#   autoplot()
 
 # save workflow
 final_wf <- rf_fit %>% extract_workflow()

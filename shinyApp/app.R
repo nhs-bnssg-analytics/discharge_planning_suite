@@ -26,7 +26,7 @@ ui <- shinyUI(
     dashboardPage(
     tags$head( tags$style(type="text/css", "text {font-family: sans-serif}")),
     header = dashboardHeader(  titleWidth="30vw",
-                               title="BNSSG Discharge Pathway Projections"),
+                               title="BNSSG Discharge Planning Suite"),
     sidebar = dashboardSidebar(disable = TRUE),
     
     body = dashboardBody(
