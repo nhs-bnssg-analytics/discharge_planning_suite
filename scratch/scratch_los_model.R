@@ -166,13 +166,10 @@ tuned_wf<- finalize_workflow(tree_wf, select_best(tree_rs, "rsq"))
 tuned_wf
 
 # fit on all data
-tree_fit <- fit(tuned_wf, model_df)
+tree_fit <- fit(tuned_wf, los_train)
 
 tree <- extract_fit_engine(tree_fit)
 rpart.plot::rpart.plot(tree)
-
-
-
 
 # append leaf number onto original data:
 
@@ -212,6 +209,36 @@ fit_lnorm <- fit_lnorm %>%
   mutate(fit = map(fit, pluck, "estimate"))  %>%
   select(leaf, fit) %>%
   mutate(fit = set_names(fit, leaf)))
+
+
+# validation on test data
+
+cdf_lnorm <- function(x, meanlog = 0, sdlog = 1){
+ out <- cumsum(dlnorm(x, meanlog, sdlog))
+ (out - min(out))/(max(out) - min(out))
+}
+
+validation_df <- los_test %>%
+  bake(extract_recipe(tree_fit), .) %>%
+  mutate(leaf = treeClust::rpart.predict.leaves(tree, .)) %>%
+  left_join(fit_lnorm) %>%
+  unnest_wider(fit) %>%
+  group_by(leaf) %>%
+  nest() %>%
+  mutate(cdf_plot = map(
+    data,
+    ~
+      ggplot(.x, aes(x = los)) +
+      stat_ecdf(geom = "step") +
+      geom_function(
+        geom = "step",
+        col = "red",
+        fun = cdf_lnorm,
+        args = list(meanlog = .x$meanlog[1], sdlog = .x$sdlog[1])
+      )
+  ))
+
+patchwork::wrap_plots(validation_df$cdf_plot)
 
 
 saveRDS(fit_lnorm$fit, "data/dist_split.RDS")
