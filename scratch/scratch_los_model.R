@@ -165,7 +165,7 @@ tuned_wf<- finalize_workflow(tree_wf, select_best(tree_rs, "rsq"))
 
 tuned_wf
 
-# fit on all data
+# final fit
 tree_fit <- fit(tuned_wf, los_train)
 
 tree <- extract_fit_engine(tree_fit)
@@ -187,6 +187,8 @@ ggplot(los_model_df, aes(x = los)) +
 
 
 # fit los dists on the data at each leaf
+
+fitdistrplus::fitdist(los_model_df$los, "beta")
 
 
 fit_lnorm <- los_model_df %>%
@@ -225,6 +227,7 @@ validation_df <- los_test %>%
   unnest_wider(fit) %>%
   group_by(leaf) %>%
   nest() %>%
+  mutate(ks_test = map(data, ~ks.test(.x$los, "plnorm") %>% tidy())) %>%
   mutate(cdf_plot = map(
     data,
     ~
@@ -238,7 +241,9 @@ validation_df <- los_test %>%
       )
   ))
 
-patchwork::wrap_plots(validation_df$cdf_plot)
+
+patchwork::wrap_plots(validation_df$cdf_plot) +
+  patchwork::plot_layout(axes = "collect_y", axis_titles = "collect")
 
 
 saveRDS(fit_lnorm$fit, "data/dist_split.RDS")
