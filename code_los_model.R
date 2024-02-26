@@ -193,9 +193,9 @@ fit_lnorm <- los_model_df %>%
              group_by(leaf) %>%
              nest() %>%
              mutate(fit = map(data, ~fitdist(.x$los, "lnorm"))) %>%
-             mutate(fit = map(fit, pluck, "estimate"))  %>%
-             select(leaf, fit) %>%
-             mutate(fit = set_names(fit, leaf))
+             mutate(fit_parms = map(fit, pluck, "estimate"))  %>%
+             select(leaf, fit, fit_parms) %>%
+             mutate(fit_parms = set_names(fit_parms, leaf))
 
 # adding a 'leaf' for full population distribution
 
@@ -205,9 +205,9 @@ fit_lnorm <- fit_lnorm %>%
   group_by(leaf) %>%
   nest() %>%
   mutate(fit = map(data, ~fitdist(.x$los, "lnorm"))) %>%
-  mutate(fit = map(fit, pluck, "estimate"))  %>%
-  select(leaf, fit) %>%
-  mutate(fit = set_names(fit, leaf)))
+  mutate(fit_parms = map(fit, pluck, "estimate"))  %>%
+  select(leaf, fit, fit_parms) %>%
+  mutate(fit_parms = set_names(fit_parms, leaf)))
 
 
 # validation on test data
@@ -221,40 +221,59 @@ validation_df <- los_test %>%
   bake(extract_recipe(tree_fit), .) %>%
   mutate(leaf = treeClust::rpart.predict.leaves(tree, .)) %>%
   left_join(fit_lnorm) %>%
-  unnest_wider(fit) %>%
+  unnest_wider(fit_parms) %>%
   group_by(leaf) %>%
   nest() %>%
+  mutate(meanlog = map_dbl(data, ~.x$meanlog[1])) %>%
+  mutate(sdlog = map_dbl(data, ~.x$sdlog[1])) %>%
   mutate(ks_test = map(data, ~ks.test(.x$los, "plnorm") %>% tidy())) %>%
+  mutate(ad_test = map(data, ~DescTools::AndersonDarlingTest(.x$los, null = "plnorm", meanlog = meanlog, sdlog = sdlog))) %>%
   mutate(cdf_plot = map(
     data,
     ~
       ggplot(.x, aes(x = los)) +
-      stat_ecdf(geom = "step") +
       geom_function(
         geom = "step",
-        col = "red",
+        col = "black",
         fun = cdf_lnorm,
         args = list(meanlog = .x$meanlog[1], sdlog = .x$sdlog[1])
       ) +
+      stat_ecdf(geom = "step") +
       labs(title = "CDF plot", x = "LOS", y = "CDF")+ theme_minimal()) 
     ) %>%
   mutate(qq_plot = map(
     data,
     ~
       ggplot(.x, aes(sample = los)) +
-      stat_qq(distribution = stats::qlnorm,
-              dparams = list(meanlog = .x$meanlog[1], sdlog = .x$sdlog[1])) + 
-      stat_qq_line(distribution = stats::qlnorm, col = "red",
+      qqplotr::stat_qq_band(distribution = "lnorm", alpha = 0.5,
                    dparams = list(meanlog = .x$meanlog[1], sdlog = .x$sdlog[1])) +
+      qqplotr::stat_qq_line(distribution = "lnorm", col = "black",
+                   dparams = list(meanlog = .x$meanlog[1], sdlog = .x$sdlog[1])) +
+      qqplotr::stat_qq_point(distribution = "lnorm",
+              dparams = list(meanlog = .x$meanlog[1], sdlog = .x$sdlog[1])) + 
       labs(title = "Q-Q plot", x = "Theoretical quantiles", y = "Empirical quantiles") + theme_minimal()
+  )) %>%
+  mutate(pp_plot = map(
+    data,
+    ~
+      ggplot(.x, aes(sample = los)) +
+      qqplotr::stat_pp_band(distribution = "lnorm", alpha = 0.5,
+                            dparams = list(meanlog = .x$meanlog[1], sdlog = .x$sdlog[1])) +
+      qqplotr::stat_pp_line(distribution = "lnorm", col = "black",
+                   dparams = list(meanlog = .x$meanlog[1], sdlog = .x$sdlog[1])) +
+      qqplotr::stat_pp_point(distribution = "lnorm",
+              dparams = list(meanlog = .x$meanlog[1], sdlog = .x$sdlog[1])) + 
+      labs(title = "P-P plot", x = "Theoretical probabilities", y = "Empirical probabilities") + theme_minimal()
   ))
 
 
 
 # in order to created grid of plot duets (one CDF & QQ for each LOS leaf
-# partition)
-plots <- map2(validation_df$cdf_plot, validation_df$qq_plot, ~cowplot::plot_grid(.x, .y))
-plots <- map2(validation_df$cdf_plot, validation_df$qq_plot, ~cowplot::plot_grid(.x, .y) + theme(plot.background = element_rect(fill = NA, colour = 'black', size = 1)))
+# partition) NOTE: for some reason I have to use cowplot to make a duet with a
+# border, which can then be wrapped using patchwork
+
+plots <- pmap(list(validation_df$cdf_plot, validation_df$qq_plot, validation_df$ks_test),
+              ~cowplot::plot_grid("bla", ..1, ..2) + theme(plot.background = element_rect(fill = NA, colour = 'black', size = 1)))
 validation_plot_los <- patchwork::wrap_plots(plots)
 
 ggsave(validation_plot_los,
