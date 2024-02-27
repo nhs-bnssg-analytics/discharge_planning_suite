@@ -208,7 +208,7 @@ fit_dists <- los_model_df %>%
 
 # adding a 'leaf' for full population distribution
 
-fit_lnorm <- fit_lnorm %>%
+fit_dists <- fit_dists %>%
   bind_rows(
     los_model_df %>%
       mutate(leaf = -1) %>%
@@ -222,14 +222,22 @@ fit_lnorm <- fit_lnorm %>%
       mutate(fit_parms = map(fit, "estimate")) 
   )
 
-
-# validation on test data
-
 dist_ptl_gen <- function(dist, parms, type){
   stopifnot(type %in% c("d", "p", "q", "r"))
   fn <- get(glue::glue("{type}{dist}"))
   partial(fn, !!!parms)
 }
+
+fit_dists <- fit_dists %>%
+  mutate(ddist = map2(dist, fit_parms, ~dist_ptl_gen(.x, .y, "d"))) %>%
+  mutate(pdist = map2(dist, fit_parms, ~dist_ptl_gen(.x, .y, "p"))) %>%
+  mutate(qdist = map2(dist, fit_parms, ~dist_ptl_gen(.x, .y, "q"))) %>%
+  mutate(rdist = map2(dist, fit_parms, ~dist_ptl_gen(.x, .y, "r"))) 
+
+
+
+# validation on test data
+
 
 cdf_fn <- function(dist, x, parms) {
   fn <- dist_ptl_gen(dist, parms, "d")
@@ -240,53 +248,48 @@ cdf_fn <- function(dist, x, parms) {
 validation_df <- los_test %>%
   bake(extract_recipe(tree_fit), .) %>%
   mutate(leaf = treeClust::rpart.predict.leaves(tree, .)) %>%
-  left_join(fit_dists) %>%
-  # unnest_wider(fit_parms) %>%
   group_by(leaf) %>%
   nest() %>%
-  # mutate(meanlog = map_dbl(data, ~.x$meanlog[1])) %>%
-  # mutate(sdlog = map_dbl(data, ~.x$sdlog[1])) %>%
-  # mutate(ks_test = map(data, ~ks.test(.x$los, dist_ptl_gen(.x$dist[1], .x$fit_parms[1], type = "p")))) %>%
-  # mutate(ad_test = map(data, ~DescTools::AndersonDarlingTest(.x$los, null = "plnorm", meanlog = meanlog, sdlog = sdlog))) %>%
-  mutate(cdf_plot = map(
-    data,
+  left_join(select(fit_dists, -data, -min_aic)) %>%
+  mutate(ks_test = pmap(list(data, pdist), ~ks.test(..1$los, ..2))) %>%
+  mutate(ad_test = pmap(list(data, pdist), ~DescTools::AndersonDarlingTest(..1$los, null = ..2))) %>%
+  mutate(cdf_plot = pmap(
+    list(data, dist, fit_parms),
     ~
-      ggplot(.x, aes(x = los)) +
+      ggplot(..1, aes(x = los)) +
       geom_function(
         geom = "step",
         col = "black",
-        fun = function(x) cdf_fn(x, dist = .x$dist[[1]], parms = .x$fit_parms[[1]])#,
+        fun = function(x) cdf_fn(x, dist = ..2, parms = ..3)#,
         #args = list(.x$fit_parms[[1]])
       ) +
       stat_ecdf(geom = "step") +
       labs(title = "CDF plot", x = "LOS", y = "CDF")+ theme_minimal()) 
     ) %>%
-  mutate(qq_plot = map(
-    data,
+  mutate(qq_plot = pmap(
+    list(data, dist, fit_parms),
     ~
-      ggplot(.x, aes(sample = los)) +
-      qqplotr::stat_qq_band(distribution = "lnorm", alpha = 0.5,
-                   dparams = list(meanlog = .x$meanlog[1], sdlog = .x$sdlog[1])) +
-      qqplotr::stat_qq_line(distribution = "lnorm", col = "black",
-                   dparams = list(meanlog = .x$meanlog[1], sdlog = .x$sdlog[1])) +
-      qqplotr::stat_qq_point(distribution = "lnorm",
-              dparams = list(meanlog = .x$meanlog[1], sdlog = .x$sdlog[1])) + 
+      ggplot(..1, aes(sample = los)) +
+      qqplotr::stat_qq_band(distribution = ..2, alpha = 0.5,
+                   dparams = ..3) +
+      qqplotr::stat_qq_line(distribution = ..2, col = "black",
+                   dparams = ..3) +
+      qqplotr::stat_qq_point(distribution = ..2,
+              dparams = ..3) + 
       labs(title = "Q-Q plot", x = "Theoretical quantiles", y = "Empirical quantiles") + theme_minimal()
   )) %>%
-  mutate(pp_plot = map(
-    data,
+  mutate(pp_plot = pmap(
+    list(data, dist, fit_parms),
     ~
-      ggplot(.x, aes(sample = los)) +
-      qqplotr::stat_pp_band(distribution = "lnorm", alpha = 0.5,
-                            dparams = list(meanlog = .x$meanlog[1], sdlog = .x$sdlog[1])) +
-      qqplotr::stat_pp_line(distribution = "lnorm", col = "black",
-                   dparams = list(meanlog = .x$meanlog[1], sdlog = .x$sdlog[1])) +
-      qqplotr::stat_pp_point(distribution = "lnorm",
-              dparams = list(meanlog = .x$meanlog[1], sdlog = .x$sdlog[1])) + 
+      ggplot(..1, aes(sample = los)) +
+      qqplotr::stat_pp_band(distribution = ..2, alpha = 0.5,
+                   dparams = ..3) +
+      qqplotr::stat_pp_line(distribution = ..2, col = "black",
+                   dparams = ..3) +
+      qqplotr::stat_pp_point(distribution = ..2,
+              dparams = ..3) + 
       labs(title = "P-P plot", x = "Theoretical probabilities", y = "Empirical probabilities") + theme_minimal()
-  ))
-
-
+  )) 
 
 # in order to created grid of plot duets (one CDF & QQ for each LOS leaf
 # partition) NOTE: for some reason I have to use cowplot to make a duet with a
