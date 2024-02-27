@@ -19,7 +19,7 @@ fit_lnorm <- los_model_df %>%
   mutate(fit = flatten(pmap(list(fit, min_aic), function(fits, aic) keep(fits, \(x) x$aic == aic)))) %>%
   mutate(dist = map_chr(fit, "distname")) %>%
   mutate(fit_parms = map(fit, "estimate")) %>%
-  mutate(dist_partial = map2(dist, fit_parms, ~partial(get(glue::glue("r{.x}")), !!!.y)))
+  mutate(dist_partial = map2(dist, fit_parms, ~partial(get(glue::glue("r{.x}")), .y)))
 
 
 fit_1 <- fit_lnorm$fit[[1]]

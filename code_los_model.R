@@ -57,9 +57,9 @@ los_df <- nctr_df %>%
   # OR whos max date recorded is before the latest data (have been discharged)
   filter(!is.na(Date_NCTR) | Census_Date != max(Census_Date)) %>%
   # Compute the fit for discharge LOS
-  mutate(discharge_los = ifelse(!is.na(Date_NCTR), Current_LOS - Days_NCTR, Current_LOS + 1))  %>%
+  mutate(discharge_rdy_los = ifelse(!is.na(Date_NCTR), Current_LOS - Days_NCTR, Current_LOS + 1))  %>%
   # remove negative LOS (wrong end timestamps?)
-  filter(discharge_los > 0) %>%
+  filter(discharge_rdy_los > 0) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   mutate(Organisation_Site_Code = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt',
                            Organisation_Site_Code == 'RA701' ~ 'bri',
@@ -72,7 +72,7 @@ los_df <- nctr_df %>%
                 age = Person_Age,
                 spec = Specialty_Code,
                 bed_type = Bed_Type,
-                los = discharge_los
+                los = discharge_rdy_los
                 ) %>%
   # filter outlier LOS
   filter(los < 50) # higher than Q(.99)
@@ -131,7 +131,7 @@ tree_spec <- decision_tree(
 
 
 tree_grid <- grid_regular(cost_complexity(),
-                          tree_depth(range = c(1, 3)),
+                          tree_depth(range = c(1, 4)),
                           min_n(range = c(15, 100)), levels = 4)
 
 
