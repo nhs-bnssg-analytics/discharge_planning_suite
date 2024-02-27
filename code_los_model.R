@@ -188,46 +188,66 @@ ggplot(los_model_df, aes(x = los)) +
 
 # fit los dists on the data at each leaf
 
-fit_lnorm <- los_model_df %>%
-             dplyr::select(leaf, los) %>%
-             group_by(leaf) %>%
-             nest() %>%
-             mutate(fit = map(data, ~fitdist(.x$los, "lnorm"))) %>%
-             mutate(fit_parms = map(fit, pluck, "estimate"))  %>%
-             select(leaf, fit, fit_parms) %>%
-             mutate(fit_parms = set_names(fit_parms, leaf))
+dists <- c("exp",
+           "norm",
+           "lnorm",
+           "gamma",
+           "weibull")
+
+
+fit_dists <- los_model_df %>%
+  dplyr::select(leaf, los) %>%
+  group_by(leaf) %>%
+  nest() %>%
+  mutate(fit = map(data, function(data ) imap(dists, ~fitdist(data$los, .x)))) %>%
+  mutate(min_aic = map_dbl(fit, function(group) min(map_dbl(group, ~pluck(.x, "aic"))))) %>%
+  #select best based on lowest AIC
+  mutate(fit = flatten(pmap(list(fit, min_aic), function(fits, aic) keep(fits, \(x) x$aic == aic)))) %>%
+  mutate(dist = map_chr(fit, "distname")) %>%
+  mutate(fit_parms = map(fit, "estimate")) 
 
 # adding a 'leaf' for full population distribution
 
 fit_lnorm <- fit_lnorm %>%
-  bind_rows(los_model_df %>%
-  mutate(leaf = -1) %>%
-  group_by(leaf) %>%
-  nest() %>%
-  mutate(fit = map(data, ~fitdist(.x$los, "lnorm"))) %>%
-  mutate(fit_parms = map(fit, pluck, "estimate"))  %>%
-  select(leaf, fit, fit_parms) %>%
-  mutate(fit_parms = set_names(fit_parms, leaf)))
+  bind_rows(
+    los_model_df %>%
+      mutate(leaf = -1) %>%
+      group_by(leaf) %>%
+      nest() %>%
+      mutate(fit = map(data, function(data ) imap(dists, ~fitdist(data$los, .x)))) %>%
+      mutate(min_aic = map_dbl(fit, function(group) min(map_dbl(group, ~pluck(.x, "aic"))))) %>%
+      #select best based on lowest AIC
+      mutate(fit = flatten(pmap(list(fit, min_aic), function(fits, aic) keep(fits, \(x) x$aic == aic)))) %>%
+      mutate(dist = map_chr(fit, "distname")) %>%
+      mutate(fit_parms = map(fit, "estimate")) 
+  )
 
 
 # validation on test data
 
-cdf_lnorm <- function(x, meanlog = 0, sdlog = 1){
- out <- cumsum(dlnorm(x, meanlog, sdlog))
- (out - min(out))/(max(out) - min(out))
+dist_ptl_gen <- function(dist, parms, type){
+  stopifnot(type %in% c("d", "p", "q", "r"))
+  fn <- get(glue::glue("{type}{dist}"))
+  partial(fn, !!!parms)
+}
+
+cdf_fn <- function(dist, x, parms) {
+  fn <- dist_ptl_gen(dist, parms, "d")
+  out <- cumsum(fn(x, !!!parms))
+  (out - min(out)) / (max(out) - min(out))
 }
 
 validation_df <- los_test %>%
   bake(extract_recipe(tree_fit), .) %>%
   mutate(leaf = treeClust::rpart.predict.leaves(tree, .)) %>%
-  left_join(fit_lnorm) %>%
-  unnest_wider(fit_parms) %>%
+  left_join(fit_dists) %>%
+  # unnest_wider(fit_parms) %>%
   group_by(leaf) %>%
   nest() %>%
-  mutate(meanlog = map_dbl(data, ~.x$meanlog[1])) %>%
-  mutate(sdlog = map_dbl(data, ~.x$sdlog[1])) %>%
-  mutate(ks_test = map(data, ~ks.test(.x$los, "plnorm") %>% tidy())) %>%
-  mutate(ad_test = map(data, ~DescTools::AndersonDarlingTest(.x$los, null = "plnorm", meanlog = meanlog, sdlog = sdlog))) %>%
+  # mutate(meanlog = map_dbl(data, ~.x$meanlog[1])) %>%
+  # mutate(sdlog = map_dbl(data, ~.x$sdlog[1])) %>%
+  # mutate(ks_test = map(data, ~ks.test(.x$los, dist_ptl_gen(.x$dist[1], .x$fit_parms[1], type = "p")))) %>%
+  # mutate(ad_test = map(data, ~DescTools::AndersonDarlingTest(.x$los, null = "plnorm", meanlog = meanlog, sdlog = sdlog))) %>%
   mutate(cdf_plot = map(
     data,
     ~
@@ -235,8 +255,8 @@ validation_df <- los_test %>%
       geom_function(
         geom = "step",
         col = "black",
-        fun = cdf_lnorm,
-        args = list(meanlog = .x$meanlog[1], sdlog = .x$sdlog[1])
+        fun = function(x) cdf_fn(x, dist = .x$dist[[1]], parms = .x$fit_parms[[1]])#,
+        #args = list(.x$fit_parms[[1]])
       ) +
       stat_ecdf(geom = "step") +
       labs(title = "CDF plot", x = "LOS", y = "CDF")+ theme_minimal()) 
