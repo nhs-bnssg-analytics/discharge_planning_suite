@@ -295,8 +295,8 @@ validation_df <- los_test %>%
 # partition) NOTE: for some reason I have to use cowplot to make a duet with a
 # border, which can then be wrapped using patchwork
 
-plots <- pmap(list(validation_df$cdf_plot, validation_df$qq_plot, validation_df$ks_test),
-              ~cowplot::plot_grid("bla", ..1, ..2) + theme(plot.background = element_rect(fill = NA, colour = 'black', size = 1)))
+plots <- pmap(list(validation_df$cdf_plot, validation_df$pp_plot),
+              ~cowplot::plot_grid(..1, ..2) + theme(plot.background = element_rect(fill = NA, colour = 'black', size = 1)))
 validation_plot_los <- patchwork::wrap_plots(plots)
 
 ggsave(validation_plot_los,
