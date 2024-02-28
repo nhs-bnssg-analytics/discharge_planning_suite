@@ -49,8 +49,8 @@ los_df <- nctr_df %>%
          nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
          sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>% 
   # mutate(nhs_number[is.na(nhs_number)] = glue::glue("unknown_{seq_along(nhs_number[is.na(nhs_number)])}"))
-  group_by(nhs_number) %>%
-  # take maximum date we have data for each patient
+  group_by(nhs_number, Date_Of_Admission) %>%
+  # take maximum date we have data for each patient and admission
   filter(Census_Date == max(Census_Date)) %>%
   ungroup() %>%
   # keep only patients with either NCTR (we know they are ready for discharge)
@@ -73,9 +73,9 @@ los_df <- nctr_df %>%
                 spec = Specialty_Code,
                 bed_type = Bed_Type,
                 los = discharge_rdy_los
-                ) %>%
-  # filter outlier LOS
-  filter(los < 50) # higher than Q(.99)
+                ) # %>%
+  # # filter outlier LOS
+  # filter(los < 50) # higher than Q(.99)
 
 # attributes to join
 
@@ -132,7 +132,7 @@ tree_spec <- decision_tree(
 
 tree_grid <- grid_regular(cost_complexity(),
                           tree_depth(range = c(1, 4)),
-                          min_n(range = c(15, 100)), levels = 4)
+                          min_n(range = c(150, 300)), levels = 4)
 
 
 tree_rec <- recipe(los ~ ., data = los_train)  %>%
@@ -183,7 +183,7 @@ ggplot(los_model_df, aes(x = los)) +
                fun = median, geom = "vline", col = "blue") +
   stat_summary(aes(x = 0, y = los, xintercept = stat(y), group = leaf), 
                fun = mean, geom = "vline", col = "red") +
-  facet_wrap(vars(leaf), scales = "free_y")
+  facet_wrap(vars(leaf), scales = "free")
 
 
 # fit los dists on the data at each leaf
@@ -251,7 +251,7 @@ validation_df <- los_test %>%
   group_by(leaf) %>%
   nest() %>%
   left_join(select(fit_dists, -data, -min_aic)) %>%
-  mutate(ks_test = pmap(list(data, pdist), ~ks.test(..1$los, ..2))) %>%
+  mutate(ks_test = pmap(list(data, pdist), ~ks.test(..1$los, ..2) %>% tidy())) %>%
   mutate(ad_test = pmap(list(data, pdist), ~DescTools::AndersonDarlingTest(..1$los, null = ..2))) %>%
   mutate(cdf_plot = pmap(
     list(data, dist, fit_parms),
