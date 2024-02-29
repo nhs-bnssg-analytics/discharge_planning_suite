@@ -98,11 +98,10 @@ model_df <- los_df %>%
    # na.omit() %>%
    select(los,
           #site,
-          day_of_admission,
+          # day_of_admission,
           cambridge_score,
           age,
           sex,
-          site,
           #spec, # spec has too many levels, some of which don't get seen enough to reliably create a model pipeline
           bed_type
           # smoking,
@@ -139,7 +138,7 @@ tree_grid <- grid_regular(cost_complexity(),
 
 
 tree_rec <- recipe(los ~ ., data = los_train)  %>%
-    update_role(site, new_role = "site id") %>%  
+    # update_role(site, new_role = "site id") %>%  
     step_novel(all_nominal_predictors(), new_level = "other") %>%
     step_other(all_nominal_predictors(), threshold = 0.1)
 
@@ -223,7 +222,8 @@ fit_dists <- fit_dists %>%
       mutate(fit = flatten(pmap(list(fit, min_aic), function(fits, aic) keep(fits, \(x) x$aic == aic)))) %>%
       mutate(dist = map_chr(fit, "distname")) %>%
       mutate(fit_parms = map(fit, "estimate")) 
-  )
+  ) %>%
+  mutate(fit_parms = set_names(fit_parms, leaf))
 
 dist_ptl_gen <- function(dist, parms, type){
   stopifnot(type %in% c("d", "p", "q", "r"))
@@ -309,5 +309,5 @@ ggsave(validation_plot_los,
        scale = 0.8)
 
 
-saveRDS(fit_lnorm$fit, "data/dist_split.RDS")
+saveRDS(fit_dists$fit_parms, "data/dist_split.RDS")
 saveRDS(tree_fit, "data/los_wf.RDS")
