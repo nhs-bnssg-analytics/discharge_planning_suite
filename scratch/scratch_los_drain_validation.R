@@ -13,7 +13,14 @@ nctr_sum <- nctr_df %>%
                                             Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
                                             TRUE ~ '')) %>%
   group_by(nhs_number, Date_Of_Admission) %>%
-  mutate(spell_id = cur_group_id()) 
+  mutate(spell_id = cur_group_id(),
+         der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/ddays(1),
+         der_ctr = case_when(
+           Criteria_To_Reside == "Y" | is.na(Criteria_To_Reside) ~ TRUE,
+           !is.na(Days_NCTR) ~ FALSE,
+           !is.na(Date_NCTR) ~ FALSE,
+           Criteria_To_Reside == "N" ~ FALSE
+         )) 
 
 
 dates_spells <- nctr_sum %>%
@@ -59,7 +66,7 @@ emp_drain <- nctr_sum %>%
              !any(is.na(Date_NCTR) | Days_NCTR[!is.na(Days_NCTR)] > 0) ~ max(Current_LOS, na.rm = TRUE) # IF never NCTR take the maximum recorded LOS
            ),
            # na.rm = TRUE)
-         ) %>% # If recorded NCTR LOS is current - days NCTR
+         ) %>%
   select(
     Census_Date,
     spell_id,
