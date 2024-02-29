@@ -58,6 +58,7 @@ los_df <- nctr_df %>%
   filter(!is.na(Date_NCTR) | Census_Date != max(Census_Date)) %>%
   # Compute the fit for discharge LOS
   mutate(discharge_rdy_los = ifelse(!is.na(Date_NCTR), Current_LOS - Days_NCTR, Current_LOS + 1))  %>%
+  mutate(day_of_admission = weekdays(Date_Of_Admission)) %>%
   # remove negative LOS (wrong end timestamps?)
   filter(discharge_rdy_los > 0) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
@@ -68,6 +69,7 @@ los_df <- nctr_df %>%
   dplyr::select(
                 nhs_number = nhs_number,
                 site = Organisation_Site_Code,
+                day_of_admission,
                 sex,
                 age = Person_Age,
                 spec = Specialty_Code,
@@ -96,6 +98,7 @@ model_df <- los_df %>%
    # na.omit() %>%
    select(los,
           #site,
+          day_of_admission,
           cambridge_score,
           age,
           sex,
@@ -161,7 +164,7 @@ tree_rs <- tune_grid(
 autoplot(tree_rs) + theme_light(base_family = "IBMPlexSans")
 collect_metrics(tree_rs)
 
-tuned_wf<- finalize_workflow(tree_wf, select_best(tree_rs, "rsq"))
+tuned_wf<- finalize_workflow(tree_wf, select_best(tree_rs, "mape"))
 
 tuned_wf
 
