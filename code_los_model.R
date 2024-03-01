@@ -53,11 +53,22 @@ los_df <- nctr_df %>%
   # take maximum date we have data for each patient and admission
   filter(Census_Date == max(Census_Date)) %>%
   ungroup() %>%
+  mutate(
+    der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/ddays(1),
+    der_ctr = case_when(
+      Criteria_To_Reside == "Y" | is.na(Criteria_To_Reside) ~ TRUE,
+      !is.na(Days_NCTR) ~ FALSE,
+      !is.na(Date_NCTR) ~ FALSE,
+      Criteria_To_Reside == "N" ~ FALSE
+    )) %>%
   # keep only patients with either NCTR (we know they are ready for discharge)
   # OR whos max date recorded is before the latest data (have been discharged)
-  filter(!is.na(Date_NCTR) | Census_Date != max(Census_Date)) %>%
+  filter(!der_ctr | Census_Date != max(Census_Date)) %>%
+  # filter(!is.na(Date_NCTR) | Census_Date != max(Census_Date)) %>%
   # Compute the fit for discharge LOS
-  mutate(discharge_rdy_los = ifelse(!is.na(Date_NCTR), Current_LOS - Days_NCTR, Current_LOS + 1))  %>%
+  # group_by(nhs_number, Date_Of_Admission) %>%
+  mutate(discharge_rdy_los = if_else(!der_ctr, der_los - Days_NCTR, der_los)) %>%
+  # mutate(discharge_rdy_los = ifelse(!is.na(Date_NCTR), Current_LOS - Days_NCTR, Current_LOS + 1))  %>%
   mutate(day_of_admission = weekdays(Date_Of_Admission)) %>%
   # remove negative LOS (wrong end timestamps?)
   filter(discharge_rdy_los > 0) %>%
@@ -97,7 +108,7 @@ model_df <- los_df %>%
              by = join_by(nhs_number == nhs_number)) %>%
    # na.omit() %>%
    select(los,
-          #site,
+          site,
           # day_of_admission,
           cambridge_score,
           age,
@@ -138,7 +149,7 @@ tree_grid <- grid_regular(cost_complexity(),
 
 
 tree_rec <- recipe(los ~ ., data = los_train)  %>%
-    # update_role(site, new_role = "site id") %>%  
+    update_role(site, new_role = "site id") %>%  
     step_novel(all_nominal_predictors(), new_level = "other") %>%
     step_other(all_nominal_predictors(), threshold = 0.1)
 

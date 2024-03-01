@@ -13,7 +13,9 @@ nctr_sum <- nctr_df %>%
                                             Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
                                             TRUE ~ '')) %>%
   group_by(nhs_number, Date_Of_Admission) %>%
-  mutate(spell_id = cur_group_id(),
+  mutate(spell_id = cur_group_id()) %>%
+  ungroup() %>%
+    mutate(
          der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/ddays(1),
          der_ctr = case_when(
            Criteria_To_Reside == "Y" | is.na(Criteria_To_Reside) ~ TRUE,
@@ -42,7 +44,8 @@ dates <- nctr_df %>%
 d_i <- sample(dates, 1)
 # spell ids with CTR from this date:
 sid_i <- dates_spells %>%
-  filter(Census_Date == d_i & (Criteria_To_Reside == "Y" & (is.na(Days_NCTR) | Days_NCTR == 0))) %>%
+  filter(Census_Date == d_i & der_ctr) %>%
+  # filter(Census_Date == d_i & (Criteria_To_Reside == "Y" & (is.na(Days_NCTR) | Days_NCTR == 0))) %>%
   pull(spell_id) %>% 
   unique()
 
@@ -54,35 +57,41 @@ emp_drain <- nctr_sum %>%
   filter(Census_Date >= d_i) %>%
   arrange(Census_Date) %>%
   group_by(spell_id) %>%
-  mutate(los = min(Current_LOS),
-         # los on index date is the minimum LOS
-         los_dis_rdy = 
-           # min(
-           case_when(
-             Current_LOS < Days_NCTR ~ Inf, # Edge case: where Days_NCTR seems to be incorrect, set to Inf so min will remove this row
-             !is.na(Days_NCTR)  ~ (Current_LOS - Days_NCTR), # If recorded NCTR LOS is current - days NCTR
-             Days_NCTR > 0 ~ (Current_LOS - Days_NCTR), # If recorded NCTR LOS is current - days NCTR
-             Criteria_To_Reside == "N" & !is.na(Days_NCTR) ~ (Current_LOS - Days_NCTR),
-             !any(is.na(Date_NCTR) | Days_NCTR[!is.na(Days_NCTR)] > 0) ~ max(Current_LOS, na.rm = TRUE) # IF never NCTR take the maximum recorded LOS
-           ),
-           # na.rm = TRUE)
+  mutate(los = min(der_los), # los on index date is the minimum LOS
+         los_dis_rdy = case_when(
+           !any(der_ctr) ~ max(der_los),
+           der_ctr ~ tail(der_los, 1), 
+           length(der_los) == 1 ~ der_los,
+           )
+         # los_dis_rdy = 
+         #   # min(
+         #   case_when(
+         #     Current_LOS < Days_NCTR ~ Inf, # Edge case: where Days_NCTR seems to be incorrect, set to Inf so min will remove this row
+         #     !is.na(Days_NCTR)  ~ (Current_LOS - Days_NCTR), # If recorded NCTR LOS is current - days NCTR
+         #     Days_NCTR > 0 ~ (Current_LOS - Days_NCTR), # If recorded NCTR LOS is current - days NCTR
+         #     Criteria_To_Reside == "N" & !is.na(Days_NCTR) ~ (Current_LOS - Days_NCTR),
+         #     !any(is.na(Date_NCTR) | Days_NCTR[!is.na(Days_NCTR)] > 0) ~ max(Current_LOS, na.rm = TRUE) # IF never NCTR take the maximum recorded LOS
+         #   ),
+         #   # na.rm = TRUE)
          ) %>%
-  select(
-    Census_Date,
-    spell_id,
-    los,
-    los_dis_rdy,
-    Current_LOS,
-    Criteria_To_Reside,
-    Date_NCTR,
-    Days_NCTR
-  ) #%>%
+  # select(
+  #   Census_Date,
+  #   spell_id,
+  #   los,
+  #   los_dis_rdy,
+  #   Current_LOS,
+  #   Criteria_To_Reside,
+  #   Date_NCTR,
+  #   Days_NCTR
+  # ) %>%
 select(nhs_number = NHS_Number,
        spell_id,
        bed_type = Bed_Type,
        los,
        los_dis_rdy) %>%
-  distinct() %>%
+  group_by(spell_id) %>%
+  arrange(los_dis_rdy) %>%
+  slice(1) %>%
   mutate(days_until_rdy = los_dis_rdy - los) %>%
   group_by(day = days_until_rdy) %>%
   count()
@@ -98,7 +107,7 @@ sim_drain <- nctr_sum %>%
   filter(Census_Date == d_i, 
          spell_id %in% sid_i) %>%
   group_by(spell_id) %>%
-  mutate(los = Current_LOS) %>% 
+  mutate(los = der_los) %>% 
   select(nhs_number,
          age = Person_Age,
          sex = Person_Stated_Gender_Code,
@@ -106,11 +115,31 @@ sim_drain <- nctr_sum %>%
          los) %>%
   left_join(select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
             by = join_by(nhs_number == nhs_number)) %>%
-  bake(extract_recipe(los_wf), .) %>%
+  bake(extract_recipe(los_wf) %>% update_role_requirements(role = "site id", bake = FALSE), .) %>%
   ungroup() %>%
   mutate(id = 1:n(), 
          leaf = as.character(treeClust::rpart.predict.leaves(extract_fit_engine(los_wf), .))) %>%
   left_join(los_dist, by = join_by(leaf == name)) %>%
+  mutate(los_remaining = pmap(list(los, meanlog, sdlog),
+                              ~rlnormt(n_rep, ..2, ..3, range = c(..1, Inf)) - ..1) %>%
+           reduce(rbind))  
+  
+
+
+ foo <- with(sim_drain,
+      replicate(n_rep, pmap_dbl(list(los, meanlog, sdlog), ~rlnormt(1, ..2, ..3, range = c(..1, Inf)) - ..1))
+ )
+
+ foo <- with(sim_drain,
+      pmap(list(los, meanlog, sdlog), ~rlnormt(n_rep, ..2, ..3, range = c(..1, Inf)) - ..1) %>%
+      reduce(rbind)
+ )
+
+bar <-apply(foo %/% 1, MARGIN = 2, FUN = \(x) table(factor(x, levels = 0:max(bar)))) 
+
+
+
+%>%
   mutate(los_remaining = pmap(
     list(los, meanlog, sdlog),
     ~
