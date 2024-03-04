@@ -30,9 +30,6 @@ dates_spells <- nctr_sum %>%
   distinct()
 
 
-
-
-
 dates <- nctr_df %>%
   filter(Census_Date > ymd("2023-07-01"),
          Census_Date < max(Census_Date) - ddays(10)) %>%
