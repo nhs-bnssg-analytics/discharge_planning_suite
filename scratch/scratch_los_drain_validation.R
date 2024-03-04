@@ -32,17 +32,25 @@ dates_spells <- nctr_sum %>%
 
 dates <- nctr_df %>%
   filter(Census_Date > ymd("2023-07-01"),
-         Census_Date < max(Census_Date) - ddays(10)) %>%
+         Census_Date < max(Census_Date) - ddays(50)) %>%
   pull(Census_Date) %>%
   unique()
 
+los_wf <- readRDS("data/los_wf.RDS")
+
+los_dist <- readRDS("data/dist_split.RDS") %>%
+  enframe() %>%
+  unnest_wider(value)
 
 # take sample of dates
-d_i <- sample(dates, 1)
+d_i <- sample(dates, 9)
+
+
+out <- map(d_i, ~{
+
 # spell ids with CTR from this date:
 sid_i <- dates_spells %>%
-  filter(Census_Date == d_i & der_ctr) %>%
-  # filter(Census_Date == d_i & (Criteria_To_Reside == "Y" & (is.na(Days_NCTR) | Days_NCTR == 0))) %>%
+  filter(Census_Date ==.x & der_ctr) %>%
   pull(spell_id) %>% 
   unique()
 
@@ -51,89 +59,138 @@ sid_i <- dates_spells %>%
 emp_drain <- nctr_sum %>%
   #first, only filter spells we are interested in
   filter(spell_id %in% sid_i) %>%
-  filter(Census_Date >= d_i) %>%
+  filter(Census_Date >=.x) %>%
   arrange(Census_Date) %>%
   group_by(spell_id) %>%
   mutate(los = min(der_los), # los on index date is the minimum LOS
          los_dis_rdy = case_when(
-           !any(der_ctr) ~ max(der_los),
-           der_ctr ~ tail(der_los, 1), 
-           length(der_los) == 1 ~ der_los,
+           !any(der_ctr) ~ max(der_los), # if never NCTR, take max LOS
+           der_ctr ~ tail(der_los, 1),  # where CTR take last LOS
+           length(der_los) == 1 ~ der_los, # if only 1 LOS record, take that
            )
-         # los_dis_rdy = 
-         #   # min(
-         #   case_when(
-         #     Current_LOS < Days_NCTR ~ Inf, # Edge case: where Days_NCTR seems to be incorrect, set to Inf so min will remove this row
-         #     !is.na(Days_NCTR)  ~ (Current_LOS - Days_NCTR), # If recorded NCTR LOS is current - days NCTR
-         #     Days_NCTR > 0 ~ (Current_LOS - Days_NCTR), # If recorded NCTR LOS is current - days NCTR
-         #     Criteria_To_Reside == "N" & !is.na(Days_NCTR) ~ (Current_LOS - Days_NCTR),
-         #     !any(is.na(Date_NCTR) | Days_NCTR[!is.na(Days_NCTR)] > 0) ~ max(Current_LOS, na.rm = TRUE) # IF never NCTR take the maximum recorded LOS
-         #   ),
-         #   # na.rm = TRUE)
          ) %>%
-  # select(
-  #   Census_Date,
-  #   spell_id,
-  #   los,
-  #   los_dis_rdy,
-  #   Current_LOS,
-  #   Criteria_To_Reside,
-  #   Date_NCTR,
-  #   Days_NCTR
-  # ) %>%
 select(nhs_number = NHS_Number,
        spell_id,
        bed_type = Bed_Type,
        los,
        los_dis_rdy) %>%
+  # take first active LOS value for each spell
   group_by(spell_id) %>%
   arrange(los_dis_rdy) %>%
   slice(1) %>%
   mutate(days_until_rdy = los_dis_rdy - los) %>%
   group_by(day = days_until_rdy) %>%
-  count()
-
-los_wf <- readRDS("data/los_wf.RDS")
-
-los_dist <- readRDS("data/dist_split.RDS") %>%
-  enframe() %>%
-  unnest_wider(value)
+  count(name = "value")
 
 sim_drain <- nctr_sum %>%
-  filter(Criteria_To_Reside == "Y" & (is.na(Days_NCTR) | Days_NCTR == 0)) %>%
-  filter(Census_Date == d_i, 
+  # filter(Criteria_To_Reside == "Y" & (is.na(Days_NCTR) | Days_NCTR == 0)) %>%
+  filter(Census_Date == .x,
          spell_id %in% sid_i) %>%
   group_by(spell_id) %>%
-  mutate(los = der_los) %>% 
+  mutate(los = der_los) %>%
   select(nhs_number,
          age = Person_Age,
          sex = Person_Stated_Gender_Code,
          bed_type = Bed_Type,
          los) %>%
-  left_join(select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
-            by = join_by(nhs_number == nhs_number)) %>%
-  bake(extract_recipe(los_wf) %>% update_role_requirements(role = "site id", bake = FALSE), .) %>%
+  left_join(
+    select(attr_df,-sex,-age) %>% mutate(nhs_number = as.character(nhs_number)),
+    by = join_by(nhs_number == nhs_number)
+  ) %>%
+  bake(extract_recipe(los_wf) %>% update_role_requirements(role = "site id", bake = FALSE),
+       .) %>%
   ungroup() %>%
-  mutate(id = 1:n(), 
+  mutate(id = 1:n(),
          leaf = as.character(treeClust::rpart.predict.leaves(extract_fit_engine(los_wf), .))) %>%
   left_join(los_dist, by = join_by(leaf == name)) %>%
   mutate(los_remaining = pmap(list(los, meanlog, sdlog),
-                              ~rlnormt(n_rep, ..2, ..3, range = c(..1, Inf)) - ..1) %>%
-           reduce(rbind))  
+                              ~ rlnormt(n_rep, ..2, ..3, range = c(..1, Inf)) - ..1) %>%
+           reduce(rbind)) %>%
+  pull(los_remaining) %>%
+  `%/%`(., 1) %>%
+  apply(
+    MARGIN = 2,
+    FUN = function(x)
+      table(factor(x, levels = 0:max(.)))
+  ) %>%
+  apply(
+    MARGIN = 1,
+    FUN = function(x)
+      list(
+        mean = mean(x),
+        u95 = quantile(x, 0.975),
+        l95 = quantile(x, 0.225)
+      )
+  ) %>%
+  enframe() %>%
+  unnest_wider(value) %>%
+  rename(day = name) %>%
+  pivot_longer(cols = -day, names_to = "metric") %>%
+  mutate(source = "simulated",
+         day = as.numeric(day))
+
+out_df <- emp_drain %>%
+  mutate(source = "empirical", 
+         metric = "mean") %>%
+  bind_rows(sim_drain) %>%
+  pivot_wider(names_from = metric, values_from = value) #%>%
+  # pivot_longer(cols = -day, names_to = "metric", values_to = "n") %>%
+  # mutate(metric = recode(metric, n = "empirical", n_sim = "simulated")) %>%
+  # group_by(metric) %>%
+  # mutate(prop = n/sum(n)) %>%
+
+ out_df %>%
+   mutate(id = which(d_i == .x))}
+)
   
 
+out %>%
+  reduce(bind_rows) %>%
+  pivot_longer(cols = -c(id, day, source), names_to = "metric", values_to = "value") %>%
+  group_by(source, id, metric) %>%
+  mutate(prop = value/sum(value)) %>%
+  mutate(cum_prop = cumsum(prop)) %>%
+  pivot_longer(cols = -c(day, source, id, metric), names_to = "calc", values_to = "value") %>%
+  unite("metric", metric, calc, sep = "_") %>%
+  pivot_wider(names_from = metric, values_from = value) %>%
+  filter(day <= 50) %>%
+  ggplot(aes(x = day, y = mean_cum_prop, fill = source)) +
+  geom_col(position = "dodge") +
+  # geom_line(aes(col = source)) +
+  # geom_errorbar(aes(ymin = l95_cum_prop, ymax = u95_cum_prop), position = "dodge") +
+  facet_wrap(vars(id), scales = "free")
+ # foo <- with(sim_drain,
+ #      replicate(n_rep, pmap_dbl(list(los, meanlog, sdlog), ~rlnormt(1, ..2, ..3, range = c(..1, Inf)) - ..1))
+ # )
+ # 
+ # foo <- with(sim_drain,
+ #      pmap(list(los, meanlog, sdlog), ~rlnormt(n_rep, ..2, ..3, range = c(..1, Inf)) - ..1) %>%
+ #      reduce(rbind)
+ # )
 
- foo <- with(sim_drain,
-      replicate(n_rep, pmap_dbl(list(los, meanlog, sdlog), ~rlnormt(1, ..2, ..3, range = c(..1, Inf)) - ..1))
- )
+bar <-apply(sim_drain$los_remaining %/% 1, MARGIN = 2, FUN = \(x) table(factor(x, levels = 0:max(sim_drain$los_remaining))))
 
- foo <- with(sim_drain,
-      pmap(list(los, meanlog, sdlog), ~rlnormt(n_rep, ..2, ..3, range = c(..1, Inf)) - ..1) %>%
-      reduce(rbind)
- )
 
-bar <-apply(foo %/% 1, MARGIN = 2, FUN = \(x) table(factor(x, levels = 0:max(bar)))) 
 
+
+
+
+
+foo
+
+foo %>%
+  as_tibble() %>%
+  pivot_longer(cols = everything(),
+               names_to = "sim",
+               values_to = "day") %>%
+  pivot_wider(names_from = day, values_from = sim)
+
+
+
+model.matrix(~0+bar)
+
+%>%
+  pivot_wider(names_from = day, values_fill = 1)
 
 
 %>%
