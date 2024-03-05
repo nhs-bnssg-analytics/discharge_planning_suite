@@ -63,7 +63,9 @@ los_df <- nctr_df %>%
     )) %>%
   # keep only patients with either NCTR (we know they are ready for discharge)
   # OR whos max date recorded is before the latest data (have been discharged)
+  group_by(NHS_Number, Date_Of_Admission) %>%
   filter(!der_ctr | Census_Date != max(Census_Date)) %>%
+  ungroup() %>%
   # filter(!is.na(Date_NCTR) | Census_Date != max(Census_Date)) %>%
   # Compute the fit for discharge LOS
   # group_by(nhs_number, Date_Of_Admission) %>%
@@ -71,7 +73,27 @@ los_df <- nctr_df %>%
   # mutate(discharge_rdy_los = ifelse(!is.na(Date_NCTR), Current_LOS - Days_NCTR, Current_LOS + 1))  %>%
   mutate(day_of_admission = weekdays(Date_Of_Admission)) %>%
   # remove negative LOS (wrong end timestamps?)
+  # dplyr::select(
+  #               nhs_number = nhs_number,
+  #               site = Organisation_Site_Code,
+  #               day_of_admission,
+  #               sex,
+  #               age = Person_Age,
+  #               spec = Specialty_Code,
+  #               bed_type = Bed_Type,
+  #               los = discharge_rdy_los,
+  #               der_los,
+  #               Days_NCTR,
+  #               Date_NCTR,
+  #               Criteria_To_Reside
+  #               ) # 
+  # filter(discharge_rdy_los >= 0) %>%
+  group_by(NHS_Number, Date_Of_Admission) %>%
+  arrange(discharge_rdy_los) %>%
+  slice(1) %>%
+  ungroup() %>%
   filter(discharge_rdy_los > 0) %>%
+  filter(discharge_rdy_los < 60) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   mutate(Organisation_Site_Code = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt',
                            Organisation_Site_Code == 'RA701' ~ 'bri',
@@ -139,13 +161,13 @@ tree_spec <- decision_tree(
   tree_depth = tune(),
   min_n = tune()
 ) %>%
-  set_engine("rpart") %>%
+  set_engine("rpart", model=TRUE) %>%
   set_mode("regression")
 
 
 tree_grid <- grid_regular(cost_complexity(),
                           tree_depth(range = c(1, 4)),
-                          min_n(range = c(150, 300)), levels = 4)
+                          min_n(range = c(25, 300)), levels = 8)
 
 
 tree_rec <- recipe(los ~ ., data = los_train)  %>%
@@ -183,6 +205,7 @@ tree_fit <- fit(tuned_wf, los_train)
 
 tree <- extract_fit_engine(tree_fit)
 rpart.plot::rpart.plot(tree)
+partykit::as.party(tree) %>% plot()
 
 # append leaf number onto original data:
 
@@ -201,11 +224,13 @@ ggplot(los_model_df, aes(x = los)) +
 
 # fit los dists on the data at each leaf
 
-dists <- c("exp",
-           "norm",
-           "lnorm",
-           "gamma",
-           "weibull")
+dists <- c(
+           # "exp",
+           # "norm",
+           "lnorm"#,
+           # "gamma",
+           # "weibull"
+           )
 
 
 fit_dists <- los_model_df %>%
