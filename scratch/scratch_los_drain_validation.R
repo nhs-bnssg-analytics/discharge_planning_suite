@@ -170,7 +170,7 @@ out %>%
   pivot_longer(cols = -c(day, date, source, id, metric), names_to = "calc", values_to = "value") %>%
   unite("metric", metric, calc, sep = "_") %>%
   pivot_wider(names_from = metric, values_from = value) %>%
-  filter(day <= 20) %>%
+  filter(day <= 10) %>%
   ggplot(aes(x = date, y = mean_value, fill = source)) +
   geom_col(position = "dodge") +
   scale_x_date(labels = date_format(format = "%a"), date_breaks = "2 days") +
