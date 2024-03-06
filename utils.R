@@ -1,4 +1,15 @@
 
+
+rtruncdist <- function(n, pdist, qdist, range = c(0, Inf)){
+  # find truncated ranges of dist
+  F_l <- pdist(min(range))
+  F_u <- pdist(max(range))
+  # draw from uniform between ranges
+  u <- runif(n, min = F_l, max = F_u)
+  qdist(u)
+}
+
+
 #' Title
 #'
 #' @inheritParams rlnorm

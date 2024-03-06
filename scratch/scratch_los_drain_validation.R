@@ -8,10 +8,11 @@ nctr_sum <- nctr_df %>%
          sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female"))  %>%
   filter(Census_Date < max(Census_Date) -ddays(10)) %>%
   # mutate(nhs_number[is.na(nhs_number)] = glue::glue("unknown_{seq_along(nhs_number[is.na(nhs_number)])}"))
-  mutate(Organisation_Site_Code = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt',
+  mutate(site = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt',
                                             Organisation_Site_Code == 'RA701' ~ 'bri',
                                             Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
-                                            TRUE ~ '')) %>%
+                                            TRUE ~ NA_character_)) %>%
+  filter(!is.na(site)) %>%
   group_by(nhs_number, Date_Of_Admission) %>%
   mutate(spell_id = cur_group_id()) %>%
   ungroup() %>%
@@ -46,6 +47,7 @@ los_dist <- readRDS("data/dist_split.RDS") %>%
 d_i <- sample(dates, 9)
 
 out <- map(d_i, ~{
+  
 
 # spell ids with CTR from this date:
 sid_i <- dates_spells %>%
@@ -69,6 +71,7 @@ emp_drain <- nctr_sum %>%
            )
          ) %>%
 select(nhs_number = NHS_Number,
+       site,
        spell_id,
        bed_type = Bed_Type,
        los,
@@ -78,7 +81,7 @@ select(nhs_number = NHS_Number,
   arrange(los_dis_rdy) %>%
   slice(1) %>%
   mutate(days_until_rdy = los_dis_rdy - los) %>%
-  group_by(day = days_until_rdy) %>%
+  group_by(day = days_until_rdy, site) %>%
   count(name = "value")
 
 sim_drain <- nctr_sum %>%
@@ -88,6 +91,7 @@ sim_drain <- nctr_sum %>%
   group_by(spell_id) %>%
   mutate(los = der_los) %>%
   select(nhs_number,
+         site,
          age = Person_Age,
          sex = Person_Stated_Gender_Code,
          bed_type = Bed_Type,
@@ -96,37 +100,65 @@ sim_drain <- nctr_sum %>%
     select(attr_df,-sex,-age) %>% mutate(nhs_number = as.character(nhs_number)),
     by = join_by(nhs_number == nhs_number)
   ) %>%
-  bake(extract_recipe(los_wf) %>% update_role_requirements(role = "site id", bake = FALSE),
-       .) %>%
+  bake(extract_recipe(los_wf), .) %>%
+  # bake(extract_recipe(los_wf) %>% update_role_requirements(role = "site id", bake = FALSE), .) %>%
   ungroup() %>%
+  arrange(site) %>%
   mutate(id = 1:n(),
          leaf = as.character(treeClust::rpart.predict.leaves(extract_fit_engine(los_wf), .))) %>%
   left_join(los_dist, by = join_by(leaf == name)) %>%
   mutate(los_remaining = pmap(list(los, meanlog, sdlog),
                               ~ rlnormt(n_rep, ..2, ..3, range = c(..1, Inf)) - ..1) %>%
            reduce(rbind)) %>%
-  pull(los_remaining) %>%
-  `%/%`(., 1) %>%
-  apply(
-    MARGIN = 2,
-    FUN = function(x)
-      table(factor(x, levels = 0:max(.)))
-  ) %>%
-  apply(
-    MARGIN = 1,
-    FUN = function(x)
-      list(
-        mean = mean(x),
-        u95 = quantile(x, 0.975),
-        l95 = quantile(x, 0.225)
-      )
-  ) %>%
-  enframe() %>%
-  unnest_wider(value) %>%
-  rename(day = name) %>%
-  pivot_longer(cols = -day, names_to = "metric") %>%
-  mutate(source = "simulated",
-         day = as.numeric(day))
+  select(site, los_remaining)  %>%
+  group_by(site) %>%
+  nest(.key = "los_remaining") %>%
+  mutate(los_remaining = map(los_remaining, ~
+                               `%/%`(.x, 1) %>%
+                               apply(
+                                 MARGIN = 2,
+                                 FUN = function(x)
+                                   table(factor(x, levels = 0:max(.)))
+                               ) %>%
+                               apply(
+                                 MARGIN = 1,
+                                 FUN = function(x)
+                                   list(
+                                     mean = mean(x),
+                                     u95 = quantile(x, 0.975),
+                                     l95 = quantile(x, 0.225)
+                                   )
+                               ))) %>% 
+    mutate(los_remaining = map(los_remaining, enframe)) %>%
+    mutate(los_remaining = map(los_remaining, ~unnest_wider(.x, value))) %>%
+    unnest(cols = los_remaining) %>%
+    rename(day = name) %>%
+    pivot_longer(cols = -c(day, site), names_to = "metric") %>%
+    mutate(source = "simulated",
+           day = as.numeric(day))
+  #   
+  # pull(los_remaining) %>%
+  # `%/%`(., 1) %>%
+  # apply(
+  #   MARGIN = 2,
+  #   FUN = function(x)
+  #     table(factor(x, levels = 0:max(.)))
+  # ) %>%
+  # apply(
+  #   MARGIN = 1,
+  #   FUN = function(x)
+  #     list(
+  #       mean = mean(x),
+  #       u95 = quantile(x, 0.975),
+  #       l95 = quantile(x, 0.225)
+  #     )
+  # ) %>%
+  # enframe() %>%
+  # unnest_wider(value) %>%
+  # rename(day = name) %>%
+  # pivot_longer(cols = -day, names_to = "metric") %>%
+  # mutate(source = "simulated",
+  #        day = as.numeric(day))
 
 out_df <- emp_drain %>%
   mutate(source = "empirical", 
@@ -163,11 +195,12 @@ out %>%
 
 out %>%
   reduce(bind_rows) %>%
-  pivot_longer(cols = -c(id, day, date, source), names_to = "metric", values_to = "value") %>%
+  filter(site == "weston") %>%
+  pivot_longer(cols = -c(id, site, day, date, source), names_to = "metric", values_to = "value") %>%
   group_by(source, id, metric) %>%
   mutate(prop = value/sum(value)) %>%
   mutate(cum_prop = cumsum(prop)) %>%
-  pivot_longer(cols = -c(day, date, source, id, metric), names_to = "calc", values_to = "value") %>%
+  pivot_longer(cols = -c(day, site, date, source, id, metric), names_to = "calc", values_to = "value") %>%
   unite("metric", metric, calc, sep = "_") %>%
   pivot_wider(names_from = metric, values_from = value) %>%
   filter(day <= 10) %>%

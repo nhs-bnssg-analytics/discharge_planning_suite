@@ -6,7 +6,7 @@ df_curr_admits <- local({
     # filter for our main sites / perhaps I shouldn't do this?
     # filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
     # filter for CTR, we wont predict the NCTR outcome for those already NCTR/on a queue
-    filter(ctr == "Y")
+    filter(ctr)
   
   
   # attributes
@@ -41,23 +41,20 @@ select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period
   
   # los distributions
   
-  los_dist <- readRDS("data/dist_split.RDS") %>%
-    enframe() %>%
-    unnest_wider(value)
+  los_dist <- readRDS("data/fit_dists.RDS")  %>%
+    mutate(leaf = as.character(leaf))
   
   
   df_pred <- los_df %>%
     mutate(id = 1:n()) %>%
-    left_join(los_dist, by = join_by(leaf == name)) %>%
+    left_join(los_dist, by = join_by(leaf == leaf)) %>%
     mutate(los_remaining = pmap(
-      list(los, meanlog, sdlog),
-      ~
-        rlnormt(
+      list(los, tdist),
+      function(los, trunc_dist)
+        trunc_dist(
           n_rep,
-          meanlog = ..2,
-          sdlog = ..3,
-          range = c(..1, Inf)
-        ) - ..1
+          range = c(los, Inf)
+        ) - los
     )) %>%
     dplyr::select(id, site, los_remaining, starts_with(".pred")) %>%
     unnest(los_remaining) %>%

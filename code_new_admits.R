@@ -1,6 +1,8 @@
 df_new_admit <- local({
-  params <- readRDS("data/dist_split.RDS") %>%
-    `[[`("-1")
+  rdist <- readRDS("data/fit_dists.RDS") %>%
+    filter(leaf == -1) %>%
+    pull(rdist) %>%
+    `[[`(1)
   
   props <- readRDS("data/pathway_prop.RDS") %>%
     set_names(c("Other", "P1", "P2", "P3"))
@@ -28,13 +30,16 @@ df_new_admit <- local({
            day = rep(1:n_days, length(sites) * n_rep)) %>% # adding hour column, for grouping/stats later (3 sites x 1000 reps)
     
     mutate(los = map(arrivals, ~ round(
-      rlnorm(..1, meanlog = params[["meanlog"]], sdlog = params[["sdlog"]])
-    ))) %>%
+      rdist(..1)))) %>%
     unnest(los) %>%
     mutate(date_end = date + ddays(los)) %>%
     group_by(site, day = (date_end - report_start) / ddays(1), rep) %>%
     count() %>%
     ungroup() %>%
+    mutate(pathways = map(n, ~ factor(sample(names(props), size = .x, prob = props, replace = TRUE), levels = names(props))))  %>%
+    mutate(pathways = map(pathways, table) %>% reduce(rbind))
+  
+  %>%
     mutate(pathways = map(n, ~ .x * props) %>% bind_rows())  %>%
     unnest(pathways) %>%
     select(-n) %>%

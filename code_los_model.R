@@ -235,11 +235,11 @@ ggplot(los_model_df, aes(x = los)) +
 # fit los dists on the data at each leaf
 
 dists <- c(
-           # "exp",
-           # "norm",
-           "lnorm"#,
-           # "gamma",
-           # "weibull"
+            "exp"
+            ,"norm"
+            ,"lnorm"
+            ,"gamma"
+            ,"weibull"
            )
 
 
@@ -281,8 +281,16 @@ fit_dists <- fit_dists %>%
   mutate(ddist = map2(dist, fit_parms, ~dist_ptl_gen(.x, .y, "d"))) %>%
   mutate(pdist = map2(dist, fit_parms, ~dist_ptl_gen(.x, .y, "p"))) %>%
   mutate(qdist = map2(dist, fit_parms, ~dist_ptl_gen(.x, .y, "q"))) %>%
-  mutate(rdist = map2(dist, fit_parms, ~dist_ptl_gen(.x, .y, "r"))) 
+  mutate(rdist = map2(dist, fit_parms, ~dist_ptl_gen(.x, .y, "r"))) %>%
+  mutate(tdist = map2(pdist, qdist, ~partial(rtruncdist, pdist = .x, qdist = .y)))
 
+
+# map(fit_dists$tdist, ~.x(10000, range = c(10, Inf))) %>%
+# enframe() %>%
+# unnest(value) %>%
+# ggplot(aes(x = value, fill = factor(name))) +
+#   geom_density(alpha = 0.5) +
+#   scale_x_continuous(limits = c(10, 50))
 
 
 # validation on test data
@@ -356,4 +364,5 @@ ggsave(validation_plot_los,
 
 
 saveRDS(fit_dists$fit_parms, "data/dist_split.RDS")
+saveRDS(select(fit_dists, -data, -min_aic), "data/fit_dists.RDS")
 saveRDS(tree_fit, "data/los_wf.RDS")

@@ -100,6 +100,14 @@ nctr_sum <- nctr_df %>%
   group_by(Organisation_Site_Code) %>%
   filter(Census_Date == max(Census_Date)) %>%
   ungroup() %>%
+  mutate(
+    der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/ddays(1),
+    der_ctr = case_when(
+      Criteria_To_Reside == "Y" | is.na(Criteria_To_Reside) ~ TRUE,
+      !is.na(Days_NCTR) ~ FALSE,
+      !is.na(Date_NCTR) ~ FALSE,
+      Criteria_To_Reside == "N" ~ FALSE
+    )) %>%
   mutate(report_date = max(Census_Date)) %>%
   mutate(los = (report_date - Date_Of_Admission) / ddays(1)) %>%
   mutate(
@@ -127,10 +135,10 @@ nctr_sum <- nctr_df %>%
     nhs_number,
     sex,
     age = Person_Age,
-    ctr = Criteria_To_Reside,
+    ctr = der_ctr,
     site,
     bed_type = Bed_Type,
-    los,
+    los = der_los,
     pathway
   ) %>%
   ungroup()
