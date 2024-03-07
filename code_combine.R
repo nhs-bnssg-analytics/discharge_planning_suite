@@ -18,7 +18,7 @@ source("colour_functions.R")
 
 plot_int <- TRUE
 
-n_rep <- 1E4
+n_rep <- 1E3
 
 run_date <- today()
 n_days <- 10
@@ -198,7 +198,8 @@ plot_df_current <- nctr_sum %>%
   filter(!is.na(nhs_number), !is.na(ctr)) %>%
   group_by(site, ctr, pathway) %>%
   count() %>%
-  mutate(source = "current_ctr_data",
+  mutate(ctr = if_else(ctr, "Y", "N"),
+         source = "current_ctr_data",
          report_date = max_date,
          day = 0) %>%
   pivot_longer(cols = c(n),

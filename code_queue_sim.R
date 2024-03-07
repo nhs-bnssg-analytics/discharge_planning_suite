@@ -37,7 +37,8 @@ discharges_ts <- nctr_df %>%
   group_by(nhs_number, Date_Of_Admission) %>%
   mutate(id = cur_group_id()) %>%
   group_by(id) %>%
-  filter(date == max(date)) %>%
+  # take the first non-other pathway
+  filter(date == min(date)) %>%
   group_by(site, pathway, date = date + ddays(1)) %>%
   count() %>%
   group_by(site, pathway) %>%
@@ -62,7 +63,7 @@ ggplot(aes(x = date, y = n)) +
 
 pathway_queue <- nctr_sum %>%
   filter(!is.na(nhs_number), !is.na(ctr)) %>%
-  filter(pathway != "Other", ctr == "N") %>% 
+  filter(pathway != "Other", !ctr) %>% 
   select(-ctr) %>%
   group_by(site, pathway) %>%
   count() %>%

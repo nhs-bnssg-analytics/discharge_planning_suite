@@ -37,20 +37,15 @@ df_new_admit <- local({
     count() %>%
     ungroup() %>%
     mutate(pathways = map(n, ~ factor(sample(names(props), size = .x, prob = props, replace = TRUE), levels = names(props))))  %>%
-    mutate(pathways = map(pathways, table) %>% reduce(rbind))
-  
-  %>%
-    mutate(pathways = map(n, ~ .x * props) %>% bind_rows())  %>%
-    unnest(pathways) %>%
+    mutate(pathways = map(pathways, table)) %>%
+    unnest_wider(pathways) %>%
     select(-n) %>%
     pivot_longer(
       cols = -c(site, day, rep),
       names_to = "pathway",
       values_to = "count"
     ) %>%
-    mutate(source = "new_admits")
-  
-  
+    mutate(count = as.numeric(count), source = "new_admits")
   sim
 })
   

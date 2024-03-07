@@ -55,23 +55,26 @@ select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period
           n_rep,
           range = c(los, Inf)
         ) - los
-    )) %>%
-    dplyr::select(id, site, los_remaining, starts_with(".pred")) %>%
-    unnest(los_remaining) %>%
+    ),
+    pathways = pmap(list(.pred_Other,
+                         .pred_P1,
+                         .pred_P2,
+                         .pred_P3), 
+                    ~factor(sample(c("Other", "P1", "P2", "P3"),
+                            n_rep,
+                            prob = c(..1, ..2, ..3, ..4),
+                            replace = TRUE)),
+                    levels = c("Other", "P1", "P2", "P3"))) %>%
+    dplyr::select(id, site, los_remaining, pathways) %>%
+    unnest(cols = c(los_remaining, pathways)) %>%
     mutate(los_remaining = ifelse(los_remaining < 0, 0, los_remaining)) %>%
     mutate(los_remaining = los_remaining %/% 1) %>%
     group_by(site, id) %>%
     mutate(rep = 1:n()) %>%
-    group_by(rep, site, day = los_remaining) %>%
-    summarise(across(starts_with(".pred"), list(count = {
-      \(x) sum(x)
-    }))) %>%
-    rename_with(.fn = \(x) str_replace_all(x, pattern = ".pred_|_count", "")) %>%
-    pivot_longer(
-      cols = -c(site, day, rep),
-      names_to = "pathway",
-      values_to = "count"
-    ) %>%
+    group_by(rep, site, day = los_remaining, pathway = pathways) %>%
+    count(name = "count") %>%
+    ungroup() %>%
+    complete(rep, site, day, pathway, fill =list(count = 0)) %>%
     mutate(source = "current_admits")
   df_pred
   
