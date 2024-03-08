@@ -49,13 +49,9 @@ los_df <- nctr_df %>%
   mutate(nhs_number = as.character(NHS_Number),
          nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
          sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>% 
-  # mutate(nhs_number[is.na(nhs_number)] = glue::glue("unknown_{seq_along(nhs_number[is.na(nhs_number)])}"))
   group_by(nhs_number, Date_Of_Admission) %>%
   mutate(spell_id = cur_group_id()) %>%
   group_by(spell_id) %>%
-  # # take maximum date we have data for each patient and admission
-  # filter(Census_Date == max(Census_Date)) %>%
-  # ungroup() %>%
   mutate(
     der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/ddays(1),
     der_ctr = case_when(
@@ -73,38 +69,14 @@ los_df <- nctr_df %>%
            length(der_los) == 1 ~ der_los, # if only 1 LOS record, take that
          )
   ) %>%
-  # keep only patients with either NCTR (we know they are ready for discharge)
-  # OR whos max date recorded is before the latest data (have been discharged)
+  # take first discharge ready value
   group_by(NHS_Number, Date_Of_Admission) %>%
   arrange(discharge_rdy_los) %>% 
   slice(1) %>%
-  # filter(!der_ctr | Census_Date != max(Census_Date)) %>%
-  # ungroup() %>%
-  # # filter(!is.na(Date_NCTR) | Census_Date != max(Census_Date)) %>%
-  # # Compute the fit for discharge LOS
-  # # group_by(nhs_number, Date_Of_Admission) %>%
-  # mutate(discharge_rdy_los = if_else(!der_ctr, der_los - Days_NCTR, der_los)) %>%
-  # mutate(discharge_rdy_los = ifelse(!is.na(Date_NCTR), Current_LOS - Days_NCTR, Current_LOS + 1))  %>%
   mutate(day_of_admission = weekdays(Date_Of_Admission)) %>%
-  # remove negative LOS (wrong end timestamps?)
-  # dplyr::select(
-  #               nhs_number = nhs_number,
-  #               site = Organisation_Site_Code,
-  #               day_of_admission,
-  #               sex,
-  #               age = Person_Age,
-  #               spec = Specialty_Code,
-  #               bed_type = Bed_Type,
-  #               los = discharge_rdy_los,
-  #               der_los,
-  #               Days_NCTR,
-  #               Date_NCTR,
-  #               Criteria_To_Reside
-  #               ) # 
-  # filter(discharge_rdy_los >= 0) %>%
   ungroup() %>%
   filter(discharge_rdy_los >= 0) %>%
-  filter(discharge_rdy_los < 60) %>%
+  # filter(discharge_rdy_los < 60) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   mutate(Organisation_Site_Code = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt',
                            Organisation_Site_Code == 'RA701' ~ 'bri',

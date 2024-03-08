@@ -14,7 +14,7 @@ nctr_sum <- nctr_df %>%
                                             TRUE ~ NA_character_)) %>%
   filter(!is.na(site)) %>%
   group_by(nhs_number, Date_Of_Admission) %>%
-  mutate(spell_id = cur_group_id()) %>%
+  mutate(spell_id = as.character(cur_group_id())) %>%
   ungroup() %>%
     mutate(
          der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/ddays(1),
@@ -28,7 +28,10 @@ nctr_sum <- nctr_df %>%
 
 dates_spells <- nctr_sum %>%
   group_by(Census_Date, Criteria_To_Reside, Days_NCTR, spell_id) %>%
-  distinct()
+  distinct() 
+
+dates_spells <- dates_spells %>% 
+  bind_rows(dates_spells %>% mutate(spell_id = glue::glue("{spell_id}_sys")))
 
 
 dates <- nctr_df %>%
@@ -46,9 +49,11 @@ los_dist <- readRDS("data/dist_split.RDS") %>%
 # take sample of dates
 d_i <- sample(dates, 9)
 
+nctr_sum <- nctr_sum %>%
+  bind_rows(nctr_sum %>% mutate(site = "system", spell_id = glue::glue("{spell_id}_sys")))
+
 out <- map(d_i, ~{
   
-
 # spell ids with CTR from this date:
 sid_i <- dates_spells %>%
   filter(Census_Date ==.x & der_ctr) %>%
@@ -56,7 +61,6 @@ sid_i <- dates_spells %>%
   unique()
 
 # Calculate the drain for these patients
-
 emp_drain <- nctr_sum %>%
   #first, only filter spells we are interested in
   filter(spell_id %in% sid_i) %>%
@@ -101,6 +105,7 @@ sim_drain <- nctr_sum %>%
     by = join_by(nhs_number == nhs_number)
   ) %>%
   bake(extract_recipe(los_wf), .) %>%
+  mutate(site = if_else(is.na(site), "system", site)) %>%
   # bake(extract_recipe(los_wf) %>% update_role_requirements(role = "site id", bake = FALSE), .) %>%
   ungroup() %>%
   arrange(site) %>%
@@ -136,29 +141,7 @@ sim_drain <- nctr_sum %>%
     pivot_longer(cols = -c(day, site), names_to = "metric") %>%
     mutate(source = "simulated",
            day = as.numeric(day))
-  #   
-  # pull(los_remaining) %>%
-  # `%/%`(., 1) %>%
-  # apply(
-  #   MARGIN = 2,
-  #   FUN = function(x)
-  #     table(factor(x, levels = 0:max(.)))
-  # ) %>%
-  # apply(
-  #   MARGIN = 1,
-  #   FUN = function(x)
-  #     list(
-  #       mean = mean(x),
-  #       u95 = quantile(x, 0.975),
-  #       l95 = quantile(x, 0.225)
-  #     )
-  # ) %>%
-  # enframe() %>%
-  # unnest_wider(value) %>%
-  # rename(day = name) %>%
-  # pivot_longer(cols = -day, names_to = "metric") %>%
-  # mutate(source = "simulated",
-  #        day = as.numeric(day))
+
 
 out_df <- emp_drain %>%
   mutate(source = "empirical", 
@@ -178,11 +161,12 @@ out_df <- emp_drain %>%
 
 out %>%
   reduce(bind_rows) %>%
-  pivot_longer(cols = -c(id, day, date, source), names_to = "metric", values_to = "value") %>%
+  filter(site == "nbt") %>%
+  pivot_longer(cols = -c(id, site, day, date, source), names_to = "metric", values_to = "value") %>%
   group_by(source, id, metric) %>%
   mutate(prop = value/sum(value)) %>%
   mutate(cum_prop = cumsum(prop)) %>%
-  pivot_longer(cols = -c(day, date, source, id, metric), names_to = "calc", values_to = "value") %>%
+  pivot_longer(cols = -c(day, date, site, source, id, metric), names_to = "calc", values_to = "value") %>%
   unite("metric", metric, calc, sep = "_") %>%
   pivot_wider(names_from = metric, values_from = value) %>%
   filter(day <= 50) %>%
@@ -195,7 +179,7 @@ out %>%
 
 out %>%
   reduce(bind_rows) %>%
-  filter(site == "weston") %>%
+  filter(site == "nbt") %>%
   pivot_longer(cols = -c(id, site, day, date, source), names_to = "metric", values_to = "value") %>%
   group_by(source, id, metric) %>%
   mutate(prop = value/sum(value)) %>%
