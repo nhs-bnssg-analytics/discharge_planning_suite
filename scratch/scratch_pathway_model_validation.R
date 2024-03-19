@@ -77,13 +77,11 @@ dates_spells <- nctr_sum %>%
 # dates_spells <- dates_spells %>% 
 #   bind_rows(dates_spells %>% mutate(spell_id = glue::glue("{spell_id}_sys")))
 
-
 dates <- nctr_df %>%
   filter(Census_Date > ymd("2023-07-01"),
          Census_Date < max(Census_Date) - ddays(50)) %>%
   pull(Census_Date) %>%
   unique()
-
 
 # take sample of dates
 d_i <- sample(dates, 9)
