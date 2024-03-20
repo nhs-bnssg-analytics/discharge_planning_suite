@@ -71,6 +71,7 @@ rf_wf <- readRDS("data/rf_wf.RDS")
 
 
 dates_spells <- nctr_sum %>%
+  filter(ctr) %>%
   group_by(Census_Date, Days_NCTR, spell_id) %>%
   distinct() 
 
@@ -86,16 +87,17 @@ dates <- nctr_df %>%
 # take sample of dates
 d_i <- sample(dates, 9)
 
-d_i_x <- sample(d_i, 1)
+out <- map(d_i, ~{
+
 
 sid_i <- dates_spells %>%
-  filter(Census_Date ==d_i_x) %>%
+  filter(Census_Date ==.x) %>%
   pull(spell_id) %>% 
   unique()
 
 
 los_df <- nctr_sum %>%
-  filter(spell_id %in% sid_i, Census_Date == d_i_x) %>%
+  filter(spell_id %in% sid_i, Census_Date == .x) %>%
   left_join(select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
             by = join_by(nhs_number == nhs_number)) %>%
   dplyr::select(spell_id, age, sex, cambridge_score, bed_type, site, los) #%>%
@@ -106,7 +108,7 @@ pathway_pred <- bind_cols(los_df, predict(rf_wf, los_df, type = "prob")) %>%
   distinct()
 
 pathway_df <- nctr_sum %>%
-  filter(spell_id %in% sid_i, Census_Date >= d_i_x) %>%
+  filter(spell_id %in% sid_i, Census_Date >= .x) %>%
   arrange(Census_Date) %>%
   group_by(spell_id) %>%
   # mutate(pathway = tail(pathway, 1)) %>%
@@ -117,10 +119,10 @@ pathway_df <- nctr_sum %>%
   group_by(pathway) %>%
   count()
 
-full_join(pathway_df, pathway_pred)  
+# full_join(pathway_df, pathway_pred)  
 
 
- pathway_pred %>%
+pathway_pred <- pathway_pred %>%
    mutate(pathways = pmap(list(.pred_Other,
                        .pred_P1,
                        .pred_P2,
@@ -137,3 +139,13 @@ full_join(pathway_df, pathway_pred)
    count() %>%
    group_by(pathway = pathways) %>%
    summarise(mean = mean(n), u95 = quantile(n, 0.975), l95 = quantile(n, 0.225))
+ 
+ full_join(pathway_df, pathway_pred) %>%
+   ggplot(aes(x = pathway)) +
+   geom_errorbar(aes(ymin = l95, ymax = u95)) +
+   geom_point(aes(y = mean, col = "pred"), shape = 2) +
+   geom_point(aes(y = n, col = "actual")) 
+ })
+
+ patchwork::wrap_plots(out, axes = "collect") + patchwork::plot_layout(guides = "collect")
+ 

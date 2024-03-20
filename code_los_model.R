@@ -43,8 +43,10 @@ nctr_df <-
   FROM Analyst_SQL_Area.dbo.vw_NCTR_Status_Report_Daily_JI"
   )
 
+# date_co <- ymd("2023-12-01")
 
 los_df <- nctr_df %>%
+  # filter(Census_Date > date_co, Date_Of_Admission > date_co) %>%
   filter(Person_Stated_Gender_Code %in% 1:2) %>%
   mutate(nhs_number = as.character(NHS_Number),
          nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
@@ -91,9 +93,9 @@ los_df <- nctr_df %>%
                 spec = Specialty_Code,
                 bed_type = Bed_Type,
                 los = discharge_rdy_los
-                ) # %>%
+                )  #%>%
   # # filter outlier LOS
-  # filter(los < 50) # higher than Q(.99)
+  #filter(los < 50) # higher than Q(.99)
 
 # attributes to join
 
@@ -334,6 +336,54 @@ ggsave(validation_plot_los,
        width = 20,
        height = 10,
        scale = 0.8)
+
+
+validation_df_tot <- los_test %>%
+  bake(extract_recipe(tree_fit), .) %>%
+  mutate(leaf = -1) %>%
+  group_by(leaf) %>%
+  nest() %>%
+  left_join(select(fit_dists, -data, -min_aic)) %>%
+  mutate(ks_test = pmap(list(data, pdist), ~ks.test(..1$los, ..2) %>% tidy())) %>%
+  mutate(ad_test = pmap(list(data, pdist), ~DescTools::AndersonDarlingTest(..1$los, null = ..2))) %>%
+  mutate(cdf_plot = pmap(
+    list(data, dist, fit_parms),
+    ~
+      ggplot(..1, aes(x = los)) +
+      geom_function(
+        geom = "step",
+        col = "black",
+        fun = function(x) cdf_fn(x, dist = ..2, parms = ..3)#,
+        #args = list(.x$fit_parms[[1]])
+      ) +
+      stat_ecdf(geom = "step") +
+      labs(title = "CDF plot", x = "LOS", y = "CDF")+ theme_minimal()) 
+  ) %>%
+  mutate(qq_plot = pmap(
+    list(data, dist, fit_parms),
+    ~
+      ggplot(..1, aes(sample = los)) +
+      qqplotr::stat_qq_band(distribution = ..2, alpha = 0.5,
+                            dparams = ..3) +
+      qqplotr::stat_qq_line(distribution = ..2, col = "black",
+                            dparams = ..3) +
+      qqplotr::stat_qq_point(distribution = ..2,
+                             dparams = ..3) + 
+      labs(title = "Q-Q plot", x = "Theoretical quantiles", y = "Empirical quantiles") + theme_minimal()
+  )) %>%
+  mutate(pp_plot = pmap(
+    list(data, dist, fit_parms),
+    ~
+      ggplot(..1, aes(sample = los)) +
+      qqplotr::stat_pp_band(distribution = ..2, alpha = 0.5,
+                            dparams = ..3) +
+      qqplotr::stat_pp_line(distribution = ..2, col = "black",
+                            dparams = ..3) +
+      qqplotr::stat_pp_point(distribution = ..2,
+                             dparams = ..3) + 
+      labs(title = "P-P plot", x = "Theoretical probabilities", y = "Empirical probabilities") + theme_minimal()
+  )) 
+
 
 
 saveRDS(fit_dists$fit_parms, "data/dist_split.RDS")

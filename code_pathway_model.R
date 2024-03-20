@@ -204,7 +204,7 @@ saveRDS(final_wf, "data/rf_wf.RDS")
 
 
 
-# rf_fit$.predictions[[1]] %>% conf_mat(truth = pathway, estimate = .pred_class) %>% 
+# rf_fit$.predictions[[1]] %>% conf_mat(truth = pathway, estimate = .pred_class) %>%
 #   summary()
 # 
 # rf_fit$.predictions[[1]] %>% conf_mat(truth = pathway, estimate = .pred_class) %>%
