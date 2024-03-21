@@ -140,12 +140,33 @@ pathway_pred <- pathway_pred %>%
    group_by(pathway = pathways) %>%
    summarise(mean = mean(n), u95 = quantile(n, 0.975), l95 = quantile(n, 0.225))
  
- full_join(pathway_df, pathway_pred) %>%
+  full_df <-
+    full_join(pathway_df, pathway_pred) %>%
+    mutate(pval = map2(n, mean, ~
+                         tidy(chisq.test(x = c(
+                           .x, .y
+                         ))))) %>%
+    unnest()
+  
+  
+  full_df %>%
    ggplot(aes(x = pathway)) +
-   geom_errorbar(aes(ymin = l95, ymax = u95)) +
+   geom_errorbar(aes(ymin = l95, ymax = u95), width = 0.2) +
    geom_point(aes(y = mean, col = "pred"), shape = 2) +
-   geom_point(aes(y = n, col = "actual")) 
+   geom_point(aes(y = n, col = "actual")) +
+   geom_text(aes(y = n, label = glue::glue("{round(p.value, 3)}")), hjust = -0.6) +
+   theme_bw()
+  
  })
 
- patchwork::wrap_plots(out, axes = "collect") + patchwork::plot_layout(guides = "collect")
+ (ptc <- patchwork::wrap_plots(out, axes = "collect") + patchwork::plot_layout(guides = "collect"))
+
+ggsave(
+  ptc,
+  filename = "./validation/validation_plot_pathway_agg.png",
+  scale = 0.55,
+  width = 30,
+  height = 15
+)
+
  

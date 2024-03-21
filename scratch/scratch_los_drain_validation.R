@@ -26,12 +26,21 @@ nctr_sum <- nctr_df %>%
          )) 
 
 
+attr_df <-
+  RODBC::sqlQuery(
+    con,
+    "select * from (
+select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
+[MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
+  )
+
+
 dates_spells <- nctr_sum %>%
   group_by(Census_Date, Criteria_To_Reside, Days_NCTR, spell_id) %>%
   distinct() 
 
 dates_spells <- dates_spells %>% 
-  bind_rows(dates_spells %>% mutate(spell_id = glue::glue("{spell_id}_sys")))
+  bind_rows(dates_spells %>% mutate(spell_id = paste0(spell_id, "_sys", sep = "")))
 
 
 dates <- nctr_df %>%
@@ -42,15 +51,15 @@ dates <- nctr_df %>%
 
 los_wf <- readRDS("data/los_wf.RDS")
 
-los_dist <- readRDS("data/dist_split.RDS") %>%
-  enframe() %>%
-  unnest_wider(value)
+
+fit_dists <- readRDS("data/fit_dists.RDS") %>%
+  mutate(leaf = as.character(leaf))
 
 # take sample of dates
 d_i <- sample(dates, 9)
 
 nctr_sum <- nctr_sum %>%
-  bind_rows(nctr_sum %>% mutate(site = "system", spell_id = glue::glue("{spell_id}_sys")))
+  bind_rows(nctr_sum %>% mutate(site = "system", spell_id = paste0(spell_id, "_sys", sep = "")))
 
 out <- map(d_i, ~{
   
@@ -111,9 +120,13 @@ sim_drain <- nctr_sum %>%
   arrange(site) %>%
   mutate(id = 1:n(),
          leaf = as.character(treeClust::rpart.predict.leaves(extract_fit_engine(los_wf), .))) %>%
-  left_join(los_dist, by = join_by(leaf == name)) %>%
-  mutate(los_remaining = pmap(list(los, meanlog, sdlog),
-                              ~ rlnormt(n_rep, ..2, ..3, range = c(..1, Inf)) - ..1) %>%
+  left_join(fit_dists, by = join_by(leaf == leaf)) %>%
+  mutate(los_remaining = pmap(list(los, tdist),
+                              function(los, trunc_dist)
+                                trunc_dist(
+                                  n_rep,
+                                  range = c(los, Inf)
+                                ) - los) %>%
            reduce(rbind)) %>%
   select(site, los_remaining)  %>%
   group_by(site) %>%
@@ -177,9 +190,9 @@ out %>%
   facet_wrap(vars(id), scales = "free")
 
 
-out %>%
+(drain_plot <- out %>%
   reduce(bind_rows) %>%
-  filter(site == "nbt") %>%
+  filter(site == "system") %>%
   pivot_longer(cols = -c(id, site, day, date, source), names_to = "metric", values_to = "value") %>%
   group_by(source, id, metric) %>%
   mutate(prop = value/sum(value)) %>%
@@ -193,7 +206,19 @@ out %>%
   scale_x_date(labels = date_format(format = "%a"), date_breaks = "2 days") +
   # geom_line(aes(col = source)) +
   geom_errorbar(aes(ymin = l95_value, ymax = u95_value), position = "dodge") +
-  facet_wrap(vars(id), scales = "free")
+  facet_wrap(vars(id), scales = "free") +
+  theme_bw()
+)
+
+ggsave(
+  drain_plot,
+  filename = "./validation/validation_plot_los_drain.png",
+  scale = 0.55,
+  width = 30,
+  height = 15
+)
+
+
  # foo <- with(sim_drain,
  #      replicate(n_rep, pmap_dbl(list(los, meanlog, sdlog), ~rlnormt(1, ..2, ..3, range = c(..1, Inf)) - ..1))
  # )

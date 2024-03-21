@@ -1,5 +1,6 @@
 n_rep <- 100
-start_date <- min(nctr_df$Census_Date) #ymd("2023-11-01")
+start_date <- min(nctr_df$Census_Date) 
+start_date <- ymd("2024-01-01")
 
 admits_ts <- nctr_df %>%
   ungroup() %>%
@@ -7,7 +8,7 @@ admits_ts <- nctr_df %>%
          nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
          sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
   filter(Census_Date > start_date) %>%
-  filter(Census_Date > ymd("2023-07-01"), Date_Of_Admission > ymd("2023-07-01")) %>% # data before this are spurious
+  filter(Census_Date > start_date, Date_Of_Admission > start_date) %>% # data before this are spurious
   #TODO: use the fix for nhs numbers we dont know
   filter(!is.na(nhs_number)) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
@@ -26,6 +27,10 @@ rdist <- readRDS("data/fit_dists.RDS") %>%
   pull(rdist) %>%
   `[[`(1)
 
+
+
+rdist <- partial(rlnorm, meanlog = 1.3, sdlog = 0.99)
+
 sites <- unique(admits_ts$site)
 dates <- sort(unique(admits_ts$date))
 
@@ -42,22 +47,25 @@ sim <- expand_grid(site = sites,
   mutate(date_end = date + ddays(los)) #%>%
 
 
-foo <- map(sites,
-           function(s) map_dbl(dates,
-                                  ~nrow(sim %>% filter(site == s, date <= .x, date_end > .x)))) %>%
-
-enframe() %>%
-mutate(site = sites) %>%
-unnest(value) %>%
-mutate(value = value/n_rep) %>%
-group_by(site) %>%
-mutate(day = 1:n()) %>%
-select(site, day, value) %>%
-mutate(source = "sim")
+sim_out_df <- map(sites,
+                  function(s)
+                    map_dbl(dates,
+                            ~ nrow(
+                              sim %>% filter(site == s, date <= .x, date_end > .x)
+                            ))) %>%
+  
+  enframe() %>%
+  mutate(site = sites) %>%
+  unnest(value) %>%
+  mutate(value = value / n_rep) %>%
+  group_by(site) %>%
+  mutate(day = 1:n()) %>%
+  select(site, day, value) %>%
+  mutate(source = "sim")
 
 # empirical accumulation
 
-bar <- nctr_df %>%
+act <- nctr_df %>%
   ungroup() %>%
   filter(Census_Date > start_date) %>%
   filter(Person_Stated_Gender_Code %in% 1:2) %>%
@@ -98,9 +106,11 @@ bar <- nctr_df %>%
   distinct()
 
 
-foo2 <- map(sites,
+act_out_df <- map(sites,
            function(s) map_dbl(dates,
-                               ~nrow(bar %>% filter(site == s, Date_Of_Admission <= .x, der_date_nctr > .x)))) %>%
+                               ~nrow(act %>% filter(site == s,
+                                                    Date_Of_Admission <= .x,
+                                                    der_date_nctr > .x)))) %>%
   enframe() %>%
   mutate(site = sites) %>%
   unnest(value) %>%
@@ -111,7 +121,7 @@ foo2 <- map(sites,
   mutate(source = "empirical")
 
 
-bind_rows(foo, foo2) %>%
+bind_rows(sim_out_df, act_out_df) %>%
   ggplot(aes(x = day, y = value, col = source)) +
   geom_step() +
   facet_wrap(vars(site))
