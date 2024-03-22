@@ -88,58 +88,58 @@ dates <- nctr_df %>%
 d_i <- sample(dates, 9)
 
 out <- map(d_i, ~{
-
-
-sid_i <- dates_spells %>%
-  filter(Census_Date ==.x) %>%
-  pull(spell_id) %>% 
-  unique()
-
-
-los_df <- nctr_sum %>%
-  filter(spell_id %in% sid_i, Census_Date == .x) %>%
-  left_join(select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
-            by = join_by(nhs_number == nhs_number)) %>%
-  dplyr::select(spell_id, age, sex, cambridge_score, bed_type, site, los) #%>%
-
-
-pathway_pred <- bind_cols(los_df, predict(rf_wf, los_df, type = "prob")) %>%
-  select(spell_id, starts_with(".pred_")) %>%
-  distinct()
-
-pathway_df <- nctr_sum %>%
-  filter(spell_id %in% sid_i, Census_Date >= .x) %>%
-  arrange(Census_Date) %>%
-  group_by(spell_id) %>%
-  # mutate(pathway = tail(pathway, 1)) %>%
-  # take first non-other pathway, else pathway is other
-  mutate(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other")) %>%
-  select(spell_id, pathway) %>%
-  distinct() %>%
-  group_by(pathway) %>%
-  count()
-
-# full_join(pathway_df, pathway_pred)  
-
-
-pathway_pred <- pathway_pred %>%
-   mutate(pathways = pmap(list(.pred_Other,
-                       .pred_P1,
-                       .pred_P2,
-                       .pred_P3), 
-                  ~factor(sample(c("Other", "P1", "P2", "P3"),
-                                 n_rep,
-                                 prob = c(..1, ..2, ..3, ..4),
-                                 replace = TRUE)),
-                  levels = c("Other", "P1", "P2", "P3"))) %>%
-   unnest(pathways) %>%
-   group_by(spell_id) %>%
-   mutate(rep = 1:n()) %>%
-   group_by(rep, pathways) %>%
-   count() %>%
-   group_by(pathway = pathways) %>%
-   summarise(mean = mean(n), u95 = quantile(n, 0.975), l95 = quantile(n, 0.225))
- 
+  
+  
+  sid_i <- dates_spells %>%
+    filter(Census_Date ==.x) %>%
+    pull(spell_id) %>% 
+    unique()
+  
+  
+  los_df <- nctr_sum %>%
+    filter(spell_id %in% sid_i, Census_Date == .x) %>%
+    left_join(select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
+              by = join_by(nhs_number == nhs_number)) %>%
+    dplyr::select(spell_id, age, sex, cambridge_score, bed_type, site, los) #%>%
+  
+  
+  pathway_pred <- bind_cols(los_df, predict(rf_wf, los_df, type = "prob")) %>%
+    select(spell_id, starts_with(".pred_")) %>%
+    distinct()
+  
+  pathway_df <- nctr_sum %>%
+    filter(spell_id %in% sid_i, Census_Date >= .x) %>%
+    arrange(Census_Date) %>%
+    group_by(spell_id) %>%
+    # mutate(pathway = tail(pathway, 1)) %>%
+    # take first non-other pathway, else pathway is other
+    mutate(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other")) %>%
+    select(spell_id, pathway) %>%
+    distinct() %>%
+    group_by(pathway) %>%
+    count()
+  
+  # full_join(pathway_df, pathway_pred)  
+  
+  
+  pathway_pred <- pathway_pred %>%
+    mutate(pathways = pmap(list(.pred_Other,
+                                .pred_P1,
+                                .pred_P2,
+                                .pred_P3), 
+                           ~factor(sample(c("Other", "P1", "P2", "P3"),
+                                          n_rep,
+                                          prob = c(..1, ..2, ..3, ..4),
+                                          replace = TRUE)),
+                           levels = c("Other", "P1", "P2", "P3"))) %>%
+    unnest(pathways) %>%
+    group_by(spell_id) %>%
+    mutate(rep = 1:n()) %>%
+    group_by(rep, pathways) %>%
+    count() %>%
+    group_by(pathway = pathways) %>%
+    summarise(mean = mean(n), u95 = quantile(n, 0.975), l95 = quantile(n, 0.225))
+  
   full_df <-
     full_join(pathway_df, pathway_pred) %>%
     mutate(pval = map2(n, mean, ~
@@ -150,16 +150,16 @@ pathway_pred <- pathway_pred %>%
   
   
   full_df %>%
-   ggplot(aes(x = pathway)) +
-   geom_errorbar(aes(ymin = l95, ymax = u95), width = 0.2) +
-   geom_point(aes(y = mean, col = "pred"), shape = 2) +
-   geom_point(aes(y = n, col = "actual")) +
-   geom_text(aes(y = n, label = glue::glue("{round(p.value, 3)}")), hjust = -0.6) +
-   theme_bw()
+    ggplot(aes(x = pathway)) +
+    geom_errorbar(aes(ymin = l95, ymax = u95), width = 0.2) +
+    geom_point(aes(y = mean, col = "pred"), shape = 2) +
+    geom_point(aes(y = n, col = "actual")) +
+    geom_text(aes(y = n, label = glue::glue("{round(p.value, 3)}")), hjust = -0.6) +
+    theme_bw()
   
- })
+})
 
- (ptc <- patchwork::wrap_plots(out, axes = "collect") + patchwork::plot_layout(guides = "collect"))
+(ptc <- patchwork::wrap_plots(out, axes = "collect") + patchwork::plot_layout(guides = "collect"))
 
 ggsave(
   ptc,
@@ -169,4 +169,3 @@ ggsave(
   height = 15
 )
 
- 

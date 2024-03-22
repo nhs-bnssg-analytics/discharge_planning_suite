@@ -248,5 +248,9 @@ con <- switch(.Platform$OS.type,
 # delete old data
 query_delete <- "DELETE FROM MODELLING_SQL_AREA.dbo.discharge_pathway_projections"
 RODBC::sqlQuery(con, query_delete)
-RODBC::sqlSave(con, plot_df, tablename = 'discharge_pathway_projections', rownames = FALSE, append = TRUE)
+RODBC::sqlSave(con,
+               plot_df,
+               tablename = 'discharge_pathway_projections',
+               rownames = FALSE,
+               append = TRUE)
 

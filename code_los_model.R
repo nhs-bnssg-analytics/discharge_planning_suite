@@ -43,10 +43,11 @@ nctr_df <-
   FROM Analyst_SQL_Area.dbo.vw_NCTR_Status_Report_Daily_JI"
   )
 
-# date_co <- ymd("2023-12-01")
+date_co <- ymd("2023-10-01")
 
 los_df <- nctr_df %>%
-  # filter(Census_Date > date_co, Date_Of_Admission > date_co) %>%
+  ungroup() %>%
+  filter(Census_Date > date_co, Date_Of_Admission > date_co) %>%
   filter(Person_Stated_Gender_Code %in% 1:2) %>%
   mutate(nhs_number = as.character(NHS_Number),
          nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
@@ -338,6 +339,8 @@ ggsave(validation_plot_los,
        scale = 0.8)
 
 
+
+
 validation_df_tot <- los_test %>%
   bake(extract_recipe(tree_fit), .) %>%
   mutate(leaf = -1) %>%
@@ -384,6 +387,14 @@ validation_df_tot <- los_test %>%
       labs(title = "P-P plot", x = "Theoretical probabilities", y = "Empirical probabilities") + theme_minimal()
   )) 
 
+validation_plot_los_tot <- cowplot::plot_grid(validation_df_tot$cdf_plot[[1]], validation_df_tot$pp_plot[[1]])
+
+ggsave(validation_plot_los_tot,
+       filename = "./validation/validation_plot_los_tot.png",
+       width = 14,
+       bg = "white",
+       height = 7,
+       scale = 0.6)
 
 
 saveRDS(fit_dists$fit_parms, "data/dist_split.RDS")

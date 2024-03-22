@@ -27,9 +27,7 @@ rdist <- readRDS("data/fit_dists.RDS") %>%
   pull(rdist) %>%
   `[[`(1)
 
-
-
-rdist <- partial(rlnorm, meanlog = 1.3, sdlog = 0.99)
+# rdist <- partial(rlnorm, meanlog = 1.3, sdlog = 0.99)
 
 sites <- unique(admits_ts$site)
 dates <- sort(unique(admits_ts$date))
@@ -107,10 +105,10 @@ act <- nctr_df %>%
 
 
 act_out_df <- map(sites,
-           function(s) map_dbl(dates,
-                               ~nrow(act %>% filter(site == s,
-                                                    Date_Of_Admission <= .x,
-                                                    der_date_nctr > .x)))) %>%
+                  function(s) map_dbl(dates,
+                                      ~nrow(act %>% filter(site == s,
+                                                           Date_Of_Admission <= .x,
+                                                           der_date_nctr > .x)))) %>%
   enframe() %>%
   mutate(site = sites) %>%
   unnest(value) %>%
@@ -121,7 +119,17 @@ act_out_df <- map(sites,
   mutate(source = "empirical")
 
 
-bind_rows(sim_out_df, act_out_df) %>%
+p <- bind_rows(sim_out_df, act_out_df) %>%
   ggplot(aes(x = day, y = value, col = source)) +
   geom_step() +
-  facet_wrap(vars(site))
+  facet_wrap(vars(site)) +
+  theme_bw()
+
+
+ggsave(
+  p,
+  filename = "./validation/validation_plot_new_admits.png",
+  scale = 0.55,
+  width = 30,
+  height = 15
+)
