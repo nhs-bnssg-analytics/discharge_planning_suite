@@ -5,6 +5,15 @@ df_new_admit <- local({
     # pull(rdist) %>%
     # `[[`(1)
   
+  rdist <- tibble(site = c("bri", "nbt", "weston"),
+                  rdist = list(
+                    partial(rlnorm, meanlog = 1.3, sdlog = 0.99),
+                    partial(rlnorm, meanlog = 1.47, sdlog = 0.99),
+                    partial(rlnorm, meanlog = 1.3, sdlog = 0.99)
+                  )
+  )
+  
+  
   props <- readRDS("data/pathway_prop.RDS") %>%
     set_names(c("Other", "P1", "P2", "P3"))
   

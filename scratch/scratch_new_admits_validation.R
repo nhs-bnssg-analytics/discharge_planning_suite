@@ -27,7 +27,14 @@ rdist <- readRDS("data/fit_dists.RDS") %>%
   pull(rdist) %>%
   `[[`(1)
 
-# rdist <- partial(rlnorm, meanlog = 1.3, sdlog = 0.99)
+rdist <- tibble(site = c("bri", "nbt", "weston"),
+                rdist = list(
+                  partial(rlnorm, meanlog = 1.3, sdlog = 0.99),
+                  partial(rlnorm, meanlog = 1.47, sdlog = 0.99),
+                  partial(rlnorm, meanlog = 1.3, sdlog = 0.99)
+                  )
+)
+
 
 sites <- unique(admits_ts$site)
 dates <- sort(unique(admits_ts$date))
@@ -36,11 +43,12 @@ sim <- expand_grid(site = sites,
                    rep = seq_len(n_rep),
                    date = dates) %>%
   left_join(admits_ts, join_by(site, date == date)) %>%
+  left_join(rdist, join_by(site)) %>%
   mutate(arrivals = coalesce(n, 0),
          # coalesce in case we sample below zero
          day = rep(1:length(dates), length(sites) * n_rep)) %>% 
-  mutate(los = map(arrivals, ~ round(
-    rdist(..1)))) %>%
+  mutate(los = map2(rdist, arrivals, function(dist, arr) round(
+    dist(arr)))) %>%
   unnest(los) %>%
   mutate(date_end = date + ddays(los)) #%>%
 
@@ -119,11 +127,12 @@ act_out_df <- map(sites,
   mutate(source = "empirical")
 
 
-p <- bind_rows(sim_out_df, act_out_df) %>%
+(p <- bind_rows(sim_out_df, act_out_df) %>%
   ggplot(aes(x = day, y = value, col = source)) +
   geom_step() +
   facet_wrap(vars(site)) +
-  theme_bw()
+  theme_bw())
+
 
 
 ggsave(
