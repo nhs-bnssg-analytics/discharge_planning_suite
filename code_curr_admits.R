@@ -11,13 +11,13 @@ df_curr_admits <- local({
   
   # attributes
   
-  attr_df <-
-    RODBC::sqlQuery(
-      con,
-      "select * from (
-select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
-[MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
-    )
+#   attr_df <-
+#     RODBC::sqlQuery(
+#       con,
+#       "select * from (
+# select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
+# [MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
+#     )
   
   los_df <- los_df %>%
     left_join(select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
@@ -47,7 +47,7 @@ select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period
   
   df_pred <- los_df %>%
     mutate(id = 1:n()) %>%
-    left_join(los_dist, by = join_by(leaf == leaf)) %>%
+    left_join(los_dist, by = join_by(site == site, leaf == leaf)) %>%
     mutate(los_remaining = pmap(
       list(los, tdist),
       function(los, trunc_dist)

@@ -147,6 +147,16 @@ nctr_sum <- nctr_df %>%
 report_start <- max_date + ddays(1)
 report_end <- report_start + ddays(n_days)
 
+
+attr_df <-
+  RODBC::sqlQuery(
+    con,
+    "select * from (
+select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
+[MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
+  )
+
+
 source("code_admits_fcast.R")
 source("code_new_admits.R")
 source("code_curr_admits.R")
