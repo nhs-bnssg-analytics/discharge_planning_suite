@@ -161,7 +161,6 @@ source("code_admits_fcast.R")
 source("code_new_admits.R")
 source("code_curr_admits.R")
 
-
 if(plot_int){
   bind_rows(df_curr_admits, df_new_admit) %>%
     group_by(site, day, pathway, source) %>%
