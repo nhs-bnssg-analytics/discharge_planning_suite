@@ -47,16 +47,16 @@ discharges_ts <- nctr_df %>%
   slice(-1)
 
 
-# mean number of discharges per day/site
+# median number of discharges per day/site
 discharge_sum <- discharges_ts %>%
   group_by(site, pathway) %>%
-  summarise(mean = mean(n))
+  summarise(median = median(n))
 
 discharges_ts %>%
 ggplot(aes(x = date, y = n)) +
   geom_step() +
   geom_hline(data = discharge_sum,
-      aes(yintercept = mean), col = "blue",
+      aes(yintercept = median), col = "blue",
       linetype = 2) +
   facet_grid(site ~ pathway, scales = "free")
 
@@ -102,16 +102,16 @@ df_sim <- pathway_queue %>%
       group_by(site, pathway) %>%
       nest(.key = "demand_fc")
   }, by = join_by(site, pathway)) %>%
-  # join on daily discharage mean
+  # join on daily discharage average
   left_join(discharge_sum, by = join_by(site, pathway)) %>%
-  rename(initial_queue = value, cap_mean = mean) %>%
+  rename(initial_queue = value, cap_av = median) %>%
   mutate(sim = list(map(seq_len(n_rep),
                         function(rep)
                           reduce(
                           pmap(
                             list(initial_queue,
                                  demand_fc,
-                                 cap_mean), ~ {
+                                 cap_av), ~ {
                                    sim_fn(..1, ..2, ..3)
                                  }
                           ), rbind)))) %>%

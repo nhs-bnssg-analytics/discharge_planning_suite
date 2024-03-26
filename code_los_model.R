@@ -45,7 +45,7 @@ nctr_df <-
 
 max_census <- max(nctr_df$Census_Date)
 
-date_co <- as.Date(max_census - dmonths(3))
+date_co <- as.Date(max_census - dmonths(6))
 
 los_df <- nctr_df %>%
   ungroup() %>%
@@ -64,41 +64,45 @@ los_df <- nctr_df %>%
       !is.na(Days_NCTR) ~ FALSE,
       !is.na(Date_NCTR) ~ FALSE,
       Criteria_To_Reside == "N" ~ FALSE
-    )) %>%
+    ),
+    der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - ddays(1),max(Census_Date)))) %>%
+  ungroup() %>%
+  mutate(der_date_nctr = pmin(der_date_nctr, Date_NCTR, na.rm = TRUE)) %>%
   arrange(Census_Date) %>%
-  group_by(nhs_number, Date_Of_Admission) %>%
-  mutate(
-         discharge_rdy_los = case_when(
-           !any(der_ctr) ~ max(der_los), # if never NCTR, take max LOS
-           der_ctr ~ tail(der_los, 1),  # where CTR take last LOS
-           length(der_los) == 1 ~ der_los, # if only 1 LOS record, take that
-         )
-  ) %>%
+  group_by(spell_id) %>%
+  # mutate(
+  #   discharge_rdy_los = case_when(
+  #     !any(der_ctr) ~ max(der_los), # if never NCTR, take max LOS
+  #     der_ctr ~ tail(der_los, 1),  # where CTR take last LOS
+  #     length(der_los) == 1 ~ der_los, # if only 1 LOS record, take that
+  #   )
+  # ) %>%
+  mutate(discharge_rdy_los = (der_date_nctr - as.Date(Date_Of_Admission))/ddays(1)) %>%
   # take first discharge ready value
   group_by(NHS_Number, Date_Of_Admission) %>%
   arrange(discharge_rdy_los) %>% 
   slice(1) %>%
   mutate(day_of_admission = weekdays(Date_Of_Admission)) %>%
   ungroup() %>%
-  filter(discharge_rdy_los >= 0) %>%
+  filter(discharge_rdy_los > 0) %>%
   # filter(discharge_rdy_los < 60) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   mutate(Organisation_Site_Code = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt',
-                           Organisation_Site_Code == 'RA701' ~ 'bri',
-                           Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
-                           TRUE ~ '')) %>%
+                                            Organisation_Site_Code == 'RA701' ~ 'bri',
+                                            Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
+                                            TRUE ~ '')) %>%
   dplyr::select(
-                nhs_number = nhs_number,
-                site = Organisation_Site_Code,
-                day_of_admission,
-                sex,
-                age = Person_Age,
-                spec = Specialty_Code,
-                bed_type = Bed_Type,
-                los = discharge_rdy_los
-                )  #%>%
-  # # filter outlier LOS
-  #filter(los < 50) # higher than Q(.99)
+    nhs_number = nhs_number,
+    site = Organisation_Site_Code,
+    day_of_admission,
+    sex,
+    age = Person_Age,
+    spec = Specialty_Code,
+    bed_type = Bed_Type,
+    los = discharge_rdy_los
+  )  #%>%
+# # filter outlier LOS
+#filter(los < 50) # higher than Q(.99)
 
 # attributes to join
 
@@ -112,21 +116,21 @@ select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period
 
 # modelling
 model_df <- los_df %>%
-   full_join(select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
-             by = join_by(nhs_number == nhs_number)) %>%
-   # na.omit() %>%
-   select(los,
-          site,
-          # day_of_admission,
-          cambridge_score,
-          age,
-          sex,
-          #spec, # spec has too many levels, some of which don't get seen enough to reliably create a model pipeline
-          bed_type
-          # smoking,
-          # ethnicity,
-          #segment
-          ) %>%
+  full_join(select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
+            by = join_by(nhs_number == nhs_number)) %>%
+  # na.omit() %>%
+  select(los,
+         site,
+         # day_of_admission,
+         cambridge_score,
+         age,
+         sex,
+         #spec, # spec has too many levels, some of which don't get seen enough to reliably create a model pipeline
+         bed_type
+         # smoking,
+         # ethnicity,
+         #segment
+  ) %>%
   filter(sex != "Unknown",
          !is.na(los)) # remove this as only 1 case
 
@@ -157,14 +161,14 @@ tree_grid <- grid_regular(cost_complexity(),
 
 
 tree_rec <- recipe(los ~ ., data = los_train)  %>%
-    update_role(site, new_role = "site id") %>%  
-    step_novel(all_nominal_predictors(), new_level = "other") %>%
-    step_other(all_nominal_predictors(), threshold = 0.1)
+  update_role(site, new_role = "site id") %>%  
+  step_novel(all_nominal_predictors(), new_level = "other") %>%
+  step_other(all_nominal_predictors(), threshold = 0.1)
 
 
 tree_wf <- workflow() %>%
-           add_model(tree_spec) %>%
-           add_recipe(tree_rec)
+  add_model(tree_spec) %>%
+  add_recipe(tree_rec)
 
 
 doParallel::registerDoParallel()
@@ -211,12 +215,12 @@ ggplot(los_model_df, aes(x = los)) +
 # fit los dists on the data at each leaf
 
 dists <- c(
-            "exp"
-            ,"norm"
-            ,"lnorm"
-            ,"gamma"
-            ,"weibull"
-           )
+  "exp"
+  ,"norm"
+  ,"lnorm"
+  ,"gamma"
+  ,"weibull"
+)
 
 
 fit_dists <- los_model_df %>%
@@ -230,7 +234,7 @@ fit_dists <- los_model_df %>%
   mutate(dist = map_chr(fit, "distname")) %>%
   mutate(fit_parms = map(fit, "estimate")) %>%
   expand_grid(site = unique(los_df$site))
-  
+
 
 # adding a 'leaf' for full population distribution
 
@@ -301,17 +305,17 @@ validation_df <- los_test %>%
       ) +
       stat_ecdf(geom = "step") +
       labs(title = "CDF plot", x = "LOS", y = "CDF")+ theme_minimal()) 
-    ) %>%
+  ) %>%
   mutate(qq_plot = pmap(
     list(data, dist, fit_parms),
     ~
       ggplot(..1, aes(sample = los)) +
       qqplotr::stat_qq_band(distribution = ..2, alpha = 0.5,
-                   dparams = ..3) +
+                            dparams = ..3) +
       qqplotr::stat_qq_line(distribution = ..2, col = "black",
-                   dparams = ..3) +
+                            dparams = ..3) +
       qqplotr::stat_qq_point(distribution = ..2,
-              dparams = ..3) + 
+                             dparams = ..3) + 
       labs(title = "Q-Q plot", x = "Theoretical quantiles", y = "Empirical quantiles") + theme_minimal()
   )) %>%
   mutate(pp_plot = pmap(
@@ -319,11 +323,11 @@ validation_df <- los_test %>%
     ~
       ggplot(..1, aes(sample = los)) +
       qqplotr::stat_pp_band(distribution = ..2, alpha = 0.5,
-                   dparams = ..3) +
+                            dparams = ..3) +
       qqplotr::stat_pp_line(distribution = ..2, col = "black",
-                   dparams = ..3) +
+                            dparams = ..3) +
       qqplotr::stat_pp_point(distribution = ..2,
-              dparams = ..3) + 
+                             dparams = ..3) + 
       labs(title = "P-P plot", x = "Theoretical probabilities", y = "Empirical probabilities") + theme_minimal()
   )) 
 
@@ -333,7 +337,7 @@ validation_df <- los_test %>%
 
 plots <- pmap(list(validation_df$cdf_plot, validation_df$pp_plot),
               ~cowplot::plot_grid(..1, ..2) + theme(plot.background = element_rect(fill = NA, colour = 'black', size = 1)))
-validation_plot_los <- patchwork::wrap_plots(plots)
+(validation_plot_los <- patchwork::wrap_plots(plots))
 
 ggsave(validation_plot_los,
        filename = "./validation/validation_plot_los.png",
@@ -390,7 +394,7 @@ validation_df_tot <- los_test %>%
       labs(title = "P-P plot", x = "Theoretical probabilities", y = "Empirical probabilities") + theme_minimal()
   )) 
 
-validation_plot_los_tot <- cowplot::plot_grid(validation_df_tot$cdf_plot[[1]], validation_df_tot$pp_plot[[1]])
+(validation_plot_los_tot <- cowplot::plot_grid(validation_df_tot$cdf_plot[[1]], validation_df_tot$pp_plot[[1]]))
 
 ggsave(validation_plot_los_tot,
        filename = "./validation/validation_plot_los_tot.png",

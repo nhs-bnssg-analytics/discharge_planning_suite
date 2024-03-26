@@ -1,4 +1,4 @@
-n_rep <- 100
+n_rep <- 1000
 start_date <- min(nctr_df$Census_Date) 
 start_date <- ymd("2024-01-01")
 
@@ -23,17 +23,16 @@ admits_ts <- nctr_df %>%
 
 
 rdist <- readRDS("data/fit_dists.RDS") %>%
-  filter(leaf == -1) %>%
-  pull(rdist) %>%
-  `[[`(1)
+  filter(leaf == -1:-3) %>%
+  select(site, rdist)
 
-rdist <- tibble(site = c("bri", "nbt", "weston"),
-                rdist = list(
-                  partial(rlnorm, meanlog = 1.3, sdlog = 0.99),
-                  partial(rlnorm, meanlog = 1.47, sdlog = 0.99),
-                  partial(rlnorm, meanlog = 1.3, sdlog = 0.99)
-                  )
-)
+# rdist <- tibble(site = c("bri", "nbt", "weston"),
+#                 rdist = list(
+#                   partial(rlnorm, meanlog = 1.3, sdlog = 0.99),
+#                   partial(rlnorm, meanlog = 1.47, sdlog = 0.99),
+#                   partial(rlnorm, meanlog = 1.3, sdlog = 0.99)
+#                   )
+# )
 
 
 sites <- unique(admits_ts$site)
@@ -128,6 +127,7 @@ act_out_df <- map(sites,
 
 
 (p <- bind_rows(sim_out_df, act_out_df) %>%
+    filter(day <= 10) %>%
   ggplot(aes(x = day, y = value, col = source)) +
   geom_step() +
   facet_wrap(vars(site)) +

@@ -55,6 +55,15 @@ los_wf <- readRDS("data/los_wf.RDS")
 fit_dists <- readRDS("data/fit_dists.RDS") %>%
   mutate(leaf = as.character(leaf))
 
+# hack in system total dists for joining later
+
+fit_dists <- bind_rows(
+  fit_dists,
+  mutate(fit_dists, site = "system")
+  ) %>%
+group_by(site, leaf) %>%
+slice(1)
+
 # take sample of dates
 d_i <- sample(dates, 9)
 
@@ -62,7 +71,6 @@ nctr_sum <- nctr_sum %>%
   bind_rows(nctr_sum %>% mutate(site = "system", spell_id = paste0(spell_id, "_sys", sep = "")))
 
 out <- map(d_i, ~{
-  
   # spell ids with CTR from this date:
   sid_i <- dates_spells %>%
     filter(Census_Date ==.x & der_ctr) %>%
@@ -120,7 +128,7 @@ out <- map(d_i, ~{
     arrange(site) %>%
     mutate(id = 1:n(),
            leaf = as.character(treeClust::rpart.predict.leaves(extract_fit_engine(los_wf), .))) %>%
-    left_join(fit_dists, by = join_by(leaf == leaf)) %>%
+    left_join(fit_dists, by = join_by(site == site, leaf == leaf)) %>%
     mutate(los_remaining = pmap(list(los, tdist),
                                 function(los, trunc_dist)
                                   trunc_dist(

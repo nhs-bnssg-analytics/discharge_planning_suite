@@ -18,7 +18,7 @@ source("colour_functions.R")
 
 plot_int <- TRUE
 
-n_rep <- 1E2
+n_rep <- 1E3
 
 run_date <- today()
 n_days <- 10
