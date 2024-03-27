@@ -40,7 +40,7 @@ dates <- sort(unique(admits_ts$date))
 dates_samp <- dates[dates < max(dates) - ddays(10)]
 
 
-d_i <- sample(dates_samp, 50)
+d_i <- sample(dates_samp, 25)
 
 future::plan(future::multisession, workers = parallel::detectCores() - 6)
 
@@ -57,7 +57,8 @@ sim <- expand_grid(site = sites,
   filter(date >= .x, date < .x+ddays(10)) %>%
   mutate(arrivals = coalesce(n, 0),
          # coalesce in case we sample below zero
-         day = rep(1:10, length(sites) * n_rep)) %>% 
+         day = rep(1:10, length(sites) * n_rep)) %>%
+  filter(arrivals > 0) %>%
   mutate(los = map(arrivals, function(arr) round(
     EnvStats::remp(arr, obs = los_df$los)))) %>%
   # mutate(los = map2(rdist, arrivals, function(dist, arr) round(
@@ -204,7 +205,7 @@ map(out, "res_out") %>%
 
 
 
-patchwork::wrap_plots(out, axes = "collect", guides = "collect") 
+patchwork::wrap_plots(map(out, "p"), axes = "collect", guides = "collect") 
 
 ggsave(
   p,
