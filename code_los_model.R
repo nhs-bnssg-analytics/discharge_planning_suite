@@ -1,4 +1,5 @@
 library(fitdistrplus)
+library(actual)
 library(tidyverse)
 library(tidymodels)
 source("utils.R")
@@ -45,7 +46,7 @@ nctr_df <-
 
 max_census <- max(nctr_df$Census_Date)
 
-date_co <- as.Date(max_census - dmonths(6))
+date_co <- as.Date(max_census - dmonths(3))
 
 los_df <- nctr_df %>%
   ungroup() %>%
@@ -84,7 +85,7 @@ los_df <- nctr_df %>%
   slice(1) %>%
   mutate(day_of_admission = weekdays(Date_Of_Admission)) %>%
   ungroup() %>%
-  filter(discharge_rdy_los > 0) %>%
+  filter(discharge_rdy_los > 0) %>% # any 0 day LOS are DQ (there aren't many of these so I just removed, could also set to 1 day)
   # filter(discharge_rdy_los < 60) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   mutate(Organisation_Site_Code = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt',
@@ -220,6 +221,7 @@ dists <- c(
   ,"lnorm"
   ,"gamma"
   ,"weibull"
+  ,"nbinom"
 )
 
 
@@ -350,7 +352,7 @@ ggsave(validation_plot_los,
 
 validation_df_tot <- los_test %>%
   bake(extract_recipe(tree_fit), .) %>%
-  mutate(leaf = -1) %>%
+  expand_grid(leaf = -1:-3) %>%
   group_by(leaf) %>%
   nest() %>%
   left_join(select(fit_dists, -data, -min_aic)) %>%
@@ -394,7 +396,11 @@ validation_df_tot <- los_test %>%
       labs(title = "P-P plot", x = "Theoretical probabilities", y = "Empirical probabilities") + theme_minimal()
   )) 
 
-(validation_plot_los_tot <- cowplot::plot_grid(validation_df_tot$cdf_plot[[1]], validation_df_tot$pp_plot[[1]]))
+plots_tot <- pmap(list(validation_df_tot$cdf_plot, validation_df_tot$pp_plot, validation_df_tot$site),
+              ~cowplot::plot_grid(..1, ..2) +
+                cowplot::draw_label(..3) +
+                theme(plot.background = element_rect(fill = NA, colour = 'black', size = 1)))
+(validation_plot_los <- patchwork::wrap_plots(plots_tot))
 
 ggsave(validation_plot_los_tot,
        filename = "./validation/validation_plot_los_tot.png",

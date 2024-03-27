@@ -38,41 +38,78 @@ rdist <- readRDS("data/fit_dists.RDS") %>%
 sites <- unique(admits_ts$site)
 dates <- sort(unique(admits_ts$date))
 
+dates_samp <- dates[dates < max(dates) - ddays(10)]
+
+
+d_i <- sample(dates_samp, 50)
+
+future::plan(future::multisession, workers = parallel::detectCores() - 6)
+
+
+out <- furrr::future_map(d_i, ~{
+# out <- map(d_i, ~{
+  
+  cat(d_i, fill = TRUE)
+
 sim <- expand_grid(site = sites,
                    rep = seq_len(n_rep),
                    date = dates) %>%
   left_join(admits_ts, join_by(site, date == date)) %>%
   left_join(rdist, join_by(site)) %>%
+  filter(date >= .x, date < .x+ddays(10)) %>%
   mutate(arrivals = coalesce(n, 0),
          # coalesce in case we sample below zero
-         day = rep(1:length(dates), length(sites) * n_rep)) %>% 
+         day = rep(1:10, length(sites) * n_rep)) %>% 
   mutate(los = map2(rdist, arrivals, function(dist, arr) round(
     dist(arr)))) %>%
   unnest(los) %>%
-  mutate(date_end = date + ddays(los)) #%>%
+  mutate(date_end = date + ddays(los),
+         day_end = day + los) %>%
+  filter(day_end <= 10) %>%
+  mutate(day_end = factor(day_end, levels = 1:10)) %>%
+  group_by(rep, site, day_end) %>%
+  count()
 
 
-sim_out_df <- map(sites,
-                  function(s)
-                    map_dbl(dates,
-                            ~ nrow(
-                              sim %>% filter(site == s, date <= .x, date_end > .x)
-                            ))) %>%
-  
-  enframe() %>%
-  mutate(site = sites) %>%
-  unnest(value) %>%
-  mutate(value = value / n_rep) %>%
-  group_by(site) %>%
-  mutate(day = 1:n()) %>%
-  select(site, day, value) %>%
+sim_out_df <- sim %>% 
+  # filter(day_end <= 10) %>%
+  group_by(site, day_end) %>%
+  summarise(
+            u95 = quantile(n, 0.975),
+            l95 = quantile(n, 0.025),
+            n = mean(n)
+            ) %>%
   mutate(source = "sim")
+
+
+# %>%
+#   ggplot(aes(x = day_end, y = mean)) +
+#   geom_ribbon(aes(ymin = l95, ymax = u95), alpha = 0.5) + 
+#   geom_line() +
+#   facet_wrap(vars(site))
+  
+
+# sim_out_df <- map(sites,
+#                   function(s)
+#                     map_dbl(dates,
+#                             ~ nrow(
+#                               sim %>% filter(site == s, date <= .x, date_end > .x)
+#                             ))) %>%
+#   
+#   enframe() %>%
+#   mutate(site = sites) %>%
+#   unnest(value) %>%
+#   mutate(value = value / n_rep) %>%
+#   group_by(site) %>%
+#   mutate(day = 1:n()) %>%
+#   select(site, day, value) %>%
+#   mutate(source = "sim")
 
 # empirical accumulation
 
 act <- nctr_df %>%
   ungroup() %>%
-  filter(Census_Date > start_date) %>%
+  filter(Date_Of_Admission >= .x) %>%
   filter(Person_Stated_Gender_Code %in% 1:2) %>%
   filter(Date_Of_Admission > min(Census_Date)) %>%
   mutate(nhs_number = as.character(NHS_Number),
@@ -106,34 +143,68 @@ act <- nctr_df %>%
   # rowwise() %>%
   # mutate(der_date_nctr = min(der_date_nctr, Date_NCTR, na.rm = TRUE)) %>%
   ungroup() %>%
+  # filter(Census_Date >= .x, Census_Date < .x + ddays(10)) %>%
   mutate(der_date_nctr = pmin(der_date_nctr, Date_NCTR, na.rm = TRUE)) %>%
   select(nhs_number, spell_id, site, Date_Of_Admission, der_date_nctr) %>%
-  distinct()
+  distinct() 
 
 
-act_out_df <- map(sites,
-                  function(s) map_dbl(dates,
-                                      ~nrow(act %>% filter(site == s,
-                                                           Date_Of_Admission <= .x,
-                                                           der_date_nctr > .x)))) %>%
-  enframe() %>%
-  mutate(site = sites) %>%
-  unnest(value) %>%
-  mutate(value = value) %>%
-  group_by(site) %>%
-  mutate(day = 1:n()) %>%
-  select(site, day, value) %>%
-  mutate(source = "empirical")
+act_out_df <- act %>%
+  mutate(day_end = (der_date_nctr - .x)/ddays(1)) %>%
+  filter(day_end <= 10) %>%
+  mutate(day_end = factor(day_end, levels = 1:10)) %>%
+  group_by(site, day_end, .drop = FALSE) %>%
+  count() %>%
+  mutate(source = "actual") 
 
 
-(p <- bind_rows(sim_out_df, act_out_df) %>%
-    filter(day <= 10) %>%
-  ggplot(aes(x = day, y = value, col = source)) +
-  geom_step() +
-  facet_wrap(vars(site)) +
-  theme_bw())
+# act_out_df <- map(sites,
+#                   function(s) map_dbl(dates,
+#                                       ~nrow(act %>% filter(site == s,
+#                                                            Date_Of_Admission <= .x,
+#                                                            der_date_nctr > .x)))) %>%
+#   enframe() %>%
+#   mutate(site = sites) %>%
+#   unnest(value) %>%
+#   mutate(value = value) %>%
+#   group_by(site) %>%
+#   mutate(day = 1:n()) %>%
+#   select(site, day, value) %>%
+#   mutate(source = "empirical")
+
+plot_df <- bind_rows(sim_out_df, act_out_df) 
+
+p <- ggplot() +
+    geom_errorbar(data = na.omit(plot_df), aes(x = day_end, ymin = l95, ymax = u95)) +
+    geom_col(data = plot_df, aes(x = day_end, y = n, fill = source), position = "dodge") +
+    facet_wrap(vars(site)) +
+    theme_bw()
+
+res_out <- plot_df %>%
+  select(site, day_end, n, source) %>%
+  pivot_wider(names_from = source, values_from = n) %>% 
+  mutate(residual = actual - sim) 
+
+  # summarise(residual = mean(residual)) %>%
+  # ggplot(aes(x = day_end, y = residual)) +
+  # geom_col() +
+  # facet_wrap(vars(site))
+
+list(p = p, res_out = res_out)
+})
 
 
+map(out, "res_out") %>%
+  bind_rows() %>%
+  group_by(site, day_end) %>%
+  summarise(residual = mean(residual, na.rm = TRUE))  %>%
+  ggplot(aes(x = day_end, y = residual)) +
+  geom_col() +
+  facet_wrap(vars(site))
+
+
+
+patchwork::wrap_plots(out, axes = "collect", guides = "collect") 
 
 ggsave(
   p,
