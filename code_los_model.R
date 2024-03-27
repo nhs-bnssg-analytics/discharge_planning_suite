@@ -1,5 +1,5 @@
 library(fitdistrplus)
-library(actual)
+library(actuar)
 library(tidyverse)
 library(tidymodels)
 source("utils.R")
@@ -46,7 +46,7 @@ nctr_df <-
 
 max_census <- max(nctr_df$Census_Date)
 
-date_co <- as.Date(max_census - dmonths(3))
+date_co <- as.Date(max_census - dmonths(6))
 
 los_df <- nctr_df %>%
   ungroup() %>%
@@ -92,6 +92,7 @@ los_df <- nctr_df %>%
                                             Organisation_Site_Code == 'RA701' ~ 'bri',
                                             Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
                                             TRUE ~ '')) %>%
+  filter(Organisation_Site_Code != "nbt") %>%
   dplyr::select(
     nhs_number = nhs_number,
     site = Organisation_Site_Code,
@@ -234,8 +235,7 @@ fit_dists <- los_model_df %>%
   #select best based on lowest AIC
   mutate(fit = flatten(pmap(list(fit, min_aic), function(fits, aic) keep(fits, \(x) x$aic == aic)))) %>%
   mutate(dist = map_chr(fit, "distname")) %>%
-  mutate(fit_parms = map(fit, "estimate")) %>%
-  expand_grid(site = unique(los_df$site))
+  mutate(fit_parms = map(fit, "estimate")) 
 
 
 # adding a 'leaf' for full population distribution
@@ -243,10 +243,9 @@ fit_dists <- los_model_df %>%
 fit_dists <- fit_dists %>%
   bind_rows(
     los_model_df %>%
-      group_by(site) %>%
       nest() %>%
       ungroup() %>%
-      mutate(leaf = -1:-3) %>%
+      mutate(leaf = -1) %>%
       mutate(fit = map(data, function(data ) imap(dists, ~fitdist(data$los, .x)))) %>%
       mutate(min_aic = map_dbl(fit, function(group) min(map_dbl(group, ~pluck(.x, "aic"))))) %>%
       #select best based on lowest AIC
@@ -292,7 +291,7 @@ validation_df <- los_test %>%
   mutate(leaf = treeClust::rpart.predict.leaves(tree, .)) %>%
   group_by(leaf) %>%
   nest() %>%
-  left_join(select(fit_dists, -data, -min_aic, -site) %>% group_by(leaf) %>% slice(1)) %>%
+  left_join(select(fit_dists, -data, -min_aic) %>% group_by(leaf) %>% slice(1)) %>%
   mutate(ks_test = pmap(list(data, pdist), ~ks.test(..1$los, ..2) %>% tidy())) %>%
   mutate(ad_test = pmap(list(data, pdist), ~DescTools::AndersonDarlingTest(..1$los, null = ..2))) %>%
   mutate(cdf_plot = pmap(
@@ -348,11 +347,9 @@ ggsave(validation_plot_los,
        scale = 0.8)
 
 
-
-
 validation_df_tot <- los_test %>%
   bake(extract_recipe(tree_fit), .) %>%
-  expand_grid(leaf = -1:-3) %>%
+  expand_grid(leaf = -1) %>%
   group_by(leaf) %>%
   nest() %>%
   left_join(select(fit_dists, -data, -min_aic)) %>%
@@ -396,11 +393,10 @@ validation_df_tot <- los_test %>%
       labs(title = "P-P plot", x = "Theoretical probabilities", y = "Empirical probabilities") + theme_minimal()
   )) 
 
-plots_tot <- pmap(list(validation_df_tot$cdf_plot, validation_df_tot$pp_plot, validation_df_tot$site),
+plots_tot <- pmap(list(validation_df_tot$cdf_plot, validation_df_tot$pp_plot),
               ~cowplot::plot_grid(..1, ..2) +
-                cowplot::draw_label(..3) +
                 theme(plot.background = element_rect(fill = NA, colour = 'black', size = 1)))
-(validation_plot_los <- patchwork::wrap_plots(plots_tot))
+(validation_plot_los_tot <- patchwork::wrap_plots(plots_tot))
 
 ggsave(validation_plot_los_tot,
        filename = "./validation/validation_plot_los_tot.png",

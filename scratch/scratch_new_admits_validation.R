@@ -23,8 +23,7 @@ admits_ts <- nctr_df %>%
 
 
 rdist <- readRDS("data/fit_dists.RDS") %>%
-  filter(leaf == -1:-3) %>%
-  select(site, rdist)
+  filter(leaf == -1)
 
 # rdist <- tibble(site = c("bri", "nbt", "weston"),
 #                 rdist = list(
@@ -48,20 +47,21 @@ future::plan(future::multisession, workers = parallel::detectCores() - 6)
 
 out <- furrr::future_map(d_i, ~{
 # out <- map(d_i, ~{
-  
-  cat(d_i, fill = TRUE)
 
 sim <- expand_grid(site = sites,
                    rep = seq_len(n_rep),
                    date = dates) %>%
   left_join(admits_ts, join_by(site, date == date)) %>%
-  left_join(rdist, join_by(site)) %>%
+  bind_cols(rdist) %>%
+  # left_join(rdist, join_by(site)) %>%
   filter(date >= .x, date < .x+ddays(10)) %>%
   mutate(arrivals = coalesce(n, 0),
          # coalesce in case we sample below zero
          day = rep(1:10, length(sites) * n_rep)) %>% 
-  mutate(los = map2(rdist, arrivals, function(dist, arr) round(
-    dist(arr)))) %>%
+  mutate(los = map(arrivals, function(arr) round(
+    EnvStats::remp(arr, obs = los_df$los)))) %>%
+  # mutate(los = map2(rdist, arrivals, function(dist, arr) round(
+  #   dist(arr)))) %>%
   unnest(los) %>%
   mutate(date_end = date + ddays(los),
          day_end = day + los) %>%
