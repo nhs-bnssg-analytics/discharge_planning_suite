@@ -1,5 +1,4 @@
 library(fitdistrplus)
-library(actuar)
 library(tidyverse)
 library(tidymodels)
 source("utils.R")
@@ -46,7 +45,7 @@ nctr_df <-
 
 max_census <- max(nctr_df$Census_Date)
 
-date_co <- as.Date(max_census - dmonths(6))
+date_co <- as.Date(max_census - dmonths(3))
 
 los_df <- nctr_df %>%
   ungroup() %>%
@@ -85,7 +84,7 @@ los_df <- nctr_df %>%
   slice(1) %>%
   mutate(day_of_admission = weekdays(Date_Of_Admission)) %>%
   ungroup() %>%
-  filter(discharge_rdy_los > 0) %>% # any 0 day LOS are DQ (there aren't many of these so I just removed, could also set to 1 day)
+  filter(discharge_rdy_los > 0) %>%
   # filter(discharge_rdy_los < 60) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   mutate(Organisation_Site_Code = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt',
@@ -184,7 +183,6 @@ tree_rs <- tune_grid(
 )
 
 
-
 autoplot(tree_rs) + theme_light(base_family = "IBMPlexSans")
 collect_metrics(tree_rs)
 
@@ -222,7 +220,6 @@ dists <- c(
   ,"lnorm"
   ,"gamma"
   ,"weibull"
-  ,"nbinom"
 )
 
 
@@ -237,24 +234,6 @@ fit_dists <- los_model_df %>%
   mutate(dist = map_chr(fit, "distname")) %>%
   mutate(fit_parms = map(fit, "estimate")) 
 
-
-# adding a 'leaf' for full population distribution
-
-fit_dists <- fit_dists %>%
-  bind_rows(
-    los_model_df %>%
-      nest() %>%
-      ungroup() %>%
-      mutate(leaf = -1) %>%
-      mutate(fit = map(data, function(data ) imap(dists, ~fitdist(data$los, .x)))) %>%
-      mutate(min_aic = map_dbl(fit, function(group) min(map_dbl(group, ~pluck(.x, "aic"))))) %>%
-      #select best based on lowest AIC
-      mutate(fit = flatten(pmap(list(fit, min_aic), function(fits, aic) keep(fits, \(x) x$aic == aic)))) %>%
-      mutate(dist = map_chr(fit, "distname")) %>%
-      mutate(fit_parms = map(fit, "estimate")) 
-  ) %>%
-  mutate(fit_parms = set_names(fit_parms, leaf))
-
 dist_ptl_gen <- function(dist, parms, type){
   stopifnot(type %in% c("d", "p", "q", "r"))
   fn <- get(glue::glue("{type}{dist}"))
@@ -267,6 +246,25 @@ fit_dists <- fit_dists %>%
   mutate(qdist = map2(dist, fit_parms, ~dist_ptl_gen(.x, .y, "q"))) %>%
   mutate(rdist = map2(dist, fit_parms, ~dist_ptl_gen(.x, .y, "r"))) %>%
   mutate(tdist = map2(pdist, qdist, ~partial(rtruncdist, pdist = .x, qdist = .y)))
+
+
+
+# adding a 'leaf' for full population distribution
+
+fit_dists <- fit_dists %>%
+  bind_rows(
+    los_df %>%
+      mutate(leaf = -1) %>%
+      group_by(leaf) %>%
+      nest() %>%
+      mutate(ddist = map(data, ~partial(EnvStats::demp, obs = .x$los))) %>%
+      mutate(pdist = map(data, ~partial(EnvStats::pemp, obs = .x$los))) %>%
+      mutate(qdist = map(data, ~partial(EnvStats::qemp, obs = .x$los))) %>%
+      mutate(rdist = map(data, ~partial(EnvStats::remp, obs = .x$los))) %>%
+      mutate(tdist = map2(pdist, qdist, ~partial(rtruncdist, pdist = .x, qdist = .y)))
+  ) %>%
+  mutate(fit_parms = set_names(fit_parms, leaf))
+
 
 
 # map(fit_dists$tdist, ~.x(10000, range = c(10, Inf))) %>%
@@ -346,64 +344,60 @@ ggsave(validation_plot_los,
        height = 10,
        scale = 0.8)
 
-
-validation_df_tot <- los_test %>%
-  bake(extract_recipe(tree_fit), .) %>%
-  expand_grid(leaf = -1) %>%
-  group_by(leaf) %>%
-  nest() %>%
-  left_join(select(fit_dists, -data, -min_aic)) %>%
-  mutate(ks_test = pmap(list(data, pdist), ~ks.test(..1$los, ..2) %>% tidy())) %>%
-  mutate(ad_test = pmap(list(data, pdist), ~DescTools::AndersonDarlingTest(..1$los, null = ..2))) %>%
-  mutate(cdf_plot = pmap(
-    list(data, dist, fit_parms),
-    ~
-      ggplot(..1, aes(x = los)) +
-      geom_function(
-        geom = "step",
-        col = "black",
-        fun = function(x) cdf_fn(x, dist = ..2, parms = ..3)#,
-        #args = list(.x$fit_parms[[1]])
-      ) +
-      stat_ecdf(geom = "step") +
-      labs(title = "CDF plot", x = "LOS", y = "CDF")+ theme_minimal()) 
-  ) %>%
-  mutate(qq_plot = pmap(
-    list(data, dist, fit_parms),
-    ~
-      ggplot(..1, aes(sample = los)) +
-      qqplotr::stat_qq_band(distribution = ..2, alpha = 0.5,
-                            dparams = ..3) +
-      qqplotr::stat_qq_line(distribution = ..2, col = "black",
-                            dparams = ..3) +
-      qqplotr::stat_qq_point(distribution = ..2,
-                             dparams = ..3) + 
-      labs(title = "Q-Q plot", x = "Theoretical quantiles", y = "Empirical quantiles") + theme_minimal()
-  )) %>%
-  mutate(pp_plot = pmap(
-    list(data, dist, fit_parms),
-    ~
-      ggplot(..1, aes(sample = los)) +
-      qqplotr::stat_pp_band(distribution = ..2, alpha = 0.5,
-                            dparams = ..3) +
-      qqplotr::stat_pp_line(distribution = ..2, col = "black",
-                            dparams = ..3) +
-      qqplotr::stat_pp_point(distribution = ..2,
-                             dparams = ..3) + 
-      labs(title = "P-P plot", x = "Theoretical probabilities", y = "Empirical probabilities") + theme_minimal()
-  )) 
-
-plots_tot <- pmap(list(validation_df_tot$cdf_plot, validation_df_tot$pp_plot),
-                  ~cowplot::plot_grid(..1, ..2) +
-                    theme(plot.background = element_rect(fill = NA, colour = 'black', size = 1)))
-(validation_plot_los_tot <- patchwork::wrap_plots(plots_tot))
-
-ggsave(validation_plot_los_tot,
-       filename = "./validation/validation_plot_los_tot.png",
-       width = 14,
-       bg = "white",
-       height = 7,
-       scale = 0.6)
+# validation_df_tot <- los_test %>%
+#   bake(extract_recipe(tree_fit), .) %>%
+#   mutate(leaf = -1) %>%
+#   group_by(leaf) %>%
+#   nest() %>%
+#   left_join(select(fit_dists, -data, -min_aic)) %>%
+#   mutate(ks_test = pmap(list(data, pdist), ~ks.test(..1$los, ..2) %>% tidy())) %>%
+#   mutate(ad_test = pmap(list(data, pdist), ~DescTools::AndersonDarlingTest(..1$los, null = ..2))) %>%
+#   mutate(cdf_plot = pmap(
+#     list(data, dist, fit_parms),
+#     ~
+#       ggplot(..1, aes(x = los)) +
+#       geom_function(
+#         geom = "step",
+#         col = "black",
+#         fun = function(x) cdf_fn(x, dist = ..2, parms = ..3)#,
+#         #args = list(.x$fit_parms[[1]])
+#       ) +
+#       stat_ecdf(geom = "step") +
+#       labs(title = "CDF plot", x = "LOS", y = "CDF")+ theme_minimal()) 
+#   ) %>%
+#   mutate(qq_plot = pmap(
+#     list(data, dist, fit_parms),
+#     ~
+#       ggplot(..1, aes(sample = los)) +
+#       qqplotr::stat_qq_band(distribution = ..2, alpha = 0.5,
+#                             dparams = ..3) +
+#       qqplotr::stat_qq_line(distribution = ..2, col = "black",
+#                             dparams = ..3) +
+#       qqplotr::stat_qq_point(distribution = ..2,
+#                              dparams = ..3) + 
+#       labs(title = "Q-Q plot", x = "Theoretical quantiles", y = "Empirical quantiles") + theme_minimal()
+#   )) %>%
+#   mutate(pp_plot = pmap(
+#     list(data, dist, fit_parms),
+#     ~
+#       ggplot(..1, aes(sample = los)) +
+#       qqplotr::stat_pp_band(distribution = ..2, alpha = 0.5,
+#                             dparams = ..3) +
+#       qqplotr::stat_pp_line(distribution = ..2, col = "black",
+#                             dparams = ..3) +
+#       qqplotr::stat_pp_point(distribution = ..2,
+#                              dparams = ..3) + 
+#       labs(title = "P-P plot", x = "Theoretical probabilities", y = "Empirical probabilities") + theme_minimal()
+#   )) 
+# 
+# (validation_plot_los_tot <- cowplot::plot_grid(validation_df_tot$cdf_plot[[1]], validation_df_tot$pp_plot[[1]]))
+# 
+# ggsave(validation_plot_los_tot,
+#        filename = "./validation/validation_plot_los_tot.png",
+#        width = 14,
+#        bg = "white",
+#        height = 7,
+#        scale = 0.6)
 
 
 saveRDS(fit_dists$fit_parms, "data/dist_split.RDS")
