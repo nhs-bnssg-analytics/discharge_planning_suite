@@ -394,8 +394,8 @@ validation_df_tot <- los_test %>%
   )) 
 
 plots_tot <- pmap(list(validation_df_tot$cdf_plot, validation_df_tot$pp_plot),
-              ~cowplot::plot_grid(..1, ..2) +
-                theme(plot.background = element_rect(fill = NA, colour = 'black', size = 1)))
+                  ~cowplot::plot_grid(..1, ..2) +
+                    theme(plot.background = element_rect(fill = NA, colour = 'black', size = 1)))
 (validation_plot_los_tot <- patchwork::wrap_plots(plots_tot))
 
 ggsave(validation_plot_los_tot,

@@ -1,15 +1,25 @@
 df_new_admit <- local({
-  rdist <- readRDS("data/fit_dists.RDS") %>%
-    filter(leaf %in% -1:-3) %>%
-    select(site, rdist)
+  # rdist <- readRDS("data/fit_dists.RDS") %>%
+  #   filter(leaf %in% -1:-3) %>%
+  #   select(site, rdist)
     # pull(rdist) %>%
     # `[[`(1)
   
+  los <- readRDS("data/los.RDS")
+  
+  # rdist <- tibble(site = c("bri", "nbt", "weston"),
+  #                 rdist = list(
+  #                   partial(rlnorm, meanlog = 1.3, sdlog = 0.99),
+  #                   partial(rlnorm, meanlog = 1.47, sdlog = 0.99),
+  #                   partial(rlnorm, meanlog = 1.3, sdlog = 0.99)
+  #                 )
+  # )
+  
   rdist <- tibble(site = c("bri", "nbt", "weston"),
                   rdist = list(
-                    partial(rlnorm, meanlog = 1.3, sdlog = 0.99),
-                    partial(rlnorm, meanlog = 1.47, sdlog = 0.99),
-                    partial(rlnorm, meanlog = 1.3, sdlog = 0.99)
+                    partial(EnvStats::remp, obs = los),
+                    partial(EnvStats::remp, obs = los),
+                    partial(EnvStats::remp, obs = los)
                   )
   )
   
