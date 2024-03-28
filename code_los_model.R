@@ -91,6 +91,7 @@ los_df <- nctr_df %>%
                                             Organisation_Site_Code == 'RA701' ~ 'bri',
                                             Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
                                             TRUE ~ '')) %>%
+  mutate(Organisation_Site_Code = factor(Organisation_Site_Code)) %>%
   filter(Organisation_Site_Code != "nbt") %>%
   dplyr::select(
     nhs_number = nhs_number,
@@ -253,7 +254,7 @@ fit_dists <- fit_dists %>%
 
 fit_dists <- fit_dists %>%
   bind_rows(
-    los_df %>%
+    los_model_df %>%
       mutate(leaf = -1) %>%
       group_by(leaf) %>%
       nest() %>%

@@ -49,7 +49,7 @@ df_new_admit <- local({
     mutate(arrivals = coalesce(map_dbl(fcast_samp, rpois, n = 1), 0),
            # coalesce in case we sample below zero
            day = rep(1:n_days, length(sites) * n_rep)) %>% # adding hour column, for grouping/stats later (3 sites x 1000 reps)
-    
+    filter(arrivals > 0) %>%
     mutate(los = map2(arrivals, rdist, function(arr, dist) round(
       dist(arr)))) %>%
     unnest(los) %>%
