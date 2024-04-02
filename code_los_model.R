@@ -45,7 +45,7 @@ nctr_df <-
 
 max_census <- max(nctr_df$Census_Date)
 
-date_co <- as.Date(max_census - dmonths(3))
+date_co <- as.Date(max_census - dmonths(6))
 
 los_df <- nctr_df %>%
   ungroup() %>%
@@ -195,8 +195,32 @@ tuned_wf
 tree_fit <- fit(tuned_wf, los_train)
 
 tree <- extract_fit_engine(tree_fit)
-rpart.plot::rpart.plot(tree)
-partykit::as.party(tree) %>% plot()
+
+node.fun1 <- function(x, labs, digits, varlen)
+{
+  paste(
+    ifelse(x$frame$var == "<leaf>", paste("Leaf ID:", rownames(x$frame), "\n"), ""),
+    "Mean LOS",
+    round(x$frame$yval, 1), 
+    "\n",
+    "n = ",
+    scales::number(x$frame$n, big.mark = ",")
+    )
+}
+
+png(filename = "materials/tree_plot.png",
+    width = 1800,
+    height = 1200,
+    res = 299,
+    bg = "white"
+    )
+rpart.plot::rpart.plot(tree, type = 2, extra = 101, node.fun = node.fun1)
+dev.off()
+
+partykit::as.party(tree) %>% plot(gp = gpar(fontsize = 6))
+
+
+
 
 # append leaf number onto original data:
 
@@ -267,6 +291,22 @@ fit_dists <- fit_dists %>%
   mutate(fit_parms = set_names(fit_parms, leaf))
 
 
+# output table
+
+fit_dists %>%
+  filter(leaf != -1) %>%
+  ungroup() %>%
+  select(dist, fit_parms, aic = min_aic) %>%
+  mutate(aic = round(aic, 1),
+         fit_parms = map_chr(fit_parms, ~paste0(paste(names(.x), "=", round(.x, 2)), collapse = ", ")),
+         rule = rpart.plot::rpart.rules(tree) %>%
+           as.data.frame() %>%
+           janitor::clean_names() %>%
+           select(-y) %>%
+           reduce(paste) %>%
+           stringr::str_squish()) %>%
+  show_in_excel()
+
 
 # map(fit_dists$tdist, ~.x(10000, range = c(10, Inf))) %>%
 # enframe() %>%
@@ -328,22 +368,24 @@ validation_df <- los_test %>%
                             dparams = ..3) +
       qqplotr::stat_pp_point(distribution = ..2,
                              dparams = ..3) + 
-      labs(title = "P-P plot", x = "Theoretical probabilities", y = "Empirical probabilities") + theme_minimal()
+      labs(title = "P-P plot", x = "Theoretical\nprobabilities", y = "Empirical probabilities") + theme_minimal()
   )) 
 
 # in order to created grid of plot duets (one CDF & QQ for each LOS leaf
 # partition) NOTE: for some reason I have to use cowplot to make a duet with a
 # border, which can then be wrapped using patchwork
 
-plots <- pmap(list(validation_df$cdf_plot, validation_df$pp_plot),
-              ~cowplot::plot_grid(..1, ..2) + theme(plot.background = element_rect(fill = NA, colour = 'black', size = 1)))
+plots <- pmap(list(validation_df$cdf_plot, validation_df$pp_plot, validation_df$leaf),
+              ~cowplot::plot_grid(..1, ..2, labels = paste(..3), hjust = -.2) 
+              #+ theme(plot.background = element_rect(fill = NA, colour = 'black', size = 1))
+              )
 (validation_plot_los <- patchwork::wrap_plots(plots))
 
 ggsave(validation_plot_los,
        filename = "./validation/validation_plot_los.png",
        width = 20,
        height = 10,
-       scale = 0.8)
+       scale = 0.7)
 
 # validation_df_tot <- los_test %>%
 #   bake(extract_recipe(tree_fit), .) %>%

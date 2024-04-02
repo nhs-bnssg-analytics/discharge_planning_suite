@@ -10,7 +10,7 @@ df_admit_fcast <- local({
   
 # arima training ends at the start of the reporting
 fc_train_length <- 26 # (train length in weeks)
-fc_end <- report_start - ddays(1) # deduct one day as when reporting census at 10am we are missing most of the days admissions
+fc_end <- report_start - ddays(1) # deduct one day as we must consider arrivals one day zero
 fc_start <- fc_end  - dweeks(fc_train_length)
 
 min_adm_date <- nctr_df %>%
@@ -67,11 +67,17 @@ models <- admissions %>%
   filter(!is.na(value)) %>%
   mutate(value = pmax(value, 0)) %>%
   mutate(source = "admit_fcast",
-         ctr = "N",
-         report_date = run_date) %>%
+         ctr = "N") %>%
   filter(date >= fc_start,
          date <= report_end ) %>%
-  mutate(day = (date - run_date)/ddays(1)) %>%
+  mutate(day = (date - report_date)/ddays(1),
+         report_date = run_date) %>%
+  # mutate(source = "admit_fcast",
+  #        ctr = "N",
+  #        report_date = run_date) %>%
+  # filter(date >= fc_start,
+  #        date <= report_end ) %>%
+  # mutate(day = (date - run_date)/ddays(1)) %>%
   mutate(site = recode(site, 'SOUTHMEAD HOSPITAL' = 'nbt', 
                        'BRISTOL ROYAL INFIRMARY' = 'bri', 
                        'WESTON GENERAL HOSPITAL' = 'weston'))

@@ -1,28 +1,8 @@
 df_new_admit <- local({
-  # rdist <- readRDS("data/fit_dists.RDS") %>%
-  #   filter(leaf %in% -1:-3) %>%
-  #   select(site, rdist)
-    # pull(rdist) %>%
-    # `[[`(1)
-  
-  los <- readRDS("data/los.RDS")
-  
-  # rdist <- tibble(site = c("bri", "nbt", "weston"),
-  #                 rdist = list(
-  #                   partial(rlnorm, meanlog = 1.3, sdlog = 0.99),
-  #                   partial(rlnorm, meanlog = 1.47, sdlog = 0.99),
-  #                   partial(rlnorm, meanlog = 1.3, sdlog = 0.99)
-  #                 )
-  # )
-  
-  rdist <- tibble(site = c("bri", "nbt", "weston"),
-                  rdist = list(
-                    partial(EnvStats::remp, obs = los),
-                    partial(EnvStats::remp, obs = los),
-                    partial(EnvStats::remp, obs = los)
-                  )
-  )
-  
+  rdist <- readRDS("data/fit_dists.RDS") %>%
+    filter(leaf == -1) %>%
+  pull(rdist) %>%
+  `[[`(1)
   
   props <- readRDS("data/pathway_prop.RDS") %>%
     set_names(c("Other", "P1", "P2", "P3"))
@@ -42,7 +22,6 @@ df_new_admit <- local({
                      rep = seq_len(n_rep),
                      date = dates) %>%
     left_join(df_admit_fcast_flt, join_by(site, date == date)) %>%
-    left_join(rdist) %>%
     rowwise() %>%
     mutate(fcast_samp = rnorm(1, mean = fcast, sd = get_sd_from_ci(ci = c(l_95, u_95)))) %>%
     ungroup() %>%
@@ -50,8 +29,7 @@ df_new_admit <- local({
            # coalesce in case we sample below zero
            day = rep(0:n_days, length(sites) * n_rep)) %>% # adding hour column, for grouping/stats later (3 sites x 1000 reps)
     filter(arrivals > 0) %>%
-    mutate(los = map2(arrivals, rdist, function(arr, dist) round(
-      dist(arr)))) %>%
+    mutate(los = map(arrivals, function(arr) rdist(arr))) %>%
     unnest(los) %>%
     mutate(date_end = date + ddays(los)) %>%
     group_by(site, day = (date_end - (report_start)) / ddays(1), rep) %>%
