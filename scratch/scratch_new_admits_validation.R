@@ -23,7 +23,9 @@ admits_ts <- nctr_df %>%
 
 
 rdist <- readRDS("data/fit_dists.RDS") %>%
-  filter(leaf == -1)
+  filter(leaf == -1) %>%
+  pull("rdist") %>%
+  `[[`(1)
 
 # rdist <- tibble(site = c("bri", "nbt", "weston"),
 #                 rdist = list(
@@ -52,7 +54,7 @@ sim <- expand_grid(site = sites,
                    rep = seq_len(n_rep),
                    date = dates) %>%
   left_join(admits_ts, join_by(site, date == date)) %>%
-  bind_cols(rdist) %>%
+  # bind_cols(rdist) %>%
   # left_join(rdist, join_by(site)) %>%
   filter(date >= .x, date < .x+ddays(10)) %>%
   mutate(arrivals = coalesce(n, 0),
@@ -60,7 +62,8 @@ sim <- expand_grid(site = sites,
          day = rep(1:10, length(sites) * n_rep)) %>%
   filter(arrivals > 0) %>%
   mutate(los = map(arrivals, function(arr) round(
-    EnvStats::remp(arr, obs = los_df$los)))) %>%
+         rdist(arr)))) %>%
+    # EnvStats::remp(arr, obs = los_df$los)))) %>%
   # mutate(los = map2(rdist, arrivals, function(dist, arr) round(
   #   dist(arr)))) %>%
   unnest(los) %>%
@@ -205,7 +208,8 @@ map(out, "res_out") %>%
 
 
 
-# patchwork::wrap_plots(map(out, "p"), axes = "collect", guides = "collect") 
+
+patchwork::wrap_plots(map(out[1:9], "p"), axes = "collect", guides = "collect") 
 
 ggsave(
   p,

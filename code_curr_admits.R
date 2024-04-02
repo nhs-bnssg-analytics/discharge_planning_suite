@@ -47,7 +47,7 @@ df_curr_admits <- local({
   
   df_pred <- los_df %>%
     mutate(id = 1:n()) %>%
-    left_join(los_dist, by = join_by(site == site, leaf == leaf)) %>%
+    left_join(los_dist, by = join_by(leaf == leaf)) %>%
     mutate(los_remaining = pmap(
       list(los, tdist),
       function(los, trunc_dist)

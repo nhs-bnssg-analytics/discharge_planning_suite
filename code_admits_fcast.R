@@ -10,7 +10,7 @@ df_admit_fcast <- local({
   
 # arima training ends at the start of the reporting
 fc_train_length <- 26 # (train length in weeks)
-fc_end <- report_start
+fc_end <- report_start - ddays(1) # deduct one day as when reporting census at 10am we are missing most of the days admissions
 fc_start <- fc_end  - dweeks(fc_train_length)
 
 min_adm_date <- nctr_df %>%
