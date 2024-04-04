@@ -92,26 +92,33 @@ nctr_sum <- nctr_sum %>%
     filter(Census_Date >=.x) %>%
     arrange(Census_Date) %>%
     group_by(spell_id) %>%
+    # mutate(los = min(der_los), # los on index date is the minimum LOS
+    #        los_dis_rdy = case_when(
+    #          !any(der_ctr) ~ max(der_los), # if never NCTR, take max LOS
+    #          der_ctr ~ tail(der_los, 1),  # where CTR take last LOS
+    #          length(der_los) == 1 ~ der_los, # if only 1 LOS record, take that
+    #        )
+    # ) %>%
     mutate(los = min(der_los), # los on index date is the minimum LOS
-           los_dis_rdy = case_when(
-             !any(der_ctr) ~ max(der_los), # if never NCTR, take max LOS
-             der_ctr ~ tail(der_los, 1),  # where CTR take last LOS
-             length(der_los) == 1 ~ der_los, # if only 1 LOS record, take that
-           )
-    ) %>%
+           der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - ddays(1),max(Census_Date)))) %>%
+    ungroup() %>%
+    mutate(der_date_nctr = pmin(der_date_nctr, Date_NCTR, na.rm = TRUE)) %>% 
+    group_by(spell_id) %>%
+    mutate(discharge_rdy_los = (der_date_nctr - as.Date(Date_Of_Admission))/ddays(1)) %>%
     select(nhs_number = NHS_Number,
            site,
            spell_id,
            bed_type = Bed_Type,
            los,
-           los_dis_rdy) %>%
+           discharge_rdy_los) %>%
     # take first active LOS value for each spell
     group_by(spell_id) %>%
-    arrange(los_dis_rdy) %>%
+    arrange(discharge_rdy_los) %>%
     slice(1) %>%
-    mutate(days_until_rdy = los_dis_rdy - los) %>%
+    mutate(days_until_rdy = discharge_rdy_los - los) %>%
     group_by(day = days_until_rdy, site) %>%
-    count(name = "value")
+    count(name = "value") %>%
+    filter(day >= 0)
   
   sim_drain <- nctr_sum %>%
     # filter(Criteria_To_Reside == "Y" & (is.na(Days_NCTR) | Days_NCTR == 0)) %>%
@@ -188,9 +195,9 @@ nctr_sum <- nctr_sum %>%
 )
 
 
-out %>%
+(drain_plot_cum <- out %>%
   reduce(bind_rows) %>%
-  filter(site == "nbt") %>%
+  filter(site == "system") %>%
   pivot_longer(cols = -c(id, site, day, date, source), names_to = "metric", values_to = "value") %>%
   group_by(source, id, metric) %>%
   mutate(prop = value/sum(value)) %>%
@@ -203,14 +210,24 @@ out %>%
   # geom_col(position = "dodge") +
   geom_line(aes(col = source)) +
   # geom_errorbar(aes(ymin = l95_cum_prop, ymax = u95_cum_prop), position = "dodge") +
-  facet_wrap(vars(id), scales = "free")
+  facet_wrap(vars(id), scales = "free") +
+  labs(y = "Cumulative occupancy drain") +
+  theme_bw())
+  
+  ggsave(
+    drain_plot_cum,
+    filename = "./validation/validation_plot_los_drain_cum.png",
+    scale = 0.4,
+    width = 20,
+    height = 10
+  )
 
 
 (drain_plot <- out %>%
     reduce(bind_rows) %>%
     filter(site == "system") %>%
     pivot_longer(cols = -c(id, site, day, date, source), names_to = "metric", values_to = "value") %>%
-    group_by(source, id, metric) %>%
+    group_by(source, id, site, metric) %>%
     mutate(prop = value/sum(value)) %>%
     mutate(cum_prop = cumsum(prop)) %>%
     pivot_longer(cols = -c(day, site, date, source, id, metric), names_to = "calc", values_to = "value") %>%
@@ -223,15 +240,16 @@ out %>%
     # geom_line(aes(col = source)) +
     geom_errorbar(aes(ymin = l95_value, ymax = u95_value), position = "dodge") +
     facet_wrap(vars(id), scales = "free") +
-    theme_bw()
+    theme_bw() +
+    labs(y = "Number of patients becoming ready for discharge")
 )
 
 ggsave(
   drain_plot,
   filename = "./validation/validation_plot_los_drain.png",
-  scale = 0.55,
-  width = 30,
-  height = 15
+  scale = 0.5,
+  width = 20,
+  height = 10
 )
 
 
