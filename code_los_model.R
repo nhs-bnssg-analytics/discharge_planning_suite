@@ -173,7 +173,7 @@ tree_wf <- workflow() %>%
   add_recipe(tree_rec)
 
 
-doParallel::registerDoParallel()
+# doParallel::registerDoParallel()
 
 set.seed(345)
 tree_rs <- tune_grid(

@@ -198,15 +198,24 @@ list(p = p, res_out = res_out)
 })
 
 
-map(out, "res_out") %>%
+(new_admits_plot <- map(out, "res_out") %>%
   bind_rows() %>%
   group_by(site, day_end) %>%
   summarise(residual = mean(residual, na.rm = TRUE))  %>%
   ggplot(aes(x = day_end, y = residual)) +
   geom_col() +
-  facet_wrap(vars(site))
+  facet_wrap(vars(str_to_upper(site))) +
+  labs(y = "Actual discharges from new admissions\nminus simulated",
+       x = "day") +
+  theme_bw())
 
-
+ggsave(
+  new_admits_plot,
+  filename = "./validation/validation_plot_new_admits.png",
+  scale = 0.3,
+  width = 20,
+  height = 10
+)
 
 
 patchwork::wrap_plots(map(out[1:9], "p"), axes = "collect", guides = "collect") 
