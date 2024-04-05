@@ -42,7 +42,7 @@ dates <- sort(unique(admits_ts$date))
 dates_samp <- dates[dates < max(dates) - ddays(10)]
 
 
-d_i <- sample(dates_samp, 25)
+d_i <- sample(dates_samp, 50)
 
 future::plan(future::multisession, workers = parallel::detectCores() - 6)
 

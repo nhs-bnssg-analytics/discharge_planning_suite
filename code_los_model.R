@@ -196,26 +196,26 @@ tree_fit <- fit(tuned_wf, los_train)
 
 tree <- extract_fit_engine(tree_fit)
 
-node.fun1 <- function(x, labs, digits, varlen)
-{
-  paste(
-    ifelse(x$frame$var == "<leaf>", paste("Leaf ID:", rownames(x$frame), "\n"), ""),
-    "Mean LOS",
-    round(x$frame$yval, 1), 
-    "\n",
-    "n = ",
-    scales::number(x$frame$n, big.mark = ",")
-    )
-}
-
-png(filename = "materials/tree_plot.png",
-    width = 1800,
-    height = 1200,
-    res = 299,
-    bg = "white"
-    )
-rpart.plot::rpart.plot(tree, type = 2, extra = 101, node.fun = node.fun1)
-dev.off()
+# node.fun1 <- function(x, labs, digits, varlen)
+# {
+#   paste(
+#     ifelse(x$frame$var == "<leaf>", paste("Leaf ID:", rownames(x$frame), "\n"), ""),
+#     "Mean LOS",
+#     round(x$frame$yval, 1), 
+#     "\n",
+#     "n = ",
+#     scales::number(x$frame$n, big.mark = ",")
+#     )
+# }
+# 
+# png(filename = "materials/tree_plot.png",
+#     width = 1800,
+#     height = 1200,
+#     res = 299,
+#     bg = "white"
+#     )
+# rpart.plot::rpart.plot(tree, type = 2, extra = 101, node.fun = node.fun1)
+# dev.off()
 
 # partykit::as.party(tree) %>% plot(gp = gpar(fontsize = 6))
 
@@ -306,85 +306,76 @@ fit_dists <- fit_dists %>%
 #            stringr::str_squish()) %>%
 #   show_in_excel()
 
-
-# map(fit_dists$tdist, ~.x(10000, range = c(10, Inf))) %>%
-# enframe() %>%
-# unnest(value) %>%
-# ggplot(aes(x = value, fill = factor(name))) +
-#   geom_density(alpha = 0.5) +
-#   scale_x_continuous(limits = c(10, 50))
-
-
 # validation on test data
 
 
-cdf_fn <- function(dist, x, parms) {
-  fn <- dist_ptl_gen(dist, parms, "d")
-  out <- cumsum(fn(x, !!!parms))
-  (out - min(out)) / (max(out) - min(out))
-}
-
-validation_df <- los_test %>%
-  bake(extract_recipe(tree_fit), .) %>%
-  mutate(leaf = treeClust::rpart.predict.leaves(tree, .)) %>%
-  group_by(leaf) %>%
-  nest() %>%
-  left_join(select(fit_dists, -data, -min_aic) %>% group_by(leaf) %>% slice(1)) %>%
-  mutate(ks_test = pmap(list(data, pdist), ~ks.test(..1$los, ..2) %>% tidy())) %>%
-  mutate(ad_test = pmap(list(data, pdist), ~DescTools::AndersonDarlingTest(..1$los, null = ..2))) %>%
-  mutate(cdf_plot = pmap(
-    list(data, dist, fit_parms),
-    ~
-      ggplot(..1, aes(x = los)) +
-      geom_function(
-        geom = "step",
-        col = "black",
-        fun = function(x) cdf_fn(x, dist = ..2, parms = ..3)#,
-        #args = list(.x$fit_parms[[1]])
-      ) +
-      stat_ecdf(geom = "step") +
-      labs(title = "CDF plot", x = "LOS", y = "CDF")+ theme_minimal()) 
-  ) %>%
-  mutate(qq_plot = pmap(
-    list(data, dist, fit_parms),
-    ~
-      ggplot(..1, aes(sample = los)) +
-      qqplotr::stat_qq_band(distribution = ..2, alpha = 0.5,
-                            dparams = ..3) +
-      qqplotr::stat_qq_line(distribution = ..2, col = "black",
-                            dparams = ..3) +
-      qqplotr::stat_qq_point(distribution = ..2,
-                             dparams = ..3) + 
-      labs(title = "Q-Q plot", x = "Theoretical quantiles", y = "Empirical quantiles") + theme_minimal()
-  )) %>%
-  mutate(pp_plot = pmap(
-    list(data, dist, fit_parms),
-    ~
-      ggplot(..1, aes(sample = los)) +
-      qqplotr::stat_pp_band(distribution = ..2, alpha = 0.5,
-                            dparams = ..3) +
-      qqplotr::stat_pp_line(distribution = ..2, col = "black",
-                            dparams = ..3) +
-      qqplotr::stat_pp_point(distribution = ..2,
-                             dparams = ..3) + 
-      labs(title = "P-P plot", x = "Theoretical\nprobabilities", y = "Empirical probabilities") + theme_minimal()
-  )) 
+# cdf_fn <- function(dist, x, parms) {
+#   fn <- dist_ptl_gen(dist, parms, "d")
+#   out <- cumsum(fn(x, !!!parms))
+#   (out - min(out)) / (max(out) - min(out))
+# }
+# 
+# validation_df <- los_test %>%
+#   bake(extract_recipe(tree_fit), .) %>%
+#   mutate(leaf = treeClust::rpart.predict.leaves(tree, .)) %>%
+#   group_by(leaf) %>%
+#   nest() %>%
+#   left_join(select(fit_dists, -data, -min_aic) %>% group_by(leaf) %>% slice(1)) %>%
+#   mutate(ks_test = pmap(list(data, pdist), ~ks.test(..1$los, ..2) %>% tidy())) %>%
+#   mutate(ad_test = pmap(list(data, pdist), ~DescTools::AndersonDarlingTest(..1$los, null = ..2))) %>%
+#   mutate(cdf_plot = pmap(
+#     list(data, dist, fit_parms),
+#     ~
+#       ggplot(..1, aes(x = los)) +
+#       geom_function(
+#         geom = "step",
+#         col = "black",
+#         fun = function(x) cdf_fn(x, dist = ..2, parms = ..3)#,
+#         #args = list(.x$fit_parms[[1]])
+#       ) +
+#       stat_ecdf(geom = "step") +
+#       labs(title = "CDF plot", x = "LOS", y = "CDF")+ theme_minimal()) 
+#   ) %>%
+#   mutate(qq_plot = pmap(
+#     list(data, dist, fit_parms),
+#     ~
+#       ggplot(..1, aes(sample = los)) +
+#       qqplotr::stat_qq_band(distribution = ..2, alpha = 0.5,
+#                             dparams = ..3) +
+#       qqplotr::stat_qq_line(distribution = ..2, col = "black",
+#                             dparams = ..3) +
+#       qqplotr::stat_qq_point(distribution = ..2,
+#                              dparams = ..3) + 
+#       labs(title = "Q-Q plot", x = "Theoretical quantiles", y = "Empirical quantiles") + theme_minimal()
+#   )) %>%
+#   mutate(pp_plot = pmap(
+#     list(data, dist, fit_parms),
+#     ~
+#       ggplot(..1, aes(sample = los)) +
+#       qqplotr::stat_pp_band(distribution = ..2, alpha = 0.5,
+#                             dparams = ..3) +
+#       qqplotr::stat_pp_line(distribution = ..2, col = "black",
+#                             dparams = ..3) +
+#       qqplotr::stat_pp_point(distribution = ..2,
+#                              dparams = ..3) + 
+#       labs(title = "P-P plot", x = "Theoretical\nprobabilities", y = "Empirical probabilities") + theme_minimal()
+#   )) 
 
 # in order to created grid of plot duets (one CDF & QQ for each LOS leaf
 # partition) NOTE: for some reason I have to use cowplot to make a duet with a
 # border, which can then be wrapped using patchwork
 
-plots <- pmap(list(validation_df$cdf_plot, validation_df$pp_plot, validation_df$leaf),
-              ~cowplot::plot_grid(..1, ..2, labels = paste(..3), hjust = -.2) 
-              #+ theme(plot.background = element_rect(fill = NA, colour = 'black', size = 1))
-              )
-(validation_plot_los <- patchwork::wrap_plots(plots))
-
-ggsave(validation_plot_los,
-       filename = "./validation/validation_plot_los.png",
-       width = 20,
-       height = 10,
-       scale = 0.7)
+# plots <- pmap(list(validation_df$cdf_plot, validation_df$pp_plot, validation_df$leaf),
+#               ~cowplot::plot_grid(..1, ..2, labels = paste(..3), hjust = -.2) 
+#               #+ theme(plot.background = element_rect(fill = NA, colour = 'black', size = 1))
+#               )
+# (validation_plot_los <- patchwork::wrap_plots(plots))
+# 
+# ggsave(validation_plot_los,
+#        filename = "./validation/validation_plot_los.png",
+#        width = 20,
+#        height = 10,
+#        scale = 0.7)
 
 # validation_df_tot <- los_test %>%
 #   bake(extract_recipe(tree_fit), .) %>%
