@@ -45,7 +45,7 @@ nctr_df <-
 
 max_census <- max(nctr_df$Census_Date)
 
-date_co <- as.Date(max_census - dmonths(6))
+date_co <- as.Date(max_census - lubridate::dmonths(6))
 
 los_df <- nctr_df %>%
   ungroup() %>%
@@ -58,14 +58,14 @@ los_df <- nctr_df %>%
   mutate(spell_id = cur_group_id()) %>%
   group_by(spell_id) %>%
   mutate(
-    der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/ddays(1),
+    der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/lubridate::ddays(1),
     der_ctr = case_when(
       Criteria_To_Reside == "Y" | is.na(Criteria_To_Reside) ~ TRUE,
       !is.na(Days_NCTR) ~ FALSE,
       !is.na(Date_NCTR) ~ FALSE,
       Criteria_To_Reside == "N" ~ FALSE
     ),
-    der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - ddays(1),max(Census_Date)))) %>%
+    der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - lubridate::ddays(1),max(Census_Date)))) %>%
   ungroup() %>%
   mutate(der_date_nctr = pmin(der_date_nctr, Date_NCTR, na.rm = TRUE)) %>%
   arrange(Census_Date) %>%
@@ -77,7 +77,7 @@ los_df <- nctr_df %>%
   #     length(der_los) == 1 ~ der_los, # if only 1 LOS record, take that
   #   )
   # ) %>%
-  mutate(discharge_rdy_los = (der_date_nctr - as.Date(Date_Of_Admission))/ddays(1)) %>%
+  mutate(discharge_rdy_los = (der_date_nctr - as.Date(Date_Of_Admission))/lubridate::ddays(1)) %>%
   # take first discharge ready value
   group_by(NHS_Number, Date_Of_Admission) %>%
   arrange(discharge_rdy_los) %>% 
