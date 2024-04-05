@@ -70,7 +70,7 @@ models <- admissions %>%
          ctr = "N") %>%
   filter(date >= fc_start,
          date <= report_end ) %>%
-  mutate(day = (date - report_date)/ddays(1),
+  mutate(day = (date - report_start)/ddays(1),
          report_date = run_date) %>%
   # mutate(source = "admit_fcast",
   #        ctr = "N",
