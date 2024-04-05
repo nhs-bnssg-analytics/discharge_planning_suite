@@ -291,6 +291,12 @@ fit_dists <- fit_dists %>%
   mutate(fit_parms = set_names(fit_parms, leaf))
 
 
+saveRDS(fit_dists$fit_parms, "data/dist_split.RDS")
+saveRDS(select(fit_dists, -data, -min_aic), "data/fit_dists.RDS")
+saveRDS(tree_fit, "data/los_wf.RDS")
+cat("LOS model outputs written", fill = TRUE)
+
+
 # # output table
 # fit_dists %>%
 #   filter(leaf != -1) %>%
@@ -431,8 +437,3 @@ fit_dists <- fit_dists %>%
 #        bg = "white",
 #        height = 7,
 #        scale = 0.6)
-
-
-saveRDS(fit_dists$fit_parms, "data/dist_split.RDS")
-saveRDS(select(fit_dists, -data, -min_aic), "data/fit_dists.RDS")
-saveRDS(tree_fit, "data/los_wf.RDS")
