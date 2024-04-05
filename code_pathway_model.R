@@ -178,7 +178,7 @@ roc_df <- rf_fit$.predictions[[1]] %>%
   unnest(cols = c(roc, auc))
 
 
-validation_plot_pathway <-
+(validation_plot_pathway <-
   ggplot(roc_df, aes(
     x = 1 - specificity,
     y = sensitivity,
@@ -189,14 +189,14 @@ validation_plot_pathway <-
   ggplot2::coord_equal() +
   ggplot2::theme_minimal() +
   theme(legend.position = "bottom") +
-  labs(colour = "")
+  labs(colour = ""))
 
 ggsave(validation_plot_pathway,
        filename = "validation/validation_plot_pathway.png",
        bg = "white",
-       width = 8,
-       height = 8,
-       scale = 0.7)
+       width = 10,
+       height = 10,
+       scale = 0.45)
 
 # save workflow
 final_wf <- rf_fit %>% extract_workflow()

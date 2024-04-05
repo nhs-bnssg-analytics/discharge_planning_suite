@@ -152,9 +152,10 @@ out <- map(d_i, ~{
   full_df %>%
     ggplot(aes(x = pathway)) +
     geom_errorbar(aes(ymin = l95, ymax = u95), width = 0.2) +
-    geom_point(aes(y = mean, col = "pred"), shape = 2) +
-    geom_point(aes(y = n, col = "actual")) +
-    geom_text(aes(y = n, label = glue::glue("{round(p.value, 3)}")), hjust = -0.4) +
+    geom_point(aes(y = mean, col = "Predicted"), shape = 2) +
+    geom_point(aes(y = n, col = "Actual")) +
+    geom_text(aes(y = n, label = glue::glue("{round(p.value, 3)}")), hjust = -0.4, size = 1.75) +
+    labs(y = "Number patients requiring pathway") +
     theme_bw()
   
 })
@@ -164,7 +165,7 @@ out <- map(d_i, ~{
 ggsave(
   ptc,
   filename = "./validation/validation_plot_pathway_agg.png",
-  scale = 0.6,
+  scale = 0.4,
   width = 20,
   height = 10
 )
