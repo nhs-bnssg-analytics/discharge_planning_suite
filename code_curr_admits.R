@@ -6,18 +6,18 @@ df_curr_admits <- local({
     # filter for our main sites / perhaps I shouldn't do this?
     # filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
     # filter for CTR, we wont predict the NCTR outcome for those already NCTR/on a queue
-    filter(ctr == "Y")
+    filter(ctr)
   
   
   # attributes
   
-  attr_df <-
-    RODBC::sqlQuery(
-      con,
-      "select * from (
-select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
-[MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
-    )
+#   attr_df <-
+#     RODBC::sqlQuery(
+#       con,
+#       "select * from (
+# select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
+# [MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
+#     )
   
   los_df <- los_df %>%
     left_join(select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
@@ -41,40 +41,40 @@ select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period
   
   # los distributions
   
-  los_dist <- readRDS("data/dist_split.RDS") %>%
-    enframe() %>%
-    unnest_wider(value)
+  los_dist <- readRDS("data/fit_dists.RDS")  %>%
+    mutate(leaf = as.character(leaf))
   
   
   df_pred <- los_df %>%
     mutate(id = 1:n()) %>%
-    left_join(los_dist, by = join_by(leaf == name)) %>%
+    left_join(los_dist, by = join_by(leaf == leaf)) %>%
     mutate(los_remaining = pmap(
-      list(los, meanlog, sdlog),
-      ~
-        rlnormt(
+      list(los, tdist),
+      function(los, trunc_dist)
+        trunc_dist(
           n_rep,
-          meanlog = ..2,
-          sdlog = ..3,
-          range = c(..1, Inf)
-        ) - ..1
-    )) %>%
-    dplyr::select(id, site, los_remaining, starts_with(".pred")) %>%
-    unnest(los_remaining) %>%
+          range = c(los, Inf)
+        ) - los
+    ),
+    pathways = pmap(list(.pred_Other,
+                         .pred_P1,
+                         .pred_P2,
+                         .pred_P3), 
+                    ~factor(sample(c("Other", "P1", "P2", "P3"),
+                            n_rep,
+                            prob = c(..1, ..2, ..3, ..4),
+                            replace = TRUE)),
+                    levels = c("Other", "P1", "P2", "P3"))) %>%
+    dplyr::select(id, site, los_remaining, pathways) %>%
+    unnest(cols = c(los_remaining, pathways)) %>%
     mutate(los_remaining = ifelse(los_remaining < 0, 0, los_remaining)) %>%
     mutate(los_remaining = los_remaining %/% 1) %>%
     group_by(site, id) %>%
     mutate(rep = 1:n()) %>%
-    group_by(rep, site, day = los_remaining) %>%
-    summarise(across(starts_with(".pred"), list(count = {
-      \(x) sum(x)
-    }))) %>%
-    rename_with(.fn = \(x) str_replace_all(x, pattern = ".pred_|_count", "")) %>%
-    pivot_longer(
-      cols = -c(site, day, rep),
-      names_to = "pathway",
-      values_to = "count"
-    ) %>%
+    group_by(rep, site, day = los_remaining, pathway = pathways) %>%
+    count(name = "count") %>%
+    ungroup() %>%
+    complete(rep, site, day, pathway, fill =list(count = 0)) %>%
     mutate(source = "current_admits")
   df_pred
   

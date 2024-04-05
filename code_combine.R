@@ -18,7 +18,7 @@ source("colour_functions.R")
 
 plot_int <- TRUE
 
-n_rep <- 1E4
+n_rep <- 1E3
 
 run_date <- today()
 n_days <- 10
@@ -100,6 +100,14 @@ nctr_sum <- nctr_df %>%
   group_by(Organisation_Site_Code) %>%
   filter(Census_Date == max(Census_Date)) %>%
   ungroup() %>%
+  mutate(
+    der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/ddays(1),
+    der_ctr = case_when(
+      Criteria_To_Reside == "Y" | is.na(Criteria_To_Reside) ~ TRUE,
+      !is.na(Days_NCTR) ~ FALSE,
+      !is.na(Date_NCTR) ~ FALSE,
+      Criteria_To_Reside == "N" ~ FALSE
+    )) %>%
   mutate(report_date = max(Census_Date)) %>%
   mutate(los = (report_date - Date_Of_Admission) / ddays(1)) %>%
   mutate(
@@ -127,10 +135,10 @@ nctr_sum <- nctr_df %>%
     nhs_number,
     sex,
     age = Person_Age,
-    ctr = Criteria_To_Reside,
+    ctr = der_ctr,
     site,
     bed_type = Bed_Type,
-    los,
+    los = der_los,
     pathway
   ) %>%
   ungroup()
@@ -139,10 +147,19 @@ nctr_sum <- nctr_df %>%
 report_start <- max_date + ddays(1)
 report_end <- report_start + ddays(n_days)
 
+
+attr_df <-
+  RODBC::sqlQuery(
+    con,
+    "select * from (
+select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
+[MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
+  )
+
+
 source("code_admits_fcast.R")
 source("code_new_admits.R")
 source("code_curr_admits.R")
-
 
 if(plot_int){
   bind_rows(df_curr_admits, df_new_admit) %>%
@@ -190,7 +207,8 @@ plot_df_current <- nctr_sum %>%
   filter(!is.na(nhs_number), !is.na(ctr)) %>%
   group_by(site, ctr, pathway) %>%
   count() %>%
-  mutate(source = "current_ctr_data",
+  mutate(ctr = if_else(ctr, "Y", "N"),
+         source = "current_ctr_data",
          report_date = max_date,
          day = 0) %>%
   pivot_longer(cols = c(n),
@@ -239,5 +257,9 @@ con <- switch(.Platform$OS.type,
 # delete old data
 query_delete <- "DELETE FROM MODELLING_SQL_AREA.dbo.discharge_pathway_projections"
 RODBC::sqlQuery(con, query_delete)
-RODBC::sqlSave(con, plot_df, tablename = 'discharge_pathway_projections', rownames = FALSE, append = TRUE)
+RODBC::sqlSave(con,
+               plot_df,
+               tablename = 'discharge_pathway_projections',
+               rownames = FALSE,
+               append = TRUE)
 
