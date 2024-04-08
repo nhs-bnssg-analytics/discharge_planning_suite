@@ -217,7 +217,7 @@ png(filename = "materials/tree_plot.png",
 rpart.plot::rpart.plot(tree, type = 2, extra = 101, node.fun = node.fun1)
 dev.off()
 
-partykit::as.party(tree) %>% plot(gp = gpar(fontsize = 6))
+# partykit::as.party(tree) %>% plot(gp = gpar(fontsize = 6))
 
 
 
@@ -291,21 +291,20 @@ fit_dists <- fit_dists %>%
   mutate(fit_parms = set_names(fit_parms, leaf))
 
 
-# output table
-
-fit_dists %>%
-  filter(leaf != -1) %>%
-  ungroup() %>%
-  select(dist, fit_parms, aic = min_aic) %>%
-  mutate(aic = round(aic, 1),
-         fit_parms = map_chr(fit_parms, ~paste0(paste(names(.x), "=", round(.x, 2)), collapse = ", ")),
-         rule = rpart.plot::rpart.rules(tree) %>%
-           as.data.frame() %>%
-           janitor::clean_names() %>%
-           select(-y) %>%
-           reduce(paste) %>%
-           stringr::str_squish()) %>%
-  show_in_excel()
+# # output table
+# fit_dists %>%
+#   filter(leaf != -1) %>%
+#   ungroup() %>%
+#   select(dist, fit_parms, aic = min_aic) %>%
+#   mutate(aic = round(aic, 1),
+#          fit_parms = map_chr(fit_parms, ~paste0(paste(names(.x), "=", round(.x, 2)), collapse = ", ")),
+#          rule = rpart.plot::rpart.rules(tree) %>%
+#            as.data.frame() %>%
+#            janitor::clean_names() %>%
+#            select(-y) %>%
+#            reduce(paste) %>%
+#            stringr::str_squish()) %>%
+#   show_in_excel()
 
 
 # map(fit_dists$tdist, ~.x(10000, range = c(10, Inf))) %>%
