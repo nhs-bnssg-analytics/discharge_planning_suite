@@ -108,37 +108,44 @@ nctr_df <-
     mutate(mape = map_dbl(acc, ~.x %>% pull(MAPE) %>% mean)) %>%
     mutate(mae = map_dbl(acc, ~.x %>% pull(MAE) %>% mean))
 
-  autoplot(models$fc[[1]] %>% filter(.model == "mdl", .id == 1) %>% select(-.id),
-           filter(models$data_tr[[1]], .id ==2) %>% filter(date >= max(date) -dweeks(6)) %>% select(-.id))
+  # autoplot(models$fc[[1]] %>% filter(.model == "mdl", .id == 1) %>% select(-.id),
+  #          filter(models$data_tr[[1]], .id ==2) %>% filter(date >= max(date) -dweeks(6)) %>% select(-.id))
+
+    autoplot(models$fc[[1]] %>% filter(.model == "mdl", .id == 10) %>% select(-.id),
+             models$data[[1]] %>% filter(date >= max(date) -dweeks(6)))
 
   
   seq <- head(sort(unique(models$fc[[1]]$.id)), -1)
   
   
- out <- pmap(list(models$fc, models$data_tr, models$site, models$mape), function(fc, data, site, mape) {
+ out <- pmap(list(models$fc,
+                  models$data_tr,
+                  recode(models$site, "weston" = "wgh"),
+                  models$mape), function(fc, data, site, mape) {
    map(seq, ~ {
      autoplot(
-       models$fc[[1]] %>% filter(.model == "mdl", .id == .x) %>% select(-.id),
-       filter(models$data_tr[[1]], .id == .x + 1) %>% filter(date >= max(date) -
-                                                               dweeks(6)) %>% select(-.id) 
-     ) + theme_bw() + theme(legend.position = "off") + labs(y = glue::glue("{site} (MAPE: {round(mape,2 )})")) 
+       fc %>% filter(.model == "mdl", .id == .x) %>% select(-.id),
+       filter(data, .id == .x + 1) %>%
+             filter(date >= max(date) - dweeks(6)) %>%
+             select(-.id) 
+     ) + theme_bw() + theme(legend.position = "off") +
+       labs(y = glue::glue("Daily admissions, {str_to_upper(site)} (MAPE: {round(mape,2 )})")) 
    })
  })
        
-  
-  
+
 plots <- map2(out, models$site, ~{
   patchwork::wrap_plots(.x, ncol = 1, axes = "collect", guides = "collect") +
   patchwork::plot_annotation(title = .y)
-  })  
+})  
 
-validation_plot_fc <- patchwork::wrap_plots(plots, nrow = 1, axes = "collect", guides = "collect")
+(validation_plot_fc <- patchwork::wrap_plots(plots, nrow = 1, axes = "collect", guides = "collect"))
 
 
 ggsave(
   validation_plot_fc,
   filename = "./validation/validation_plot_fc.png",
-  scale = 0.6,
-  width = 12,
+  scale = 0.5,
+  width = 16,
   height = 12
 )

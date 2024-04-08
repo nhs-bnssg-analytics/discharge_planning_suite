@@ -188,7 +188,7 @@ nctr_sum <- nctr_sum %>%
 )
 
 
-out %>%
+(cum_drain_plot <- out %>%
   reduce(bind_rows) %>%
   filter(site == "nbt") %>%
   pivot_longer(cols = -c(id, site, day, date, source), names_to = "metric", values_to = "value") %>%
@@ -203,8 +203,17 @@ out %>%
   # geom_col(position = "dodge") +
   geom_line(aes(col = source)) +
   # geom_errorbar(aes(ymin = l95_cum_prop, ymax = u95_cum_prop), position = "dodge") +
-  facet_wrap(vars(id), scales = "free")
+  facet_wrap(vars(id), scales = "free"))
 
+
+  ggsave(
+    cum_drain_plot,
+    filename = "./validation/validation_plot_los_drain_cum.png",
+    scale = 0.55,
+    width = 30,
+    height = 15
+  )
+  
 
 (drain_plot <- out %>%
     reduce(bind_rows) %>%
@@ -223,6 +232,7 @@ out %>%
     # geom_line(aes(col = source)) +
     geom_errorbar(aes(ymin = l95_value, ymax = u95_value), position = "dodge") +
     facet_wrap(vars(id), scales = "free") +
+    labs(y = "Patients becoming ready for discharge") +
     theme_bw()
 )
 
@@ -230,8 +240,8 @@ ggsave(
   drain_plot,
   filename = "./validation/validation_plot_los_drain.png",
   scale = 0.55,
-  width = 30,
-  height = 15
+  width = 20,
+  height = 10
 )
 
 
