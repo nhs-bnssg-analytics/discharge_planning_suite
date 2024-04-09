@@ -82,7 +82,7 @@ n_rep <- 1E4
 sim_fn <- function(q, d, c) {
   n_arrs <-
     round(pmap_dbl(
-      list(d$n, d$l95, d$u95),
+      list(d$n, d$l90, d$u90),
       ~ rnorm(1, mean = ..1, sd = get_sd_from_ci(ci = c(..2, ..3)))
     ))
   n_cap <-  round(rpois(length(d$day), lambda = c))
@@ -117,15 +117,15 @@ df_sim <- pathway_queue %>%
                           ), rbind)))) %>%
   mutate(sim = map(sim, reduce, rbind)) %>%
   mutate(n = map(sim, colMeans),
-         u95 = map(sim, ~ map_dbl(array_branch(.x, margin = 2), ~ quantile(.x, .975))),
-         l95 = map(sim, ~ map_dbl(array_branch(.x, margin = 2), ~ quantile(.x, .025)))) %>%
-  select(site, pathway, n, u95, l95) %>%
-  unnest(c(n, u95, l95)) %>%
+         u90 = map(sim, ~ map_dbl(array_branch(.x, margin = 2), ~ quantile(.x, .90))),
+         l90 = map(sim, ~ map_dbl(array_branch(.x, margin = 2), ~ quantile(.x, .10)))) %>%
+  select(site, pathway, n, u90, l90) %>%
+  unnest(c(n, u90, l90)) %>%
   mutate(day = rep(c(0:n_days), times = n_distinct(site)*n_distinct(pathway))) %>%
   mutate(ctr = "N",
          source = "queue_sim",
          report_date = max_date) %>%
-  pivot_longer(cols = c(n, u95, l95),
+  pivot_longer(cols = c(n, u90, l90),
                names_to = "metric",
                values_to = "value")
 
@@ -145,7 +145,7 @@ df_sim
 
 # %>%
 #   ggplot(aes(x = day, y = n)) +
-#   geom_ribbon(aes(ymin = l95, ymax = u95), alpha = 0.25) +
+#   geom_ribbon(aes(ymin = l90, ymax = u90), alpha = 0.25) +
 #   geom_step() +
 #   facet_grid(site ~ pathway)
 #   

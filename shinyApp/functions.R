@@ -187,7 +187,7 @@ plot_occ_component <- function(df, input_site, title) {
     pivot_wider(names_from = "metric",
                 values_from = "value") %>%
     ggplot(aes(x = datetime, y = mean)) +
-    geom_ribbon(aes(ymin = l_95, ymax = u_95), alpha = 0.25) +
+    geom_ribbon(aes(ymin = l_85, ymax = u_85), alpha = 0.25) +
     geom_line() +
     labs(title = title,
          x = "",

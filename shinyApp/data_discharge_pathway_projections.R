@@ -53,9 +53,9 @@ data_dpp <- data_dpp %>%
               values_from = value) %>%
   mutate(
     tooltip_slot_avg = glue::glue("6-week average slots per day = {round(slot_avg, 1)}"),
-    tooltip_q = glue::glue("{format(report_date + ddays(day+1), '%a %d %b')}<br/>{pathway_q} = {round(n, 0)} ({round(u95,0)}, {round(l95,0)})"),
+    tooltip_q = glue::glue("{format(report_date + ddays(day+1), '%a %d %b')}<br/>{pathway_q} = {round(n, 0)} ({round(u90,0)}, {round(l90,0)})"),
     tooltip_n = glue::glue("{format(report_date + ddays(day+1), '%a %d %b')}<br/>{pathway_add} = {round(n, 0)}"),
     tooltip_n_noqueue = glue::glue("{str_remove_all(pathway_add, 'queue')} = {round(n, 0)}"),
-    tooltip_errorbar = glue::glue("({round(u95,0)}, {round(l95,0)})")
+    tooltip_errorbar = glue::glue("({round(u90,0)}, {round(l90,0)})")
   ) #%>%
   # mutate(pathway = fct_relevel(pathway, names(levels), after = 0))

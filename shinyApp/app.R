@@ -52,10 +52,10 @@ server <- shinyServer(function(input, output) {
   )
 
   cols_add <- c(
-    "NCTR but not\non D2A queue" = "#999999",
     "Additional P1" = "#8d488d",
     "Additional P2" = "#003087",
-    "Additional P3" = "#853358"
+    "Additional P3" = "#853358",
+    "NCTR but not\non D2A queue" = "#999999"
   )
   
   cols_q <- c(
@@ -67,7 +67,7 @@ server <- shinyServer(function(input, output) {
   
   output$dpp_plot <- renderGirafe({
     p_pred <- data_dpp %>%
-      # mutate(pathway = fct_relevel(pathway, names(levels), after = Inf)) %>%
+      mutate(pathway_add = fct_relevel(pathway_add, "NCTR but not\non D2A queue", after = Inf)) %>%
       mutate(day = report_date + ddays(day+1)) %>%
       filter(ctr == "Y", source == "model_pred") %>%
       # ggplot(aes(x = fct_recode(ctr, "NCTR (with NCTR status)" = "N", "CTR (with CTR status)" = "Y"), y = n, fill = fct_rev(pathway))) +
@@ -78,7 +78,7 @@ server <- shinyServer(function(input, output) {
           select(site, pathway_add, slot_avg, tooltip_slot_avg) %>%
           distinct() %>%
           na.omit()}, aes(yintercept = slot_avg, tooltip = tooltip_slot_avg), linetype = 2, size = 1, col = "#333333") + 
-      geom_errorbar_interactive(aes(ymin = l95, ymax = u95, tooltip = tooltip_errorbar), width = 1, size = 0.8, col = "#333333")  +
+      geom_errorbar_interactive(aes(ymin = l90, ymax = u90, tooltip = tooltip_errorbar), width = 1, size = 0.8, col = "#333333")  +
       ggh4x::facet_grid2(site~pathway_add, independent = "y", scales = "free_y", switch = "y") +
       bnssgtheme() +
       scale_x_datetime(date_breaks = "5 days", labels = date_format('%a\n%d %b')) +
@@ -142,10 +142,10 @@ server <- shinyServer(function(input, output) {
       filter(source == "queue_sim") %>%
       mutate(day = report_date + ddays(day+1)) %>%
       ggplot(aes(x = day, y = n, fill = pathway_q, group = pathway_q)) +
-      geom_ribbon_interactive(aes(ymin = l95, ymax = u95), alpha = 0.33)  +
+      geom_ribbon_interactive(aes(ymin = l90, ymax = u90), alpha = 0.33)  +
       geom_line_interactive(aes(col = pathway_q)) +
       geom_point_interactive(aes(tooltip = tooltip_q, col = pathway_q), size = 1.5) +
-      ggh4x::facet_grid2(site~pathway_q, independent = "y", scales = "free_y", switch = "y") +
+      ggh4x::facet_grid2(site~pathway_q, scales = "free_y", switch = "y") +
       bnssgtheme() +
       scale_x_datetime(date_breaks = "3 days", labels = date_format('%a\n%d %b')) +
       scale_fill_manual(values = cols_q) +
