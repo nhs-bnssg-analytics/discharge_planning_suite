@@ -204,10 +204,10 @@ list(p = p, res_out = res_out)
   summarise(residual = mean(residual, na.rm = TRUE))  %>%
   ggplot(aes(x = day_end, y = residual)) +
   geom_col() +
-  facet_wrap(vars(str_to_upper(site))) +
-  labs(y = "Actual discharges from new admissions\nminus simulated",
-       x = "day") +
-  theme_bw())
+
+  facet_wrap(vars(site)) + 
+  theme_bw() +
+  labs(y = str_wrap("Residual numbers of new patients becoming ready for discharge between actual and simulation.", 50))
 
 ggsave(
   new_admits_plot,
@@ -216,6 +216,7 @@ ggsave(
   width = 20,
   height = 10
 )
+
 
 
 patchwork::wrap_plots(map(out[1:9], "p"), axes = "collect", guides = "collect") 
