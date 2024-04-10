@@ -34,10 +34,10 @@ data_dpp <- data_dpp %>%
   mutate(across(matches('date'), ~ as.POSIXct(.x, tz = 'UTC'))) %>%
   mutate(pathway_add = factor(pathway, levels =
     c("Other", "P1", "P2", "P3"),
-    labels = c("NCTR but not\non D2A queue",
-               "Additional P1",
-               "Additional P2",
-               "Additional P3")
+    labels = c("..not for D2A service",
+               "..for P1 service",
+               "..for P2 service",
+               "..for P3 service")
   )) %>%
   mutate(pathway_q = factor(pathway, levels =
     c("Other", "P1", "P2", "P3"),
@@ -53,9 +53,11 @@ data_dpp <- data_dpp %>%
               values_from = value) %>%
   mutate(
     tooltip_slot_avg = glue::glue("6-week average slots per day = {round(slot_avg, 1)}"),
-    tooltip_q = glue::glue("{format(report_date + ddays(day+1), '%a %d %b')}<br/>{pathway_q} = {round(n, 0)} ({round(u90,0)}, {round(l90,0)})"),
+    tooltip_q = glue::glue("{format(report_date + ddays(day+1), '%a %d %b')}<br/>{pathway_q} = {round(n, 0)} ({round(n_u85,0)}, {round(n_l85,0)})"),
+    tooltip_q_u = glue::glue("{format(report_date + ddays(day+1), '%a %d %b')}<br/>{pathway_q} = {round(n_u, 0)} ({round(n_u_u85,0)}, {round(n_u_l85,0)})"),
+    tooltip_q_l = glue::glue("{format(report_date + ddays(day+1), '%a %d %b')}<br/>{pathway_q} = {round(n_l, 0)} ({round(n_l_u85,0)}, {round(n_l_l85,0)})"),
     tooltip_n = glue::glue("{format(report_date + ddays(day+1), '%a %d %b')}<br/>{pathway_add} = {round(n, 0)}"),
     tooltip_n_noqueue = glue::glue("{str_remove_all(pathway_add, 'queue')} = {round(n, 0)}"),
-    tooltip_errorbar = glue::glue("({round(u90,0)}, {round(l90,0)})")
+    tooltip_errorbar = glue::glue("({round(u85,0)}, {round(l85,0)})")
   ) #%>%
   # mutate(pathway = fct_relevel(pathway, names(levels), after = 0))

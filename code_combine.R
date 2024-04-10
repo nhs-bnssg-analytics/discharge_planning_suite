@@ -166,8 +166,8 @@ if(plot_int){
     group_by(site, day, pathway, source) %>%
     summarise(across(count, list(
       mean = mean,
-      u90 = {\(x) quantile(x, 0.90)},
-      l90 = {\(x) quantile(x, 0.10)}
+      u85 = {\(x) quantile(x, 0.925)},
+      l85 = {\(x) quantile(x, 0.075)}
     ))) %>% 
     filter(day <= n_days)  %>%
     ggplot(aes(x = day, y = count_mean, fill = source)) +
@@ -182,13 +182,13 @@ df_pred <- bind_rows(df_curr_admits, df_new_admit) %>%
   summarise(n = sum(count)) %>% # aggregate over source (current/new admits)
   group_by(site, day, pathway) %>% # compute CIs/mean over reps
   summarise(across(n, list(mean = mean,
-                               u90 = {\(x) quantile(x, 0.90)},
-                               l90 = {\(x) quantile(x, 0.10)}
+                               u85 = {\(x) quantile(x, 0.925)},
+                               l85 = {\(x) quantile(x, 0.075)}
                                ))) %>% 
   filter(day <= n_days) %>%
   rename(n = n_mean,
-         u90 = n_u90,
-         l90 = n_l90)
+         u85 = n_u85,
+         l85 = n_l85)
 
 # Now simulate the queue evolution
 source("code_queue_sim.R")
@@ -199,7 +199,7 @@ plot_df_pred <- df_pred %>%
   mutate(ctr = "Y",
          source = "model_pred",
          report_date = max_date) %>%
-  pivot_longer(cols = c(n, u90, l90),
+  pivot_longer(cols = c(n, u85, l85),
                names_to = "metric",
                values_to = "value")
 

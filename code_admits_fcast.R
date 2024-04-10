@@ -50,13 +50,13 @@ models <- admissions %>%
          model = map(data, ~model(.x, mdl = ARIMA(n))),
          fc = map(model, forecast, h = fcast_days)) %>%
   mutate(mean = map(fc, pluck, ".mean"),
-         u_95 = map(fc, ~pluck(.x, "n") %>% quantile(0.975)),
-         l_95 = map(fc, ~pluck(.x, "n") %>% quantile(0.025)),
+         u_85 = map(fc, ~pluck(.x, "n") %>% quantile(0.925)),
+         l_85 = map(fc, ~pluck(.x, "n") %>% quantile(0.075)),
          frame = pmap(list(data, mean), ~tibble(date = seq(max(pluck(..1, "date")) + ddays(1),
                                                           by = "days",
                                                           length.out = fcast_days),
                                                fcast = ..2)),
-         frame = pmap(list(frame, u_95, l_95), ~mutate(..1, u_95 = ..2, l_95 = ..3)),
+         frame = pmap(list(frame, u_85, l_85), ~mutate(..1, u_85 = ..2, l_85 = ..3)),
          frame = map2(data, frame, bind_rows),
          frame = map(frame, as_tibble)) %>%
   dplyr::select(site, frame) %>%
@@ -88,9 +88,9 @@ models <- admissions %>%
   #        arima = map(ts, ~auto.arima(.x) %>% forecast::forecast(h = fcast_days)),
   #        mean = map(arima, pluck, "mean"),
   #        upper = map(arima, ~pluck(.x, "upper") %>%
-  #                      as.data.frame %>% rename(u_80 = `80%`, u_95 = `95%`)),
+  #                      as.data.frame %>% rename(u_80 = `80%`, u_85 = `85%`)),
   #        lower = map(arima, ~pluck(.x, "lower") %>%
-  #                      as.data.frame %>% rename(l_80 = `80%`, l_95 = `95%`)),
+  #                      as.data.frame %>% rename(l_80 = `80%`, l_85 = `85%`)),
   #        frame = pmap(list(data, mean), ~tibble(date = seq(max(pluck(..1, "date")) + ddays(1),
   #                                                              by = "days",
   #                                                              length.out = fcast_days),
@@ -129,7 +129,7 @@ if(plot_int){
     geom_line() +
     geom_line(aes(y = fcast), col = "blue") +
     # geom_ribbon(aes(ymin = l_80, ymax = u_80), alpha = 0.25) +
-    geom_ribbon(aes(ymin = l_95, ymax = u_95), alpha = 0.25) +
+    geom_ribbon(aes(ymin = l_85, ymax = u_85), alpha = 0.25) +
     facet_wrap(vars(site), ncol = 1)
   print(p)
   rm(p)

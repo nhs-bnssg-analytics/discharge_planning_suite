@@ -134,7 +134,7 @@ colMeans_safe <- function(x) {
 }
 
 
-get_sd_from_ci <- function(ci, q = c(0.025, 0.975)) {
+get_sd_from_ci <- function(ci, q = c(0.075, 0.925)) {
   (ci[1] - ci[2])/(qnorm(q[1]) - qnorm(q[2]))
 }
 

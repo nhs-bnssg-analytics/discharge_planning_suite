@@ -11,7 +11,7 @@ df_new_admit <- local({
   df_admit_fcast_flt <- df_admit_fcast %>%
     pivot_wider(names_from = metric, values_from = value) %>%
     # filter(!is.na(fcast)) %>%
-    dplyr::select(site, date, fcast, u_95, l_95) %>%
+    dplyr::select(site, date, fcast, u_85, l_85) %>%
     filter(date >= report_start,
            date <= report_end)
   
@@ -23,7 +23,7 @@ df_new_admit <- local({
                      date = dates) %>%
     left_join(df_admit_fcast_flt, join_by(site, date == date)) %>%
     rowwise() %>%
-    mutate(fcast_samp = rnorm(1, mean = fcast, sd = get_sd_from_ci(ci = c(l_95, u_95)))) %>%
+    mutate(fcast_samp = rnorm(1, mean = fcast, sd = get_sd_from_ci(ci = c(l_85, u_85)))) %>%
     ungroup() %>%
     mutate(arrivals = coalesce(map_dbl(fcast_samp, rpois, n = 1), 0),
            # coalesce in case we sample below zero
@@ -38,7 +38,7 @@ df_new_admit <- local({
     mutate(pathways = map(n, ~ factor(sample(names(props), size = .x, prob = props, replace = TRUE), levels = names(props))))  %>%
     mutate(pathways = map(pathways, table)) %>%
     unnest_wider(pathways) %>%
-    select(-n) %>%
+    dplyr::select(-n) %>%
     pivot_longer(
       cols = -c(site, day, rep),
       names_to = "pathway",

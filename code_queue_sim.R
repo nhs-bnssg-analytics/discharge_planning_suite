@@ -2,6 +2,7 @@
 
 
 plot_df_queue_sim <- local({
+
 # calculate the number of discharges made by observing patients on a queue
 # leaving the census on the following day
 discharges_ts <- nctr_df %>%
@@ -47,16 +48,19 @@ discharges_ts <- nctr_df %>%
   slice(-1)
 
 
-# median number of discharges per day/site
+# mean number of discharges per day/site
 discharge_sum <- discharges_ts %>%
+  filter(date >= (max(date) - dweeks(4))) %>%
   group_by(site, pathway) %>%
-  summarise(median = median(n))
+  summarise(mean = mean(n),
+            sd = sd(n))
+
 
 discharges_ts %>%
 ggplot(aes(x = date, y = n)) +
   geom_step() +
   geom_hline(data = discharge_sum,
-      aes(yintercept = median), col = "blue",
+      aes(yintercept = mean), col = "blue",
       linetype = 2) +
   facet_grid(site ~ pathway, scales = "free")
 
@@ -82,10 +86,11 @@ n_rep <- 1E4
 sim_fn <- function(q, d, c) {
   n_arrs <-
     round(pmap_dbl(
-      list(d$n, d$l90, d$u90),
+      list(d$n, d$l85, d$u85),
       ~ rnorm(1, mean = ..1, sd = get_sd_from_ci(ci = c(..2, ..3)))
     ))
-  n_cap <-  round(rpois(length(d$day), lambda = c))
+  n_cap <-  pmax(0, round(rnorm(length(d$day), mean = c[["av"]], sd = c[["sd"]])))
+  # n_cap <-  round(rpois(length(d$day), lambda = c))
   q_out <- vector(mode = "numeric", length = length(n_cap))
   diff <- n_arrs - n_cap
   q_out[1] <- max(0, q + diff[1])
@@ -104,34 +109,66 @@ df_sim <- pathway_queue %>%
   }, by = join_by(site, pathway)) %>%
   # join on daily discharage average
   left_join(discharge_sum, by = join_by(site, pathway)) %>%
-  rename(initial_queue = value, cap_av = median) %>%
+  rename(initial_queue = value) %>%
+  mutate(cap = map2(mean, sd, ~c(av = ..1, sd = ..2))) %>%
+  mutate(cap_u = map(cap, ~c(av = .x[["av"]]*1.1, sd = .x[["sd"]])),
+         cap_l = map(cap, ~c(av = .x[["av"]]*0.9, sd = .x[["sd"]]))) %>%
   mutate(sim = list(map(seq_len(n_rep),
                         function(rep)
                           reduce(
                           pmap(
                             list(initial_queue,
                                  demand_fc,
-                                 cap_av), ~ {
+                                 cap), ~ {
                                    sim_fn(..1, ..2, ..3)
                                  }
                           ), rbind)))) %>%
   mutate(sim = map(sim, reduce, rbind)) %>%
+  mutate(sim_u = list(map(seq_len(n_rep),
+                        function(rep)
+                          reduce(
+                          pmap(
+                            list(initial_queue,
+                                 demand_fc,
+                                 cap_u), ~ {
+                                   sim_fn(..1, ..2, ..3)
+                                 }
+                          ), rbind)))) %>%
+  mutate(sim_u = map(sim_u, reduce, rbind)) %>%
+  mutate(sim_l = list(map(seq_len(n_rep),
+                        function(rep)
+                          reduce(
+                          pmap(
+                            list(initial_queue,
+                                 demand_fc,
+                                 cap_l), ~ {
+                                   sim_fn(..1, ..2, ..3)
+                                 }
+                          ), rbind)))) %>%
+  mutate(sim_l = map(sim_l, reduce, rbind)) %>%
   mutate(n = map(sim, colMeans),
-         u90 = map(sim, ~ map_dbl(array_branch(.x, margin = 2), ~ quantile(.x, .90))),
-         l90 = map(sim, ~ map_dbl(array_branch(.x, margin = 2), ~ quantile(.x, .10)))) %>%
-  select(site, pathway, n, u90, l90) %>%
-  unnest(c(n, u90, l90)) %>%
+         n_u85 = map(sim, ~ map_dbl(array_branch(.x, margin = 2), ~ quantile(.x, .925))),
+         n_l85 = map(sim, ~ map_dbl(array_branch(.x, margin = 2), ~ quantile(.x, .075)))) %>%
+  mutate(n_u = map(sim_u, colMeans),
+         n_u_u85 = map(sim_u, ~ map_dbl(array_branch(.x, margin = 2), ~ quantile(.x, .925))),
+         n_u_l85 = map(sim_u, ~ map_dbl(array_branch(.x, margin = 2), ~ quantile(.x, .075)))) %>%
+  mutate(n_l = map(sim_l, colMeans),
+         n_l_u85 = map(sim_l, ~ map_dbl(array_branch(.x, margin = 2), ~ quantile(.x, .925))),
+         n_l_l85 = map(sim_l, ~ map_dbl(array_branch(.x, margin = 2), ~ quantile(.x, .075)))) %>%
+  select(site, pathway, n, n_u85, n_l85, n_u, n_u_u85, n_u_l85, n_l, n_l_u85, n_l_l85) %>%
+  unnest(c(n, n, n_u85, n_l85, n_u, n_u_u85, n_u_l85, n_l, n_l_u85, n_l_l85)) %>%
   mutate(day = rep(c(0:n_days), times = n_distinct(site)*n_distinct(pathway))) %>%
   mutate(ctr = "N",
          source = "queue_sim",
          report_date = max_date) %>%
-  pivot_longer(cols = c(n, u90, l90),
+  pivot_longer(cols = c(n, n, n_u85, n_l85, n_u, n_u_u85, n_u_l85, n_l, n_l_u85, n_l_l85),
                names_to = "metric",
                values_to = "value")
 
 
 df_sim <- df_sim %>%
   bind_rows(discharge_sum %>%
+              select(-sd) %>%
               pivot_longer(cols = -c(site, pathway),
                            names_to = "metric", 
                            values_to = "value") %>%
