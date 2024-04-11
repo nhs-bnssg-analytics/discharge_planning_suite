@@ -20,7 +20,7 @@ plot_int <- TRUE
 
 n_rep <- 1E3
 
-run_date <- ymd("2024-03-25")
+run_date <- ymd("2024-03-18")
 n_days <- 10
 
 # latest nctr data
@@ -183,8 +183,8 @@ df_pred <- bind_rows(df_curr_admits, df_new_admit) %>%
   summarise(n = sum(count)) %>% # aggregate over source (current/new admits)
   group_by(site, day, pathway) %>% # compute CIs/mean over reps
   summarise(across(n, list(mean = mean,
-                           u85 = {\(x) quantile(x, 0.85)},
-                           l85 = {\(x) quantile(x, 0.15)}
+                           u85 = {\(x) quantile(x, 0.925)},
+                           l85 = {\(x) quantile(x, 0.075)}
   ))) %>% 
   filter(day <= n_days) %>%
   rename(n = n_mean,
@@ -379,10 +379,10 @@ source("shinyApp/theme.R")
 
 
 cols_add <- c(
-  "NCTR but not\non D2A queue" = "#999999",
-  "Additional P1" = "#8d488d",
-  "Additional P2" = "#003087",
-  "Additional P3" = "#853358"
+  "Not D2A service" = "#999999",
+  "For P1 service" = "#8d488d",
+  "For P2 service" = "#003087",
+  "For P3 service" = "#853358"
 )
 
 
@@ -412,10 +412,14 @@ nctr_sum %>%
                 select(site, day, pathway, n_pred = n, u85, l85)) %>%
   filter(day <= 10) %>%
   mutate(pathway = recode(pathway, 
-                          "Other" = "NCTR but not\non D2A queue",
-                          "P1" = "Additional P1",
-                          "P2" = "Additional P2",
-                          "P3" = "Additional P3")) %>%
+                          "Other" = "Not D2A service",
+                          "P1" = "For P1 service",
+                          "P2" = "For P2 service",
+                          "P3" = "For P3 service")) %>%
+  mutate(site = recode(site, 
+                          "bri" = "BRI",
+                          "nbt" = "NBT",
+                          "weston" = "WGH")) %>%
                           
   ggplot(aes(x = date + ddays(1), y = n)) +
   geom_col(aes(fill = pathway)) +
@@ -424,11 +428,19 @@ nctr_sum %>%
   bnssgtheme() +
   scale_x_date(date_breaks = "5 days", labels = date_format('%a\n%d %b')) +
   scale_fill_manual(values = cols_add) +
-  ggh4x::facet_grid2(site ~ pathway, independent = "y", scales = "free_y", switch = "y")
+  theme(strip.placement = "outside", legend.position = "bottom") +
+  ggh4x::facet_grid2(site ~ pathway, independent = "y", scales = "free_y", switch = "y") +
+  labs(x = "Date", y = "Forecasted demeand versus actual discharges")
 
 
 
-
+ggsave(
+  last_plot(),
+  filename = "./validation/validation_final_output.png",
+  scale = 0.55,
+  width = 20,
+  height = 10
+)
 
 
 

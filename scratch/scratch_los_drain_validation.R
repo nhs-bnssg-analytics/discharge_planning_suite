@@ -212,9 +212,6 @@ nctr_sum <- nctr_sum %>%
   # geom_col(position = "dodge") +
   geom_line(aes(col = source)) +
   # geom_errorbar(aes(ymin = l95_cum_prop, ymax = u95_cum_prop), position = "dodge") +
-<<<<<<< HEAD
-  facet_wrap(vars(id), scales = "free"))
-=======
   facet_wrap(vars(id), scales = "free") +
   labs(y = "Cumulative occupancy drain") +
   theme_bw())
