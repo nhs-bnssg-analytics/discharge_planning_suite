@@ -421,7 +421,7 @@ nctr_sum %>%
                           "nbt" = "NBT",
                           "weston" = "WGH")) %>%
                           
-  ggplot(aes(x = date + ddays(1), y = n)) +
+  ggplot(aes(x = date, y = n)) +
   geom_col(aes(fill = pathway)) +
   geom_point(aes(y = n_pred)) +
   geom_errorbar(aes(ymin = l85, ymax = u85)) +
@@ -431,7 +431,6 @@ nctr_sum %>%
   theme(strip.placement = "outside", legend.position = "bottom") +
   ggh4x::facet_grid2(site ~ pathway, independent = "y", scales = "free_y", switch = "y") +
   labs(x = "Date", y = "Forecasted demeand versus actual discharges")
-
 
 
 ggsave(

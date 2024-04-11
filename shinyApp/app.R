@@ -43,7 +43,7 @@ ui <- shinyUI(
                                      label = h3("D2A daily discharge capacity"),
                                      choices = list(
                                        "+10%" = 1,
-                                       "4-week average" = 2,
+                                       "4-week mean" = 2,
                                        "-10%" = 3
                                      ),
                                      selected = 2
