@@ -437,7 +437,7 @@ nctr_sum %>%
 ggsave(
   last_plot(),
   filename = "./validation/validation_final_output.png",
-  scale = 0.55,
+  scale = 0.6,
   width = 20,
   height = 10
 )
