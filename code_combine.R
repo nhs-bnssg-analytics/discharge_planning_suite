@@ -182,9 +182,9 @@ df_pred <- bind_rows(df_curr_admits, df_new_admit) %>%
   summarise(n = sum(count)) %>% # aggregate over source (current/new admits)
   group_by(site, day, pathway) %>% # compute CIs/mean over reps
   summarise(across(n, list(mean = mean,
-                               u85 = {\(x) quantile(x, 0.925)},
-                               l85 = {\(x) quantile(x, 0.075)}
-                               ))) %>% 
+                           u85 = {\(x) quantile(x, 0.925)},
+                           l85 = {\(x) quantile(x, 0.075)}
+  ))) %>% 
   filter(day <= n_days) %>%
   rename(n = n_mean,
          u85 = n_u85,
