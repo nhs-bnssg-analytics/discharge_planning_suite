@@ -20,7 +20,7 @@ df_curr_admits <- local({
 #     )
   
   los_df <- los_df %>%
-    left_join(select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
+    left_join(dplyr::select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
                                                      by = join_by(nhs_number == nhs_number)) %>%
     dplyr::select(age, sex, cambridge_score, bed_type, site, los) #%>%
     #na.omit()

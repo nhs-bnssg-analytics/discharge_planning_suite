@@ -51,7 +51,7 @@ discharges_ts <- nctr_df %>%
 # mean number of discharges per day/site
 discharge_sum <- discharges_ts %>%
   filter(date >= (max(date) - dweeks(4))) %>%
-  group_by(site, pathway) %>%
+  group_by(site, pathway) %>% 
   summarise(mean = mean(n),
             sd = sd(n))
 
