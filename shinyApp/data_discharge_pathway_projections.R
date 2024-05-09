@@ -7,30 +7,34 @@ data_folder_path <- switch(.Platform$OS.type,
 
                             
 if (.Platform$OS.type == "windows") {
-  con_string <- c(
-    "driver={SQL Server};server=Xsw-000-sp09;
-                             database=ABI;
-                    trusted_connection=true"
-  )
+ uid = "win_user"
+ pwd = Sys.getenv("DB_CRED")
 } else if (.Platform$OS.type == "unix") {
-  con_string <-
-    readr::read_lines("/home/rshiny/sql_modelling_connect_string_linux")
+  uid = "ics_user"
+  pwd = Sys.getenv("DB_CRED")
 } else {
   stop("Not on windows or unix?")
 }
 
-con <-
-  odbcDriverConnect(con_string)
+con <- RMySQL::dbConnect(RMySQL::MySQL(),
+                         dbname = "ics_db",
+                         host="bns-000-as02",
+                         username=uid,
+                         password=pwd
+                         )
 
 ## Use the lines below to read the predictions made using the server
 query <- '
 SELECT *
-FROM MODELLING_SQL_AREA.dbo.discharge_pathway_projections'
+FROM discharge_pathway_projections;'
 
-data_dpp <- sqlQuery(con, query)
+data_dpp <- RMySQL::dbSendQuery(con, query)
+data_dpp <- DBI::dbFetch(data_dpp,n = -1)
+
 report_date <- ymd(data_dpp$report_date)[1]
 
 data_dpp <- data_dpp %>%
+  select(-row_names) %>%
   mutate(across(matches('date'), ~ as.POSIXct(.x, tz = 'UTC'))) %>%
   mutate(pathway_add = factor(pathway, levels =
     c("Other", "P1", "P2", "P3"),

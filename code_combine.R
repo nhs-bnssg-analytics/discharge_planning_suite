@@ -263,3 +263,5 @@ RODBC::sqlSave(con,
                rownames = FALSE,
                append = TRUE)
 
+RMySQL::dbWriteTable(con, name = 'discharge_pathway_projections', value = plot_df)
+
