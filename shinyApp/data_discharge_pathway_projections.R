@@ -10,7 +10,7 @@ if (.Platform$OS.type == "windows") {
  uid = "win_user"
  pwd = Sys.getenv("DB_CRED")
 } else if (.Platform$OS.type == "unix") {
-  uid = "ics_user"
+  uid = "ics_server"
   pwd = Sys.getenv("DB_CRED")
 } else {
   stop("Not on windows or unix?")
