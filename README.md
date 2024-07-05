@@ -1,0 +1,15 @@
+# Package dependencies
+- `tidyverse`
+- `tidymodels`
+- `RODBC`
+- `fitdistr`
+- `fitdistrplus`
+- `tsibble`
+- `fable`
+- `fabletools`
+- `actuar`
+- `extraDistr`
+- `ggiraph`
+- `ggh4x`
+- `shiny`
+- `shinydashboard`
