@@ -208,6 +208,7 @@ list(p = p, res_out = res_out)
   facet_wrap(vars(site)) + 
   theme_bw() +
   labs(y = str_wrap("Residual numbers of new patients becoming ready for discharge between actual and simulation.", 50))
+  )
 
 ggsave(
   new_admits_plot,

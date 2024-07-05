@@ -151,6 +151,8 @@ server <- shinyServer(function(input, output) {
   
   output$queue_fc <- renderGirafe({
     
+    browser()
+    
     rename_vec <- switch(input$capacity, 
                      "1" = c("n" = "n_u", "n_l85" = "n_u_l85", "n_u85" = "n_u_u85", "tooltip_q" = "tooltip_q_u"),
                      "2" = vector(mode = "character"),

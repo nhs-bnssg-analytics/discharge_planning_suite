@@ -179,7 +179,9 @@ roc_df <- rf_fit$.predictions[[1]] %>%
 
 
 (validation_plot_pathway <-
-  ggplot(roc_df, aes(
+    roc_df %>%
+    mutate(class = recode(class, Other = "P0")) %>%
+  ggplot(aes(
     x = 1 - specificity,
     y = sensitivity,
     col = glue::glue("{class}\nAUC: {round(.estimate, 2)}")

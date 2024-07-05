@@ -32,7 +32,7 @@ discharges_ts <- nctr_df %>%
     "Other",
     pathway
   )) %>%
-  select(nhs_number = NHS_Number, site, pathway, date = Census_Date, Date_Of_Admission) %>%
+  dplyr::select(nhs_number = NHS_Number, site, pathway, date = Census_Date, Date_Of_Admission) %>%
   distinct() %>%
   filter(pathway != "Other") %>%
   group_by(nhs_number, Date_Of_Admission) %>%
@@ -70,7 +70,7 @@ ggplot(aes(x = date, y = n)) +
 pathway_queue <- nctr_sum %>%
   filter(!is.na(nhs_number), !is.na(ctr)) %>%
   filter(pathway != "Other", !ctr) %>% 
-  select(-ctr) %>%
+  dplyr::select(-ctr) %>%
   group_by(site, pathway) %>%
   count() %>%
   mutate(source = "current_ctr_data",
@@ -101,7 +101,7 @@ sim_fn <- function(q, d, c) {
 }
 
 df_sim <- pathway_queue %>%
-  select(site, pathway, value) %>%
+  dplyr::select(site, pathway, value) %>%
   left_join({
     df_pred %>%
       group_by(site, pathway) %>%
@@ -155,7 +155,7 @@ df_sim <- pathway_queue %>%
   mutate(n_l = map(sim_l, colMeans),
          n_l_u85 = map(sim_l, ~ map_dbl(array_branch(.x, margin = 2), ~ quantile(.x, .925))),
          n_l_l85 = map(sim_l, ~ map_dbl(array_branch(.x, margin = 2), ~ quantile(.x, .075)))) %>%
-  select(site, pathway, n, n_u85, n_l85, n_u, n_u_u85, n_u_l85, n_l, n_l_u85, n_l_l85) %>%
+  dplyr::select(site, pathway, n, n_u85, n_l85, n_u, n_u_u85, n_u_l85, n_l, n_l_u85, n_l_l85) %>%
   unnest(c(n, n, n_u85, n_l85, n_u, n_u_u85, n_u_l85, n_l, n_l_u85, n_l_l85)) %>%
   mutate(day = rep(c(0:n_days), times = n_distinct(site)*n_distinct(pathway))) %>%
   mutate(ctr = "N",
@@ -168,7 +168,7 @@ df_sim <- pathway_queue %>%
 
 df_sim <- df_sim %>%
   bind_rows(discharge_sum %>%
-              select(-sd) %>%
+              dplyr::select(-sd) %>%
               pivot_longer(cols = -c(site, pathway),
                            names_to = "metric", 
                            values_to = "value") %>%
@@ -215,7 +215,7 @@ df_sim
 #     "Other",
 #     pathway
 #   )) %>%
-#   select(nhs_number = NHS_Number, site, pathway, date = Census_Date, Date_Of_Admission) %>%
+#   dplyr::select(nhs_number = NHS_Number, site, pathway, date = Census_Date, Date_Of_Admission) %>%
 #   group_by(nhs_number, Date_Of_Admission) %>%
 #   mutate(id = cur_group_id()) %>%
 #   group_by(nhs_number) %>%
@@ -257,7 +257,7 @@ df_sim
 #     "Other",
 #     pathway
 #   )) %>%
-#   select(nhs_number = NHS_Number, site, pathway, date = Census_Date, Date_Of_Admission) %>%
+#   dplyr::select(nhs_number = NHS_Number, site, pathway, date = Census_Date, Date_Of_Admission) %>%
 #   distinct() %>%
 #   filter(pathway != "Other") %>%
 #   group_by(site, pathway, date) %>%

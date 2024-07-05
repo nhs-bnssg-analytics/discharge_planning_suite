@@ -113,6 +113,17 @@ nctr_sum <- nctr_df %>%
   mutate(
     pathway = recode(
       Current_Delay_Code_Standard,
+      "Pathway 3 - Other" = "P3",
+      "Awaiting confirmation MDT" = "Other",
+      "Awaiting referral to SPA" = "Other",
+      "Pathway 3 - D2A" = "P3",
+      "Pathway 0" = "P0",
+      "Pathway 1 - D2A" = "P1",
+      "Awaiting confirmation Social" = "Other",
+      "Pathway 2 - Other" = "P2",
+      "Pathway 2 - D2A" = "P2",
+      "Awaiting confirmation Other" = "Other",
+      "Pathway 1 - Other" = "P1",
       "P3 / Other Complex Discharge" = "P3",
       "Uncoded" = "Other",
       "Repatriation" = "Other",

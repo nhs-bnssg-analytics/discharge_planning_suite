@@ -314,7 +314,6 @@ cat("LOS model outputs written", fill = TRUE)
 
 # validation on test data
 
-
 # cdf_fn <- function(dist, x, parms) {
 #   fn <- dist_ptl_gen(dist, parms, "d")
 #   out <- cumsum(fn(x, !!!parms))
@@ -340,7 +339,7 @@ cat("LOS model outputs written", fill = TRUE)
 #         #args = list(.x$fit_parms[[1]])
 #       ) +
 #       stat_ecdf(geom = "step") +
-#       labs(title = "CDF plot", x = "LOS", y = "CDF")+ theme_minimal()) 
+#       labs(title = "CDF plot", x = "LOS", y = "CDF")+ theme_minimal())
 #   ) %>%
 #   mutate(qq_plot = pmap(
 #     list(data, dist, fit_parms),
@@ -351,7 +350,7 @@ cat("LOS model outputs written", fill = TRUE)
 #       qqplotr::stat_qq_line(distribution = ..2, col = "black",
 #                             dparams = ..3) +
 #       qqplotr::stat_qq_point(distribution = ..2,
-#                              dparams = ..3) + 
+#                              dparams = ..3) +
 #       labs(title = "Q-Q plot", x = "Theoretical quantiles", y = "Empirical quantiles") + theme_minimal()
 #   )) %>%
 #   mutate(pp_plot = pmap(
@@ -363,26 +362,26 @@ cat("LOS model outputs written", fill = TRUE)
 #       qqplotr::stat_pp_line(distribution = ..2, col = "black",
 #                             dparams = ..3) +
 #       qqplotr::stat_pp_point(distribution = ..2,
-#                              dparams = ..3) + 
+#                              dparams = ..3) +
 #       labs(title = "P-P plot", x = "Theoretical\nprobabilities", y = "Empirical probabilities") + theme_minimal()
-#   )) 
-
-# in order to created grid of plot duets (one CDF & QQ for each LOS leaf
-# partition) NOTE: for some reason I have to use cowplot to make a duet with a
-# border, which can then be wrapped using patchwork
-
+#   ))
+# 
+# # in order to created grid of plot duets (one CDF & QQ for each LOS leaf
+# # partition) NOTE: for some reason I have to use cowplot to make a duet with a
+# # border, which can then be wrapped using patchwork
+# 
 # plots <- pmap(list(validation_df$cdf_plot, validation_df$pp_plot, validation_df$leaf),
-#               ~cowplot::plot_grid(..1, ..2, labels = paste(..3), hjust = -.2) 
+#               ~cowplot::plot_grid(..1, ..2, labels = paste(..3), hjust = -.2)
 #               #+ theme(plot.background = element_rect(fill = NA, colour = 'black', size = 1))
 #               )
 # (validation_plot_los <- patchwork::wrap_plots(plots))
+# #
+# # ggsave(validation_plot_los,
+# #        filename = "./validation/validation_plot_los.png",
+# #        width = 20,
+# #        height = 10,
+# #        scale = 0.7)
 # 
-# ggsave(validation_plot_los,
-#        filename = "./validation/validation_plot_los.png",
-#        width = 20,
-#        height = 10,
-#        scale = 0.7)
-
 # validation_df_tot <- los_test %>%
 #   bake(extract_recipe(tree_fit), .) %>%
 #   mutate(leaf = -1) %>%
@@ -402,7 +401,7 @@ cat("LOS model outputs written", fill = TRUE)
 #         #args = list(.x$fit_parms[[1]])
 #       ) +
 #       stat_ecdf(geom = "step") +
-#       labs(title = "CDF plot", x = "LOS", y = "CDF")+ theme_minimal()) 
+#       labs(title = "CDF plot", x = "LOS", y = "CDF")+ theme_minimal())
 #   ) %>%
 #   mutate(qq_plot = pmap(
 #     list(data, dist, fit_parms),
@@ -413,7 +412,7 @@ cat("LOS model outputs written", fill = TRUE)
 #       qqplotr::stat_qq_line(distribution = ..2, col = "black",
 #                             dparams = ..3) +
 #       qqplotr::stat_qq_point(distribution = ..2,
-#                              dparams = ..3) + 
+#                              dparams = ..3) +
 #       labs(title = "Q-Q plot", x = "Theoretical quantiles", y = "Empirical quantiles") + theme_minimal()
 #   )) %>%
 #   mutate(pp_plot = pmap(
@@ -425,12 +424,12 @@ cat("LOS model outputs written", fill = TRUE)
 #       qqplotr::stat_pp_line(distribution = ..2, col = "black",
 #                             dparams = ..3) +
 #       qqplotr::stat_pp_point(distribution = ..2,
-#                              dparams = ..3) + 
+#                              dparams = ..3) +
 #       labs(title = "P-P plot", x = "Theoretical probabilities", y = "Empirical probabilities") + theme_minimal()
-#   )) 
+#   ))
 # 
 # (validation_plot_los_tot <- cowplot::plot_grid(validation_df_tot$cdf_plot[[1]], validation_df_tot$pp_plot[[1]]))
-# 
+
 # ggsave(validation_plot_los_tot,
 #        filename = "./validation/validation_plot_los_tot.png",
 #        width = 14,
