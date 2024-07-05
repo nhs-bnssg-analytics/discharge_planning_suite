@@ -76,7 +76,7 @@ pathway_df <- nctr_df %>%
           age = Person_Age[1],
           spec = Specialty_Code[1],
           bed_type = Bed_Type[1]) %>%
-  select(nhs_number,
+  dplyr::select(nhs_number,
          sex,
          age,
          pathway,
@@ -98,9 +98,9 @@ select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period
 
 # modelling
 model_df <- pathway_df %>%
-  left_join(select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
+  left_join(dplyr::select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
             by = join_by(nhs_number == nhs_number)) %>%
-  select(pathway,
+  dplyr::select(pathway,
          #site,
          cambridge_score,
          age,
@@ -157,7 +157,7 @@ rf_wf <- workflow() %>%
 rf_fit <- last_fit(rf_wf, model_df_split)
 
 roc_df <- rf_fit$.predictions[[1]] %>%
-  select(starts_with(".pred"), truth = pathway, -.pred_class) %>%
+  dplyr::select(starts_with(".pred"), truth = pathway, -.pred_class) %>%
   pivot_longer(
     cols = starts_with(".pred"),
     names_to = "class",
@@ -174,7 +174,7 @@ roc_df <- rf_fit$.predictions[[1]] %>%
                      )))) %>%
   mutate(roc = map(data, ~roc_curve(.x, truth = truth, prob))) %>%
   mutate(auc = map(data, ~roc_auc(.x, truth = truth, prob))) %>%
-  select(class, roc, auc) %>%
+  dplyr::select(class, roc, auc) %>%
   unnest(cols = c(roc, auc))
 
 
@@ -202,82 +202,3 @@ ggsave(validation_plot_pathway,
 final_wf <- rf_fit %>% extract_workflow()
 saveRDS(final_wf, "data/rf_wf.RDS")
 
-
-
-# rf_fit$.predictions[[1]] %>% conf_mat(truth = pathway, estimate = .pred_class) %>%
-#   summary()
-# 
-# rf_fit$.predictions[[1]] %>% conf_mat(truth = pathway, estimate = .pred_class) %>%
-#   autoplot()
-# # xgb
-# 
-# xgb_spec <- boost_tree(
-#   trees = 1000,
-#   tree_depth = tune(), min_n = tune(),
-#   loss_reduction = tune(),                     ## first three: model complexity
-#   sample_size = tune(), mtry = tune(),         ## randomness
-#   learn_rate = tune()                          ## step size
-# ) %>%
-#   set_engine("xgboost") %>%
-#   set_mode("classification")
-# 
-# xgb_grid <- grid_latin_hypercube(
-#   tree_depth(),
-#   min_n(),
-#   loss_reduction(),
-#   sample_size = sample_prop(),
-#   finalize(mtry(), model_df_train),
-#   learn_rate(),
-#   size = 30
-# )
-# 
-# xgb_wf <- workflow() %>%
-#   add_recipe(mod_rec) %>%
-#   add_model(xgb_spec)
-# 
-# set.seed(123)
-# model_df_folds <- vfold_cv(model_df_train, strata = pathway)
-# 
-# model_df_folds
-# 
-# doParallel::registerDoParallel()
-# 
-# set.seed(234)
-# xgb_res <- tune_grid(
-#   xgb_wf,
-#   resamples = model_df_folds,
-#   grid = xgb_grid,
-#   control = control_grid(save_pred = TRUE)
-# )
-# 
-# xgb_res %>%
-#   collect_metrics() %>%
-#   filter(.metric == "roc_auc") %>%
-#   select(mean, mtry:sample_size) %>%
-#   pivot_longer(mtry:sample_size,
-#                values_to = "value",
-#                names_to = "parameter"
-#   ) %>%
-#   ggplot(aes(value, mean, color = parameter)) +
-#   geom_point(alpha = 0.8, show.legend = FALSE) +
-#   facet_wrap(~parameter, scales = "free_x") +
-#   labs(x = NULL, y = "AUC")
-# 
-# saveRDS(object = xgb_res, "xgb_grid_res.RDS")
-# 
-# best_auc <- select_best(xgb_res, "roc_auc")
-# 
-# final_xgb <- finalize_workflow(
-#   xgb_wf,
-#   best_auc
-# )
-# 
-# final_xgb
-# 
-# xgb_fit <- last_fit(final_xgb, model_df_split)
-# 
-# xgb_fit$.predictions[[1]] %>% conf_mat(truth = pathway, estimate = .pred_class) %>% 
-#   summary()
-# 
-# xgb_fit$.predictions[[1]] %>% conf_mat(truth = pathway, estimate = .pred_class) %>%
-#   autoplot()

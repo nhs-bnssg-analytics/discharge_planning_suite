@@ -118,10 +118,10 @@ select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period
 
 # modelling
 model_df <- los_df %>%
-  full_join(select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
+  full_join(dplyr::select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
             by = join_by(nhs_number == nhs_number)) %>%
   # na.omit() %>%
-  select(los,
+  dplyr::select(los,
          site,
          # day_of_admission,
          cambridge_score,
@@ -292,11 +292,11 @@ fit_dists <- fit_dists %>%
 
 
 saveRDS(fit_dists$fit_parms, "data/dist_split.RDS")
-saveRDS(select(fit_dists, -data, -min_aic), "data/fit_dists.RDS")
+saveRDS(dplyr::select(fit_dists, -data, -min_aic), "data/fit_dists.RDS")
 saveRDS(tree_fit, "data/los_wf.RDS")
 cat("LOS model outputs written", fill = TRUE)
 
-
+# VALIDATION code
 # # output table
 # fit_dists %>%
 #   filter(leaf != -1) %>%

@@ -4,7 +4,6 @@ library(forecast)
 library(tsibble)
 library(fable)
 library(fabletools)
-library(fable.prophet)
 
 df_admit_fcast <- local({
   
@@ -46,7 +45,6 @@ models <- admissions %>%
   nest() %>%
   mutate(data = map(data, as_tsibble, index = date)) %>%
   mutate(
-         # model = map(data, ~model(.x, mdl = prophet(n))),
          model = map(data, ~model(.x, mdl = ARIMA(n))),
          fc = map(model, forecast, h = fcast_days)) %>%
   mutate(mean = map(fc, pluck, ".mean"),
@@ -72,50 +70,10 @@ models <- admissions %>%
          date <= report_end ) %>%
   mutate(day = (date - report_start)/ddays(1),
          report_date = run_date) %>%
-  # mutate(source = "admit_fcast",
-  #        ctr = "N",
-  #        report_date = run_date) %>%
-  # filter(date >= fc_start,
-  #        date <= report_end ) %>%
-  # mutate(day = (date - run_date)/ddays(1)) %>%
   mutate(site = recode(site, 'SOUTHMEAD HOSPITAL' = 'nbt', 
                        'BRISTOL ROYAL INFIRMARY' = 'bri', 
                        'WESTON GENERAL HOSPITAL' = 'weston'))
 
-
-
-  # mutate(ts = map(data, ~ts(pull(.x, n), frequency = 365)),
-  #        arima = map(ts, ~auto.arima(.x) %>% forecast::forecast(h = fcast_days)),
-  #        mean = map(arima, pluck, "mean"),
-  #        upper = map(arima, ~pluck(.x, "upper") %>%
-  #                      as.data.frame %>% rename(u_80 = `80%`, u_85 = `85%`)),
-  #        lower = map(arima, ~pluck(.x, "lower") %>%
-  #                      as.data.frame %>% rename(l_80 = `80%`, l_85 = `85%`)),
-  #        frame = pmap(list(data, mean), ~tibble(date = seq(max(pluck(..1, "date")) + ddays(1),
-  #                                                              by = "days",
-  #                                                              length.out = fcast_days),
-  #                                               fcast = ..2)),
-  #        frame = pmap(list(frame, upper, lower), bind_cols),
-  #        frame = map2(data, frame, bind_rows)) %>%
-  # dplyr::select(site, frame) %>%
-  # unnest(cols = c(frame)) %>%
-  # pivot_longer(cols = -c(site, date),
-  #              names_to = "metric",
-  #              values_to = "value") %>%
-  # filter(!is.na(value)) %>%
-  # mutate(value = pmax(value, 0)) %>%
-  # mutate(tag = "ae_fcast",
-  #        report_date = run_date) %>%
-  # filter(date >= fc_start,
-  #        date <= report_end ) %>%
-  # mutate(site = recode(site, 'SOUTHMEAD HOSPITAL' = 'nbt', 
-  #                      'BRISTOL ROYAL INFIRMARY' = 'bri', 
-  #                      'WESTON GENERAL HOSPITAL' = 'weston'))
-
-
-# if(save_int) saveRDS(models, "data/df_ae_fcast_sql.RDS")
-# models
-# })
 
 models
 })
