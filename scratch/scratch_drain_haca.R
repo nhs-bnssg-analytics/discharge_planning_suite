@@ -82,9 +82,8 @@ options(future.globals.maxSize = 16000 * 1024^2)
 future::plan(future::multisession, workers = 4)
 # out <- furrr::future_map(d_i[1:10], ~{
 out <- map(d_i, ~{
-  browser()
+
   # spell ids with CTR from this date:
-  
   sid_i <- dates_spells %>%
     filter(Census_Date ==.x & der_ctr) %>%
     pull(spell_id) %>% 
@@ -423,7 +422,6 @@ saveRDS(out, "data/drain_out_new.RDS")
 map(out, "result") %>% bind_rows()
 
 
-
 out %>% 
   map("result") %>%
   reduce(bind_rows) %>%
@@ -451,6 +449,7 @@ out %>%
   # geom_errorbar(aes(ymin = l95_cum_prop, ymax = u95_cum_prop), position = "dodge") +
   facet_wrap(vars(id), scales = "free") +
   labs(y = "Cumulative occupancy drain")
+
 
 
 # foo <- with(sim_drain,
