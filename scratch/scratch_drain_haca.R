@@ -273,13 +273,32 @@ ggsave(
 out %>% 
   map("result") %>%
   bind_rows() %>%
+  mutate(wday = weekdays(date)) %>%
+  filter(day <= 10, !wday %in% c("Saturday", "Sunday")) %>%
   pivot_wider(names_from = source, values_from = mean, id_cols = c(day, site, id)) %>%
   filter(site == "system") %>%
   rowwise() %>%
   mutate(perc = (empirical - simulated)/empirical) %>%
-  filter(day <= 10) %>% View()
   group_by(id) %>%
-  filter(max(perc) < 2) %>%
+  # filter(max(perc) < 2) %>%
+  group_by(day) %>%
+  summarise(perc = mean(perc, na.rm = TRUE)) %>%
+  ggplot(aes(x = day, y = perc)) + geom_col()
+
+
+out %>% 
+  map("result") %>%
+  bind_rows() %>% View()
+  mutate(wday = weekdays(date)) %>%
+  filter(day <= 10, !wday %in% c("Saturday", "Sunday")) %>%
+  filter(site == "system") %>%
+  select(day, source, mean, id) %>%
+  pivot_wider(names_from = source, values_from = mean, id_cols = c(day, site, id)) %>%
+  pivot_wider(names_from = id, values_from = c(empirical, simulated), names_vary = "slowest") %>% View()
+  rowwise() %>%
+  mutate(perc = (empirical - simulated)/empirical) %>%
+  group_by(id) %>%
+  # filter(max(perc) < 2) %>%
   group_by(day) %>%
   summarise(perc = mean(perc, na.rm = TRUE)) %>%
   ggplot(aes(x = day, y = perc)) + geom_col()
@@ -425,10 +444,12 @@ map(out, "result") %>% bind_rows()
 out %>% 
   map("result") %>%
   reduce(bind_rows) %>%
-  filter(site == "system") %>%
+  # mutate(wday = weekdays(date)) %>%
+  # filter(day <= 10, !wday %in% c("Saturday", "Sunday")) %>%
+  # select(-wday) %>%
+  filter(site == "system", day <= 10) %>%
   pivot_longer(cols = -c(id, site, day, date, source), names_to = "metric", values_to = "value") %>%
   filter(metric == "mean") %>%
-  filter(day <= 10) %>%
   group_by(source, id, metric) %>%
   mutate(prop = value/sum(value)) %>%
   mutate(cum_prop = cumsum(prop)) %>%
@@ -443,12 +464,36 @@ out %>%
   # filter(!na_flag) %>%
   group_by(day, source) %>%
   summarise(mean_cum_prop = mean(mean_cum_prop)) %>%
+  mutate(source = recode(source, "empirical" = "Actual", "simulated" = "Simulated")) %>%
   ggplot(aes(x = day, y = mean_cum_prop, fill = source)) +
   # geom_col(position = "dodge") +
   geom_line(aes(col = source)) +
   # geom_errorbar(aes(ymin = l95_cum_prop, ymax = u95_cum_prop), position = "dodge") +
-  facet_wrap(vars(id), scales = "free") +
-  labs(y = "Cumulative occupancy drain")
+  # facet_wrap(vars(id), scales = "free")  +
+  bnssgtheme() +
+  theme(legend.position = "bottom", legend.justification = "center") +
+  # scale_fill_manual(values = unname(bnssgcols[c(3, 7)])) +
+  scale_colour_manual(values = c("#8c96c6", "#88419d")) +
+  labs(y = "Cumulative occupancy drain",
+       x = "Day")
+
+
+
+ggsave(
+  last_plot(),
+  filename = "./validation/validation_plot_los_drain_meancumulative.png",
+  height = 7.5,
+  width = 7.5, 
+  scale = 0.6)
+
+
+out %>%
+  map("result") %>%
+  bind_rows() %>%
+  mutate(wday = weekdays(date)) %>%
+  filter(id == 69, day <= 10, !wday %in% c("Saturday", "Sunday")) %>%
+  filter(site == "system") %>%
+  ggplot(aes(x = day, y = mean, fill = source)) + geom_col(position = "dodge")
 
 
 
