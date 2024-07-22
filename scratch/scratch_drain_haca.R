@@ -76,11 +76,14 @@ nctr_sum <- nctr_sum %>%
   bind_rows(nctr_sum %>% mutate(site = "system", spell_id = paste0(spell_id, "_sys", sep = "")))
 
 
-options(future.globals.maxSize = 8000 * 1024^2)
-future::plan(future::multisession, workers = parallel::detectCores() - 6)
-out <- furrr::future_map(d_i, ~{
-# out <- map(d_i, ~{
+options(future.globals.maxSize = 16000 * 1024^2)
+# future::plan(future::multisession, workers = parallel::detectCores() - 6)
+future::plan(future::multisession, workers = 4)
+# out <- furrr::future_map(d_i[1:10], ~{
+out <- map(d_i, ~{
+  browser()
   # spell ids with CTR from this date:
+
   sid_i <- dates_spells %>%
     filter(Census_Date ==.x & der_ctr) %>%
     pull(spell_id) %>% 
@@ -137,13 +140,13 @@ out <- furrr::future_map(d_i, ~{
       select(attr_df,-sex,-age) %>% mutate(nhs_number = as.character(nhs_number)),
       by = join_by(nhs_number == nhs_number)
     ) %>%
-    bake(extract_recipe(los_wf), .) %>%
+    bake(hardhat::extract_recipe(los_wf), .) %>%
     mutate(site = if_else(is.na(site), "system", site)) %>%
     # bake(extract_recipe(los_wf) %>% update_role_requirements(role = "site id", bake = FALSE), .) %>%
     ungroup() %>%
     arrange(site) %>%
     mutate(id = 1:n(),
-           leaf = as.character(treeClust::rpart.predict.leaves(extract_fit_engine(los_wf), .))) %>%
+           leaf = as.character(treeClust::rpart.predict.leaves(hardhat::extract_fit_engine(los_wf), .))) %>%
     left_join(fit_dists, by = join_by(site == site, leaf == leaf)) %>%
     mutate(los_remaining = pmap(list(los, tdist),
                                 function(los, trunc_dist)
@@ -278,6 +281,138 @@ out %>%
   filter(day <= 10) %>%
   summarise(perc = mean(perc, na.rm = TRUE)) %>%
   ggplot(aes(x = day, y = perc)) + geom_col()
+
+
+
+
+# fn 
+
+drain_fn <- function(date_i) {
+  
+  sid_i <- dates_spells %>%
+    filter(Census_Date == date_i & der_ctr) %>%
+    pull(spell_id) %>% 
+    unique()
+  
+  # Calculate the drain for these patients
+  emp_drain <- nctr_sum %>%
+    #first, only filter spells we are interested in
+    filter(spell_id %in% sid_i) %>%
+    filter(Census_Date >=date_i) %>%
+    arrange(Census_Date) %>%
+    group_by(spell_id) %>%
+    # mutate(los = min(der_los), # los on index date is the minimum LOS
+    #        los_dis_rdy = case_when(
+    #          !any(der_ctr) ~ max(der_los), # if never NCTR, take max LOS
+    #          der_ctr ~ tail(der_los, 1),  # where CTR take last LOS
+    #          length(der_los) == 1 ~ der_los, # if only 1 LOS record, take that
+    #        )
+    # ) %>%
+    mutate(los = min(der_los), # los on index date is the minimum LOS
+           der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - ddays(1),max(Census_Date)))) %>%
+    ungroup() %>%
+    mutate(der_date_nctr = pmin(der_date_nctr, Date_NCTR, na.rm = TRUE)) %>% 
+    group_by(spell_id) %>%
+    mutate(discharge_rdy_los = (der_date_nctr - as.Date(Date_Of_Admission))/ddays(1)) %>%
+    select(nhs_number = NHS_Number,
+           site,
+           spell_id,
+           bed_type = Bed_Type,
+           los,
+           discharge_rdy_los) %>%
+    # take first active LOS value for each spell
+    group_by(spell_id) %>%
+    arrange(discharge_rdy_los) %>%
+    slice(1) %>%
+    mutate(days_until_rdy = discharge_rdy_los - los) %>%
+    group_by(day = days_until_rdy, site) %>%
+    count(name = "value") %>%
+    filter(day >= 0)
+  
+  sim_drain <- nctr_sum %>%
+    # filter(Criteria_To_Reside == "Y" & (is.na(Days_NCTR) | Days_NCTR == 0)) %>%
+    filter(Census_Date == date_i,
+           spell_id %in% sid_i) %>%
+    group_by(spell_id) %>%
+    mutate(los = der_los) %>%
+    select(nhs_number,
+           site,
+           age = Person_Age,
+           sex = Person_Stated_Gender_Code,
+           bed_type = Bed_Type,
+           los) %>%
+    left_join(
+      select(attr_df,-sex,-age) %>% mutate(nhs_number = as.character(nhs_number)),
+      by = join_by(nhs_number == nhs_number)
+    ) %>%
+    bake(hardhat::extract_recipe(los_wf), .) %>%
+    mutate(site = if_else(is.na(site), "system", site)) %>%
+    # bake(hardhat::extract_recipe(los_wf) %>% update_role_requirements(role = "site id", bake = FALSE), .) %>%
+    ungroup() %>%
+    arrange(site) %>%
+    mutate(id = 1:n(),
+           leaf = as.character(treeClust::rpart.predict.leaves(hardhat::extract_fit_engine(los_wf), .))) %>%
+    left_join(fit_dists, by = join_by(site == site, leaf == leaf)) %>%
+    mutate(los_remaining = pmap(list(los, tdist),
+                                function(los, trunc_dist)
+                                  trunc_dist(
+                                    n_rep,
+                                    range = c(los, Inf)
+                                  ) - los) %>%
+             reduce(rbind)) %>%
+    select(site, los_remaining)  %>%
+    group_by(site) %>%
+    nest(.key = "los_remaining") %>%
+    mutate(los_remaining = map(los_remaining, ~
+                                 `%/%`(date_i, 1) %>%
+                                 apply(
+                                   MARGIN = 2,
+                                   FUN = function(x)
+                                     table(factor(x, levels = 0:max(.)))
+                                 ) %>%
+                                 apply(
+                                   MARGIN = 1,
+                                   FUN = function(x)
+                                     list(
+                                       mean = mean(x),
+                                       u95 = quantile(x, 0.975),
+                                       l95 = quantile(x, 0.225)
+                                     )
+                                 ))) %>% 
+    mutate(los_remaining = map(los_remaining, enframe)) %>%
+    mutate(los_remaining = map(los_remaining, ~unnest_wider(date_i, value))) %>%
+    unnest(cols = los_remaining) %>%
+    rename(day = name) %>%
+    pivot_longer(cols = -c(day, site), names_to = "metric") %>%
+    mutate(source = "simulated",
+           day = as.numeric(day))
+  
+  
+  out_df <- emp_drain %>%
+    mutate(source = "empirical", 
+           metric = "mean") %>%
+    bind_rows(sim_drain) %>%
+    pivot_wider(names_from = metric, values_from = value) %>%
+    mutate(date = date_i + ddays(day))
+  # pivot_longer(cols = -day, names_to = "metric", values_to = "n") %>%
+  # mutate(metric = recode(metric, n = "empirical", n_sim = "simulated")) %>%
+  # group_by(metric) %>%
+  # mutate(prop = n/sum(n)) %>%
+  
+  out_df %>%
+    mutate(id = which(d_i == date_i))
+}
+
+drain_fn_safe <- safely(drain_fn)
+
+options(future.globals.maxSize = 16000 * 1024^2)
+future::plan(future::multisession, workers = parallel::detectCores() - 6)
+# future::plan(future::multisession, workers = 4)
+out <- furrr::future_map(d_i[1:10], ~drain_fn_safe(.x))
+out <- map(d_i[1:10], ~drain_fn_safe(.x))
+
+
+map(out, "result") %>% bind_rows()
 
 
 # foo <- with(sim_drain,
