@@ -4,7 +4,7 @@ out_drain <- readRDS("data/validation_drain_out.RDS")
   reduce(bind_rows) %>%
   filter(site == "system") %>%
   # filter(id %in% c(1, 2, 7, 9)) %>%
-  filter(id %in% c(8, 9)) %>%
+  filter(id %in% c(2, 8)) %>%
   pivot_longer(cols = -c(id, site, day, date, source), names_to = "metric", values_to = "value") %>%
   group_by(source, id, site, metric) %>%
   mutate(prop = value/sum(value)) %>%
@@ -21,6 +21,7 @@ out_drain <- readRDS("data/validation_drain_out.RDS")
   geom_errorbar(aes(ymin = l95_value, ymax = u95_value), position = "dodge") +
   facet_wrap(vars(id), scales = "free") +
   bnssgtheme() +
+    theme(strip.text = element_blank()) +
   # scale_fill_manual(values = unname(bnssgcols[c(3, 7)])) +
     scale_fill_manual(values = c("#8c96c6", "#88419d")) +
   labs(title = "Current inpatients",
@@ -49,14 +50,29 @@ out_accum <- readRDS("data/validation_accum_out.RDS")
 
 patchwork::wrap_plots(drain_plot, accum_plot, ncol = 1, axes = "collect", guides = "collect") &
   theme(legend.position = "bottom",
-        strip.text = element_blank())
+        strip.text = element_blank(),
+        panel.background = element_rect(fill = "transparent",
+                                        colour = NA_character_), # necessary to avoid drawing panel outline
+        panel.grid.major = element_blank(), # get rid of major grid
+        panel.grid.minor = element_blank(), # get rid of minor grid
+        panel.grid.major.y = element_blank(),
+        plot.background = element_rect(fill = "transparent",
+                                       colour = NA_character_), # necessary to avoid drawing plot outline
+        legend.background = element_rect(fill = "transparent"),
+        legend.box.background = element_rect(fill = "transparent", colour = NA_character_),
+        legend.key = element_rect(fill = "transparent", colour = NA_character_)
+        )
 
-ggsave("validation/haca_dis_rdy_plot.png",
+ggsave("validation/haca_dis_rdy_plot_transp.png",
        last_plot(),
+       bg = "transparent",
        height = 7.5,
        width = 7.5, 
        scale = 0.9)
 
+
+
+roc_df <- readRDS("data/roc_df.RDS")
 
 (validation_plot_pathway <-
     roc_df %>%
@@ -74,8 +90,8 @@ ggsave("validation/haca_dis_rdy_plot.png",
     labs(colour = ""))
 
 ggsave(validation_plot_pathway,
-       filename = "validation/validation_plot_pathway.png",
-       bg = "white",
+       filename = "validation/validation_plot_pathway_transp.png",
+       bg = "transparent",
        width = 10,
        height = 10,
        scale = 0.45)
@@ -96,14 +112,27 @@ roc_df <- readRDS("data/roc_df.RDS")
     ggplot2::coord_equal() +
     bnssgtheme() +
     scale_colour_brewer(palette = "Set1") +
-    theme(legend.position = "right", legend.justification = "center") +
+    theme(legend.position = "right",
+          legend.justification = "center",
+          strip.text = element_blank(),
+          panel.background = element_rect(fill = "transparent",
+                                          colour = NA_character_), # necessary to avoid drawing panel outline
+          panel.grid.major = element_blank(), # get rid of major grid
+          panel.grid.minor = element_blank(), # get rid of minor grid
+          panel.grid.major.y = element_blank(),
+          plot.background = element_rect(fill = "transparent",
+                                         colour = NA_character_), # necessary to avoid drawing plot outline
+          legend.background = element_rect(fill = "transparent"),
+          legend.box.background = element_rect(fill = "transparent", colour = NA_character_),
+          legend.key = element_rect(fill = "transparent", colour = NA_character_)
+          ) +
     labs(colour = "") +
   guides(col=guide_legend(ncol=1,byrow=TRUE))
   )
 
 ggsave(validation_plot_pathway,
-       filename = "validation/validation_plot_pathway_haca.png",
-       bg = "white",
+       filename = "validation/validation_plot_pathway_haca_transp.png",
+       bg = "transparent",
        width = 10,
        height = 7.5,
        scale = 0.45)
@@ -129,11 +158,25 @@ out_pathway_model <- readRDS("data/validation_pathway_model_out.RDS")
        x = "D2A pathway") +
   theme(legend.position = "bottom",
         strip.text = element_blank(),
-        legend.justification = "center"))
+        legend.justification = "center",
+        panel.background = element_rect(fill = "transparent",
+                                        colour = NA_character_), # necessary to avoid drawing panel outline
+        panel.grid.major = element_blank(), # get rid of major grid
+        panel.grid.minor = element_blank(), # get rid of minor grid
+        panel.grid.major.y = element_blank(),
+        plot.background = element_rect(fill = "transparent",
+                                       colour = NA_character_), # necessary to avoid drawing plot outline
+        legend.background = element_rect(fill = "transparent"),
+        legend.box.background = element_rect(fill = "transparent", colour = NA_character_),
+        legend.key = element_rect(fill = "transparent", colour = NA_character_)
+        
+        )
+  )
 
 
-ggsave("validation/haca_dis_rdy_plot.png",
+ggsave("validation/haca_dis_rdy_plot_transp.png",
        pathway_model_plot,
+       bg = "transparent",
        height = 7.5,
        width = 7.5, 
        scale = 0.9)

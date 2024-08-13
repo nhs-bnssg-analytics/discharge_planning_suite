@@ -23,7 +23,8 @@ nctr_sum <- nctr_df %>%
       !is.na(Days_NCTR) ~ FALSE,
       !is.na(Date_NCTR) ~ FALSE,
       Criteria_To_Reside == "N" ~ FALSE
-    )) 
+    ))  %>%
+  filter(site != "nbt")
 
 
 attr_df <-
@@ -68,17 +69,19 @@ group_by(site, leaf) %>%
 slice(1) %>%
 na.omit()
 
-# take sample of dates
-d_i <- sample(dates, 9)
-
 nctr_sum <- nctr_sum %>%
   bind_rows(nctr_sum %>% mutate(site = "system", spell_id = paste0(spell_id, "_sys", sep = "")))
+
+# take sample of dates
+set.seed(345)
+d_i <- sample(dates, 9)
+
 
 
 
 # future::plan(future::multisession, workers = parallel::detectCores() - 6)
 # out <- furrr::future_map(d_i, ~{
-  out <- map(d_i, ~{
+out <- map(d_i, ~{
   # spell ids with CTR from this date:
   sid_i <- dates_spells %>%
     filter(Census_Date ==.x & der_ctr) %>%
@@ -264,6 +267,8 @@ ggsave(
   width = 20,
   height = 10
 )
+
+saveRDS(out, "data/validation_drain_out.RDS")
 
 
 # foo <- with(sim_drain,
