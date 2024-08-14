@@ -47,11 +47,19 @@ dates_spells <- dates_spells %>%
 dates <- nctr_df %>%
   filter(Census_Date > ymd("2023-07-01"),
          Census_Date < max(Census_Date) - ddays(50),
+         # remove dates near Christmas
          abs(interval(Census_Date, ymd("2023-12-25"))/ddays(1)) > 15) %>%
   pull(Census_Date) %>%
   unique()
 
+# # take only Mondays
+# 
+# dates <- dates[weekdays(dates) == "Monday"] 
+
 los_wf <- readRDS("data/los_wf.RDS")
+
+los_rec <- hardhat::extract_recipe(los_wf)
+los_engine <- hardhat::extract_recipe(los_wf)
 
 
 fit_dists <- readRDS("data/fit_dists.RDS") %>%
@@ -70,240 +78,12 @@ fit_dists <-
   slice(1) %>%
   na.omit()
 
-# take sample of dates
+# # take sample of dates
 d_i <- sample(dates, 100)
+# d_i <- dates
 
 nctr_sum <- nctr_sum %>%
   bind_rows(nctr_sum %>% mutate(site = "system", spell_id = paste0(spell_id, "_sys", sep = "")))
-
-
-options(future.globals.maxSize = 16000 * 1024^2)
-# future::plan(future::multisession, workers = parallel::detectCores() - 6)
-future::plan(future::multisession, workers = 4)
-# out <- furrr::future_map(d_i[1:10], ~{
-out <- map(d_i, ~{
-
-  # spell ids with CTR from this date:
-  sid_i <- dates_spells %>%
-    filter(Census_Date ==.x & der_ctr) %>%
-    pull(spell_id) %>% 
-    unique()
-  
-  # Calculate the drain for these patients
-  emp_drain <- nctr_sum %>%
-    #first, only filter spells we are interested in
-    filter(spell_id %in% sid_i) %>%
-    filter(Census_Date >=.x) %>%
-    arrange(Census_Date) %>%
-    group_by(spell_id) %>%
-    # mutate(los = min(der_los), # los on index date is the minimum LOS
-    #        los_dis_rdy = case_when(
-    #          !any(der_ctr) ~ max(der_los), # if never NCTR, take max LOS
-    #          der_ctr ~ tail(der_los, 1),  # where CTR take last LOS
-    #          length(der_los) == 1 ~ der_los, # if only 1 LOS record, take that
-    #        )
-    # ) %>%
-    mutate(los = min(der_los), # los on index date is the minimum LOS
-           der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - ddays(1),max(Census_Date)))) %>%
-    ungroup() %>%
-    mutate(der_date_nctr = pmin(der_date_nctr, Date_NCTR, na.rm = TRUE)) %>% 
-    group_by(spell_id) %>%
-    mutate(discharge_rdy_los = (der_date_nctr - as.Date(Date_Of_Admission))/ddays(1)) %>%
-    select(nhs_number = NHS_Number,
-           site,
-           spell_id,
-           bed_type = Bed_Type,
-           los,
-           discharge_rdy_los) %>%
-    # take first active LOS value for each spell
-    group_by(spell_id) %>%
-    arrange(discharge_rdy_los) %>%
-    slice(1) %>%
-    mutate(days_until_rdy = discharge_rdy_los - los) %>%
-    group_by(day = days_until_rdy, site) %>%
-    count(name = "value") %>%
-    filter(day >= 0)
-  
-  sim_drain <- nctr_sum %>%
-    # filter(Criteria_To_Reside == "Y" & (is.na(Days_NCTR) | Days_NCTR == 0)) %>%
-    filter(Census_Date == .x,
-           spell_id %in% sid_i) %>%
-    group_by(spell_id) %>%
-    mutate(los = der_los) %>%
-    select(nhs_number,
-           site,
-           age = Person_Age,
-           sex = Person_Stated_Gender_Code,
-           bed_type = Bed_Type,
-           los) %>%
-    left_join(
-      select(attr_df,-sex,-age) %>% mutate(nhs_number = as.character(nhs_number)),
-      by = join_by(nhs_number == nhs_number)
-    ) %>%
-    bake(hardhat::extract_recipe(los_wf), .) %>%
-    mutate(site = if_else(is.na(site), "system", site)) %>%
-    # bake(extract_recipe(los_wf) %>% update_role_requirements(role = "site id", bake = FALSE), .) %>%
-    ungroup() %>%
-    arrange(site) %>%
-    mutate(id = 1:n(),
-           leaf = as.character(treeClust::rpart.predict.leaves(hardhat::extract_fit_engine(los_wf), .))) %>%
-    left_join(fit_dists, by = join_by(site == site, leaf == leaf)) %>%
-    mutate(los_remaining = pmap(list(los, tdist),
-                                function(los, trunc_dist)
-                                  trunc_dist(
-                                    n_rep,
-                                    range = c(los, Inf)
-                                  ) - los) %>%
-             reduce(rbind)) %>%
-    select(site, los_remaining)  %>%
-    group_by(site) %>%
-    nest(.key = "los_remaining") %>%
-    mutate(los_remaining = map(los_remaining, ~
-                                 `%/%`(.x, 1) %>%
-                                 apply(
-                                   MARGIN = 2,
-                                   FUN = function(x)
-                                     table(factor(x, levels = 0:max(.)))
-                                 ) %>%
-                                 apply(
-                                   MARGIN = 1,
-                                   FUN = function(x)
-                                     list(
-                                       mean = mean(x),
-                                       u95 = quantile(x, 0.975),
-                                       l95 = quantile(x, 0.225)
-                                     )
-                                 ))) %>% 
-    mutate(los_remaining = map(los_remaining, enframe)) %>%
-    mutate(los_remaining = map(los_remaining, ~unnest_wider(.x, value))) %>%
-    unnest(cols = los_remaining) %>%
-    rename(day = name) %>%
-    pivot_longer(cols = -c(day, site), names_to = "metric") %>%
-    mutate(source = "simulated",
-           day = as.numeric(day))
-  
-  
-  out_df <- emp_drain %>%
-    mutate(source = "empirical", 
-           metric = "mean") %>%
-    bind_rows(sim_drain) %>%
-    pivot_wider(names_from = metric, values_from = value) %>%
-    mutate(date = .x + ddays(day))
-  # pivot_longer(cols = -day, names_to = "metric", values_to = "n") %>%
-  # mutate(metric = recode(metric, n = "empirical", n_sim = "simulated")) %>%
-  # group_by(metric) %>%
-  # mutate(prop = n/sum(n)) %>%
-  
-  out_df %>%
-    mutate(id = which(d_i == .x))}
-)
-
-
-
-(drain_plot_cum <- out %>% 
-    reduce(bind_rows) %>%
-    filter(site == "system") %>%
-    pivot_longer(cols = -c(id, site, day, date, source), names_to = "metric", values_to = "value") %>%
-    group_by(source, id, metric) %>%
-    mutate(prop = value/sum(value)) %>%
-    mutate(cum_prop = cumsum(prop)) %>%
-    pivot_longer(cols = -c(day, date, site, source, id, metric), names_to = "calc", values_to = "value") %>%
-    unite("metric", metric, calc, sep = "_") %>%
-    pivot_wider(names_from = metric, values_from = value) %>%
-    filter(day <= 50) %>%
-    ggplot(aes(x = day, y = mean_cum_prop, fill = source)) +
-    # geom_col(position = "dodge") +
-    geom_line(aes(col = source)) +
-    # geom_errorbar(aes(ymin = l95_cum_prop, ymax = u95_cum_prop), position = "dodge") +
-    facet_wrap(vars(id), scales = "free") +
-    labs(y = "Cumulative occupancy drain") +
-    theme_bw())
-
-ggsave(
-  drain_plot_cum,
-  filename = "./validation/validation_plot_los_drain_cum.png",
-  scale = 0.4,
-  width = 20,
-  height = 10
-)
-
-
-
-ggsave(
-  cum_drain_plot,
-  filename = "./validation/validation_plot_los_drain_cum.png",
-  scale = 0.55,
-  width = 30,
-  height = 15
-)
-
-
-(drain_plot <- out %>%
-    reduce(bind_rows) %>%
-    filter(site == "system") %>%
-    pivot_longer(cols = -c(id, site, day, date, source), names_to = "metric", values_to = "value") %>%
-    group_by(source, id, site, metric) %>%
-    mutate(prop = value/sum(value)) %>%
-    mutate(cum_prop = cumsum(prop)) %>%
-    pivot_longer(cols = -c(day, site, date, source, id, metric), names_to = "calc", values_to = "value") %>%
-    unite("metric", metric, calc, sep = "_") %>%
-    pivot_wider(names_from = metric, values_from = value) %>%
-    filter(day <= 10) %>%
-    ggplot(aes(x = date, y = mean_value, fill = source)) +
-    geom_col(position = "dodge") +
-    scale_x_date(labels = date_format(format = "%a"), date_breaks = "2 days") +
-    # geom_line(aes(col = source)) +
-    geom_errorbar(aes(ymin = l95_value, ymax = u95_value), position = "dodge") +
-    facet_wrap(vars(id), scales = "free") +
-    
-    theme_bw() +
-    labs(y = "Number of patients becoming ready for discharge")
-)
-
-ggsave(
-  drain_plot,
-  filename = "./validation/validation_plot_los_drain.png",
-  scale = 0.5,
-  width = 20,
-  height = 10
-)
-
-
-
-out %>% 
-  map("result") %>%
-  bind_rows() %>%
-  mutate(wday = weekdays(date)) %>%
-  filter(day <= 10, !wday %in% c("Saturday", "Sunday")) %>%
-  pivot_wider(names_from = source, values_from = mean, id_cols = c(day, site, id)) %>%
-  filter(site == "system") %>%
-  rowwise() %>%
-  mutate(perc = (empirical - simulated)/empirical) %>%
-  group_by(id) %>%
-  # filter(max(perc) < 2) %>%
-  group_by(day) %>%
-  summarise(perc = mean(perc, na.rm = TRUE)) %>%
-  ggplot(aes(x = day, y = perc)) + geom_col()
-
-
-out %>% 
-  map("result") %>%
-  bind_rows() %>% View()
-  mutate(wday = weekdays(date)) %>%
-  filter(day <= 10, !wday %in% c("Saturday", "Sunday")) %>%
-  filter(site == "system") %>%
-  select(day, source, mean, id) %>%
-  pivot_wider(names_from = source, values_from = mean, id_cols = c(day, site, id)) %>%
-  pivot_wider(names_from = id, values_from = c(empirical, simulated), names_vary = "slowest") %>% View()
-  rowwise() %>%
-  mutate(perc = (empirical - simulated)/empirical) %>%
-  group_by(id) %>%
-  # filter(max(perc) < 2) %>%
-  group_by(day) %>%
-  summarise(perc = mean(perc, na.rm = TRUE)) %>%
-  ggplot(aes(x = day, y = perc)) + geom_col()
-
-
 
 
 # fn 
@@ -325,13 +105,6 @@ drain_fn <- function(date_i) {
     filter(Census_Date >=date_i) %>%
     arrange(Census_Date) %>%
     group_by(spell_id) %>%
-    # mutate(los = min(der_los), # los on index date is the minimum LOS
-    #        los_dis_rdy = case_when(
-    #          !any(der_ctr) ~ max(der_los), # if never NCTR, take max LOS
-    #          der_ctr ~ tail(der_los, 1),  # where CTR take last LOS
-    #          length(der_los) == 1 ~ der_los, # if only 1 LOS record, take that
-    #        )
-    # ) %>%
     mutate(los = min(der_los), # los on index date is the minimum LOS
            der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - ddays(1),max(Census_Date)))) %>%
     ungroup() %>%
@@ -371,7 +144,6 @@ drain_fn <- function(date_i) {
     ) %>%
     bake(los_rec, .) %>%
     mutate(site = if_else(is.na(site), "system", site)) %>%
-    # bake(hardhat::extract_recipe(los_wf) %>% update_role_requirements(role = "site id", bake = FALSE), .) %>%
     ungroup() %>%
     arrange(site) %>%
     mutate(id = 1:n(),
@@ -381,7 +153,7 @@ drain_fn <- function(date_i) {
                                 function(los, trunc_dist)
                                   trunc_dist(
                                     n_rep,
-                                    range = c(los, Inf)
+                                    range = c(los-1, Inf)
                                   ) - los) %>%
              reduce(rbind)) %>%
     select(site, los_remaining)  %>%
@@ -440,29 +212,28 @@ saveRDS(out, "data/drain_out_new.RDS")
 
 map(out, "result") %>% bind_rows()
 
+n_days <- 10
 
 out %>% 
   map("result") %>%
   reduce(bind_rows) %>%
-  # mutate(wday = weekdays(date)) %>%
+  mutate(wday = weekdays(date)) %>%
+  group_by(id, site) %>%
+  mutate(index_day = wday[which.min(date)]) %>%
+  select(-wday) %>%
   # filter(day <= 10, !wday %in% c("Saturday", "Sunday")) %>%
   # select(-wday) %>%
-  filter(site == "system", day <= 10) %>%
-  pivot_longer(cols = -c(id, site, day, date, source), names_to = "metric", values_to = "value") %>%
+  filter(site == "system") %>%
+  pivot_longer(cols = -c(id, site, day, date, index_day, source), names_to = "metric", values_to = "value") %>%
   filter(metric == "mean") %>%
-  group_by(source, id, metric) %>%
+  group_by(source, id, metric, index_day) %>%
   mutate(prop = value/sum(value)) %>%
-  mutate(cum_prop = cumsum(prop)) %>%
-  pivot_longer(cols = -c(day, date, site, source, id, metric), names_to = "calc", values_to = "value") %>%
+  mutate(cum_prop = cumsum(prop)) %>% 
+  pivot_longer(cols = -c(day, date, site, source, id, index_day, metric), names_to = "calc", values_to = "value") %>%
   unite("metric", metric, calc, sep = "_") %>%
   pivot_wider(names_from = metric, values_from = value) %>%
-  # pivot_wider(id_cols = c(id, day, site, date), names_from = source, values_from = mean_cum_prop) %>%
-  # mutate(res = empirical - simulated) %>%
-  # group_by(id) %>% 
-  # mutate(na_flag = any(is.na(res))) %>%
-  # ungroup() %>%
-  # filter(!na_flag) %>%
-  group_by(day, source) %>%
+  filter(day <= n_days) %>%
+  group_by(index_day, day, source) %>%
   summarise(mean_cum_prop = mean(mean_cum_prop)) %>%
   mutate(source = recode(source, "empirical" = "Actual", "simulated" = "Simulated")) %>%
   ggplot(aes(x = day, y = mean_cum_prop, fill = source)) +
@@ -470,12 +241,16 @@ out %>%
   geom_line(aes(col = source)) +
   # geom_errorbar(aes(ymin = l95_cum_prop, ymax = u95_cum_prop), position = "dodge") +
   # facet_wrap(vars(id), scales = "free")  +
-  bnssgtheme() +
+  # bnssgtheme() +
+  theme_minimal() +
   theme(legend.position = "bottom", legend.justification = "center") +
   # scale_fill_manual(values = unname(bnssgcols[c(3, 7)])) +
   scale_colour_manual(values = c("#8c96c6", "#88419d")) +
+  scale_y_continuous(labels = scales::percent) +
+  # scale_x_continuous(breaks = 0:n_days) +
   labs(y = "Cumulative occupancy drain",
-       x = "Day")
+       x = "Day") +
+  facet_wrap(vars(index_day))
 
 
 

@@ -55,14 +55,25 @@ nctr_df <-
 
 pathway_df <- nctr_df %>%
   mutate(pathway = recode(Current_Delay_Code_Standard,
-                                              "P3 / Other Complex Discharge" = "P3",
-                                              "18a  Infection  bxviii  Standard" = "Other",
-                                              "Uncoded" = "Other",
-                                              "Repatriation" = "Other",
-                                              "NCTR Null" = "Other",
-                                              "Not Set" = "Other",
-                                              "xviii. Awaiting discharge to a care home but have not had a COVID 19 test (in 48 hrs preceding discharge)." = "Other",
-                                              "15b  Repat  bxv  WGH" = "Other"),
+                          "Pathway 3 - Other" = "P3",
+                          "Awaiting confirmation MDT" = "Other",
+                          "Awaiting referral to SPA" = "Other",
+                          "Pathway 3 - D2A" = "P3",
+                          "Pathway 0" = "P0",
+                          "Pathway 1 - D2A" = "P1",
+                          "Awaiting confirmation Social" = "Other",
+                          "Pathway 2 - Other" = "P2",
+                          "Pathway 2 - D2A" = "P2",
+                          "Awaiting confirmation Other" = "Other",
+                          "Pathway 1 - Other" = "P1",
+                          "P3 / Other Complex Discharge" = "P3",
+                          "Uncoded" = "Other",
+                          "Repatriation" = "Other",
+                          "NCTR Null" = "Other",
+                          "Not Set" = "Other",
+                          "18a  Infection  bxviii  Standard" = "Other",
+                          "xviii. Awaiting discharge to a care home but have not had a COVID 19 test (in 48 hrs preceding discharge)." = "Other",
+                          "15b  Repat  bxv  WGH" = "Other"),
          pathway = coalesce(pathway, "Other")) %>%
   mutate(pathway = if_else(pathway %in% c("Other", "P1", "P2", "P3"), pathway, "Other")) %>%
   filter(Person_Stated_Gender_Code %in% 1:2) %>%
@@ -84,6 +95,38 @@ pathway_df <- nctr_df %>%
          bed_type)
 
 # attributes to join
+
+mortality_df <- local({
+  string_mortality <-"SELECT
+      [Derived_Pseudo_NHS]
+      ,[Dec_Age_At_Death]
+      ,[DEC_SEX]
+      ,[DEC_SEX_DESC]
+      ,[DEC_MARITAL_STATUS]
+      ,[DEC_MARITAL_STATUS_DESC]
+      ,[DEC_AGEC]
+      ,[DEC_AGECUNIT]
+      ,[DEC_AGECUNIT_DESC]
+      ,[REG_DATE_OF_DEATH]
+      ,[REG_DATE]
+  FROM [ABI].[Civil_Registration].[Mortality]"
+  con<-RODBC::odbcDriverConnect("driver={SQL Server};\n  server=Xsw-00-ash01;\n  trusted_connection=true")
+  
+  RODBC::sqlQuery(con, string_mortality) %>%
+    na.omit() %>%
+    mutate(Derived_Pseudo_NHS = as.character(Derived_Pseudo_NHS),
+           REG_DATE_OF_DEATH = lubridate::ymd(REG_DATE_OF_DEATH)) %>%
+    mutate(Derived_Pseudo_NHS = as.character(Derived_Pseudo_NHS)) %>%
+    select(nhs_number = Derived_Pseudo_NHS, date_death = REG_DATE_OF_DEATH)
+})
+
+# remove patients who died
+
+pathway_df <- pathway_df %>%
+  left_join(mortality_df) %>% 
+  filter(is.na(date_death)) %>%
+  select(-date_death)
+
 
 attr_df <-
   RODBC::sqlQuery(

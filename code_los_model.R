@@ -1,7 +1,7 @@
 library(fitdistrplus)
 library(tidyverse)
 library(tidymodels)
-source("utils.R")
+source("utils/utils.R")
 
 con <- switch(.Platform$OS.type,
               windows = RODBC::odbcConnect(dsn = "xsw"),
@@ -95,6 +95,7 @@ los_df <- nctr_df %>%
   filter(Organisation_Site_Code != "nbt") %>%
   dplyr::select(
     nhs_number = nhs_number,
+    admission_date = Date_Of_Admission,
     site = Organisation_Site_Code,
     day_of_admission,
     sex,
@@ -105,6 +106,39 @@ los_df <- nctr_df %>%
   )  #%>%
 # # filter outlier LOS
 #filter(los < 50) # higher than Q(.99)
+
+mortality_df <- local({
+  string_mortality <-"SELECT
+      [Derived_Pseudo_NHS]
+      ,[Dec_Age_At_Death]
+      ,[DEC_SEX]
+      ,[DEC_SEX_DESC]
+      ,[DEC_MARITAL_STATUS]
+      ,[DEC_MARITAL_STATUS_DESC]
+      ,[DEC_AGEC]
+      ,[DEC_AGECUNIT]
+      ,[DEC_AGECUNIT_DESC]
+      ,[REG_DATE_OF_DEATH]
+      ,[REG_DATE]
+  FROM [ABI].[Civil_Registration].[Mortality]"
+  con<-RODBC::odbcDriverConnect("driver={SQL Server};\n  server=Xsw-00-ash01;\n  trusted_connection=true")
+  
+  RODBC::sqlQuery(con, string_mortality) %>%
+    na.omit() %>%
+    mutate(Derived_Pseudo_NHS = as.character(Derived_Pseudo_NHS),
+           REG_DATE_OF_DEATH = lubridate::ymd(REG_DATE_OF_DEATH)) %>%
+    mutate(Derived_Pseudo_NHS = as.character(Derived_Pseudo_NHS)) %>%
+    select(nhs_number = Derived_Pseudo_NHS, date_death = REG_DATE_OF_DEATH)
+})
+
+# remove patients who died
+
+los_df <- los_df %>%
+  left_join(mortality_df) %>% 
+  filter(is.na(date_death)) %>%
+  select(-date_death, admission_date)
+
+
 
 # attributes to join
 
@@ -315,64 +349,64 @@ cat("LOS model outputs written", fill = TRUE)
 # validation on test data
 
 
-# cdf_fn <- function(dist, x, parms) {
-#   fn <- dist_ptl_gen(dist, parms, "d")
-#   out <- cumsum(fn(x, !!!parms))
-#   (out - min(out)) / (max(out) - min(out))
-# }
-# 
-# validation_df <- los_test %>%
-#   bake(extract_recipe(tree_fit), .) %>%
-#   mutate(leaf = treeClust::rpart.predict.leaves(tree, .)) %>%
-#   group_by(leaf) %>%
-#   nest() %>%
-#   left_join(select(fit_dists, -data, -min_aic) %>% group_by(leaf) %>% slice(1)) %>%
-#   mutate(ks_test = pmap(list(data, pdist), ~ks.test(..1$los, ..2) %>% tidy())) %>%
-#   mutate(ad_test = pmap(list(data, pdist), ~DescTools::AndersonDarlingTest(..1$los, null = ..2))) %>%
-#   mutate(cdf_plot = pmap(
-#     list(data, dist, fit_parms),
-#     ~
-#       ggplot(..1, aes(x = los)) +
-#       geom_function(
-#         geom = "step",
-#         col = "black",
-#         fun = function(x) cdf_fn(x, dist = ..2, parms = ..3)#,
-#         #args = list(.x$fit_parms[[1]])
-#       ) +
-#       stat_ecdf(geom = "step") +
-#       labs(title = "CDF plot", x = "LOS", y = "CDF")+ theme_minimal()) 
-#   ) %>%
-#   mutate(qq_plot = pmap(
-#     list(data, dist, fit_parms),
-#     ~
-#       ggplot(..1, aes(sample = los)) +
-#       qqplotr::stat_qq_band(distribution = ..2, alpha = 0.5,
-#                             dparams = ..3) +
-#       qqplotr::stat_qq_line(distribution = ..2, col = "black",
-#                             dparams = ..3) +
-#       qqplotr::stat_qq_point(distribution = ..2,
-#                              dparams = ..3) + 
-#       labs(title = "Q-Q plot", x = "Theoretical quantiles", y = "Empirical quantiles") + theme_minimal()
-#   )) %>%
-#   mutate(pp_plot = pmap(
-#     list(data, dist, fit_parms),
-#     ~
-#       ggplot(..1, aes(sample = los)) +
-#       qqplotr::stat_pp_band(distribution = ..2, alpha = 0.5,
-#                             dparams = ..3) +
-#       qqplotr::stat_pp_line(distribution = ..2, col = "black",
-#                             dparams = ..3) +
-#       qqplotr::stat_pp_point(distribution = ..2,
-#                              dparams = ..3) + 
-#       labs(title = "P-P plot", x = "Theoretical\nprobabilities", y = "Empirical probabilities") + theme_minimal()
-#   )) 
+cdf_fn <- function(dist, x, parms) {
+  fn <- dist_ptl_gen(dist, parms, "d")
+  out <- cumsum(fn(x, !!!parms))
+  (out - min(out)) / (max(out) - min(out))
+}
+
+validation_df <- los_test %>%
+  bake(extract_recipe(tree_fit), .) %>%
+  mutate(leaf = treeClust::rpart.predict.leaves(tree, .)) %>%
+  group_by(leaf) %>%
+  nest() %>%
+  left_join(select(fit_dists, -data, -min_aic) %>% group_by(leaf) %>% slice(1)) %>%
+  mutate(ks_test = pmap(list(data, pdist), ~ks.test(..1$los, ..2) %>% tidy())) %>%
+  mutate(ad_test = pmap(list(data, pdist), ~DescTools::AndersonDarlingTest(..1$los, null = ..2))) %>%
+  mutate(cdf_plot = pmap(
+    list(data, dist, fit_parms),
+    ~
+      ggplot(..1, aes(x = los)) +
+      geom_function(
+        geom = "step",
+        col = "black",
+        fun = function(x) cdf_fn(x, dist = ..2, parms = ..3)#,
+        #args = list(.x$fit_parms[[1]])
+      ) +
+      stat_ecdf(geom = "step") +
+      labs(title = "CDF plot", x = "LOS", y = "CDF")+ theme_minimal())
+  ) %>%
+  mutate(qq_plot = pmap(
+    list(data, dist, fit_parms),
+    ~
+      ggplot(..1, aes(sample = los)) +
+      qqplotr::stat_qq_band(distribution = ..2, alpha = 0.5,
+                            dparams = ..3) +
+      qqplotr::stat_qq_line(distribution = ..2, col = "black",
+                            dparams = ..3) +
+      qqplotr::stat_qq_point(distribution = ..2,
+                             dparams = ..3) +
+      labs(title = "Q-Q plot", x = "Theoretical quantiles", y = "Empirical quantiles") + theme_minimal()
+  )) %>%
+  mutate(pp_plot = pmap(
+    list(data, dist, fit_parms),
+    ~
+      ggplot(..1, aes(sample = los)) +
+      qqplotr::stat_pp_band(distribution = ..2, alpha = 0.5,
+                            dparams = ..3) +
+      qqplotr::stat_pp_line(distribution = ..2, col = "black",
+                            dparams = ..3) +
+      qqplotr::stat_pp_point(distribution = ..2,
+                             dparams = ..3) +
+      labs(title = "P-P plot", x = "Theoretical\nprobabilities", y = "Empirical probabilities") + theme_minimal()
+  ))
 
 # in order to created grid of plot duets (one CDF & QQ for each LOS leaf
 # partition) NOTE: for some reason I have to use cowplot to make a duet with a
 # border, which can then be wrapped using patchwork
 
 # plots <- pmap(list(validation_df$cdf_plot, validation_df$pp_plot, validation_df$leaf),
-#               ~cowplot::plot_grid(..1, ..2, labels = paste(..3), hjust = -.2) 
+#               ~cowplot::plot_grid(..1, ..2, labels = paste(..3), hjust = -.2)
 #               #+ theme(plot.background = element_rect(fill = NA, colour = 'black', size = 1))
 #               )
 # (validation_plot_los <- patchwork::wrap_plots(plots))
