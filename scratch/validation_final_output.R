@@ -16,15 +16,15 @@ source("utils/utils.R")
 source("utils/theme.R")
 source("utils/colour_functions.R")
 
-plot_int <- TRUE
+plot_int <- FALSE
 
-n_rep <- 1E1
+n_rep <- 1E2
 
-run_date <- ymd("2024-03-18")
+run_date <- today()
 n_days <- 10
 
 # latest nctr data
-nctr_df <-
+nctr_df_full <-
   RODBC::sqlQuery(
     con,
     glue::glue("SELECT
@@ -68,18 +68,51 @@ nctr_df <-
       ,[DER_Load_Timestamp]
   FROM Analyst_SQL_Area.dbo.vw_NCTR_Status_Report_Daily_JI
   Where Census_Date <= '{run_date}'"
-  ))
+    ))
 
 # max census date
 
-max_date <- nctr_df %>%
+max_date <- nctr_df_full %>%
   filter(!is.na(NHS_Number)) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   pull(Census_Date) %>%
   max()
 
-# NCTR data summary
+# attr_df <-
+#   RODBC::sqlQuery(
+#     con,
+#     "select * from (
+# select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
+# [MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
+#   )
+# 
+# saveRDS(attr_df, "data/attr_df.RDS")
+attr_df <- readRDS("data/attr_df.RDS")
 
+
+# validation testing dates
+
+dates <- nctr_df_full %>%
+  filter(Census_Date < max_date - ddays(10),
+         Census_Date > ymd("2023-07-01"),
+         Census_Date < max(Census_Date) - ddays(50),
+         # remove dates near Christmas
+          abs(lubridate::interval(Census_Date, ymd("2023-12-25"))/ddays(1)) > 15
+         ) %>%
+  pull(Census_Date) %>%
+  unique()
+
+
+set.seed(123)
+out <- map(sample(dates, 25), ~{
+
+report_start <- .x
+report_end <- report_start + ddays(n_days)
+
+# run the separate codes
+
+nctr_df <- nctr_df_full %>% filter(Census_Date <= report_start)
+# NCTR data summary
 nctr_sum <- nctr_df %>%
   filter(Person_Stated_Gender_Code %in% 1:2) %>%
   mutate(nhs_number = as.character(NHS_Number),
@@ -155,23 +188,10 @@ nctr_sum <- nctr_df %>%
   ) %>%
   ungroup()
 
-# report start (i.e. date we start reporting new D2A, i.e. 1 day after max_date)
-report_start <- max_date + ddays(1)
-report_end <- report_start + ddays(n_days)
 
-
-attr_df <-
-  RODBC::sqlQuery(
-    con,
-    "select * from (
-select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
-[MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
-  )
-
-
-source("code_admits_fcast.R")
-source("code_new_admits.R")
-source("code_curr_admits.R")
+source("code_admits_fcast.R", local = TRUE)
+source("code_new_admits.R", local = TRUE)
+source("code_curr_admits.R", local = TRUE)
 
 if(plot_int){
   bind_rows(df_curr_admits, df_new_admit) %>%
@@ -202,9 +222,6 @@ df_pred <- bind_rows(df_curr_admits, df_new_admit) %>%
          u85 = n_u85,
          l85 = n_l85)
 
-# Now simulate the queue evolution
-source("code_queue_sim.R")
-
 # dataset for plotting (and storing on SQL)
 
 plot_df_pred <- df_pred %>%
@@ -232,7 +249,7 @@ plot_df_fcast <- df_admit_fcast %>% select(-date)
 
 plot_df <- bind_rows(plot_df_pred, 
                      plot_df_current,
-                     plot_df_queue_sim,
+                     # plot_df_queue_sim,
                      plot_df_fcast) %>%
   mutate(pathway = factor(pathway, levels = (c("Other", "P1", "P2", "P3"))),
          report_date = as.character(report_date)) # convert date to character because RODBC/R/SQL can't handle writing this in a consistent way
@@ -241,60 +258,11 @@ plot_df <- bind_rows(plot_df_pred,
 # now empirical values
 
 
-
-run_date <- ymd("2024-03-25")
-
-nctr_df <-
-  RODBC::sqlQuery(
-    con,
-    glue::glue("SELECT
-       [RN]
-      ,[Organisation_Code_Provider]
-      ,[Organisation_Code_Commissioner]
-      ,[Census_Date]
-      ,[Month_Date]
-      ,[Month]
-      ,[Day_Of_Week]
-      ,[Week_Start_Date]
-      ,[NHS_Number]
-      ,[Person_Stated_Gender_Code]
-      ,[Person_Age]
-      ,[CDS_Unique_Identifier]
-      ,[Sub_ICB_Location]
-      ,[Organisation_Site_Code]
-      ,[Current_Ward]
-      ,[Specialty_Code]
-      ,[Bed_Type]
-      ,[Date_Of_Admission]
-      ,[BNSSG]
-      ,[Local_Authority]
-      ,[Criteria_To_Reside]
-      ,[Date_NCTR]
-      ,[Current_LOS]
-      ,[Days_NCTR]
-      ,[Days_NCTR_On_Current_Code]
-      ,[Current_Delay_Code]
-      ,[Local_Authority_grouped]
-      ,[Site_Name]
-      ,[Current_Delay_Code_Standard]
-      ,[Current_Delay_Code_Detailed]
-      ,[Acute Community split]
-      ,[Current_Covid_Status]
-      ,[Planned_Date_Of_Discharge]
-      ,[Date_Toc_Form_Completed]
-      ,[Toc_Form_Status]
-      ,[Discharge_Pathway]
-      ,[DER_File_Name]
-      ,[DER_Load_Timestamp]
-  FROM Analyst_SQL_Area.dbo.vw_NCTR_Status_Report_Daily_JI
-  Where Census_Date >= '{run_date}'"
-    ))
-
-# max census date
+nctr_df_emp <- nctr_df_full %>% filter(Census_Date >= report_start)
 
 # NCTR data summary
 
-nctr_sum <- nctr_df %>%
+nctr_sum_emp <- nctr_df_emp %>%
   filter(Person_Stated_Gender_Code %in% 1:2) %>%
   mutate(nhs_number = as.character(NHS_Number),
          nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
@@ -320,7 +288,7 @@ nctr_sum <- nctr_df %>%
       !is.na(Date_NCTR) ~ FALSE,
       Criteria_To_Reside == "N" ~ FALSE
     )) %>%
-  mutate(los = (run_date - Date_Of_Admission) / ddays(1)) %>%
+  mutate(los = (report_start - Date_Of_Admission) / ddays(1)) %>%
   mutate(
     pathway = recode(
       Current_Delay_Code_Standard,
@@ -367,55 +335,17 @@ nctr_sum <- nctr_df %>%
   ) %>%
   ungroup()
 
-
-nctr_sum %>%
-  arrange(Census_Date) %>%
-  # remove anyone currently NCTR  
-  group_by(nhs_number, Date_Of_Admission) %>%
-  mutate(spell_id = cur_group_id()) %>%
-  group_by(spell_id) %>%
-  filter(Date_Of_Admission > run_date | ctr[1]) %>%
-  mutate(der_date_nctr = as.Date(if_else(any(!ctr),min(Census_Date[!ctr]) - ddays(1),max(Census_Date)))) %>%
-  ungroup() %>%
-  mutate(der_date_nctr = pmin(der_date_nctr, Date_NCTR, na.rm = TRUE)) %>% 
-  group_by(spell_id) %>%
-  select(site, spell_id, der_date_nctr) %>%
-  distinct() %>%
-  group_by(site, date = der_date_nctr) %>%
-  count() %>%
-  mutate(day = (date - run_date)/ddays(1)) %>%
-  left_join(plot_df %>%
-                filter(source == "model_pred") %>%
-                pivot_wider(names_from = "metric", values_from = "value") %>%
-                select(site, day, pathway, n_pred = n) %>%
-                group_by(site, day) %>%
-                summarise(n_pred = sum(n_pred))) %>%
-  filter(day <= 10) %>%
-  ggplot(aes(x = date, y = n)) +
-  geom_col() +
-  geom_point(aes(y = n_pred)) +
-  facet_wrap(vars(site))
-
 source("shinyApp/colour_functions.R")
 source("shinyApp/theme.R")
 
 
-cols_add <- c(
-  "Not D2A service" = "#999999",
-  "For P1 service" = "#8d488d",
-  "For P2 service" = "#003087",
-  "For P3 service" = "#853358"
-)
-
-
-
-nctr_sum %>%
+nctr_sum_emp %>%
   arrange(Census_Date) %>%
   # remove anyone currently NCTR  
   group_by(nhs_number, Date_Of_Admission) %>%
   mutate(spell_id = cur_group_id()) %>%
   group_by(spell_id) %>%
-  filter(Date_Of_Admission > run_date | ctr[1]) %>%
+  filter(Date_Of_Admission > report_start | ctr[1]) %>%
   mutate(der_date_nctr = as.Date(if_else(any(!ctr),min(Census_Date[!ctr]) - ddays(1),max(Census_Date)))) %>%
   ungroup() %>%
   mutate(der_date_nctr = pmin(der_date_nctr, Date_NCTR, na.rm = TRUE),
@@ -427,94 +357,85 @@ nctr_sum %>%
   count() %>%
   ungroup() %>%
   complete(site, date, pathway, fill = list(n = 0)) %>%
-  mutate(day = (date - run_date)/ddays(1)) %>%
+  mutate(day = (date - report_start)/ddays(1)) %>%
   left_join(plot_df %>%
-                filter(source == "model_pred") %>%
-                pivot_wider(names_from = "metric", values_from = "value") %>%
-                select(site, day, pathway, n_pred = n, u85, l85)) %>%
-  filter(day <= 10) %>%
+              filter(source == "model_pred") %>%
+              pivot_wider(names_from = "metric", values_from = "value") %>%
+              select(site, day, pathway, n_pred = n, u85, l85)) %>%
+  filter(between(day, 0, 10)) %>%
   mutate(pathway = recode(pathway, 
                           "Other" = "Not D2A service",
                           "P1" = "For P1 service",
                           "P2" = "For P2 service",
                           "P3" = "For P3 service")) %>%
   mutate(site = recode(site, 
-                          "bri" = "BRI",
-                          "nbt" = "NBT",
-                          "weston" = "WGH")) %>%
-                          
-  ggplot(aes(x = date, y = n)) +
-  geom_col(aes(fill = pathway)) +
-  geom_point(aes(y = n_pred)) +
-  geom_errorbar(aes(ymin = l85, ymax = u85)) +
-  bnssgtheme() +
-  scale_x_date(date_breaks = "5 days", labels = date_format('%a\n%d %b')) +
-  scale_fill_manual(values = cols_add) +
-  theme(strip.placement = "outside", legend.position = "bottom") +
-  ggh4x::facet_grid2(site ~ pathway, independent = "y", scales = "free_y", switch = "y") +
-  labs(x = "Date", y = "Forecasted demeand versus actual discharges")
+                       "bri" = "BRI",
+                       "nbt" = "NBT",
+                       "weston" = "WGH"))  
 
+})
+
+smpe_custom <- function(actual, predicted) {
+  n <- length(actual)
+  sum((predicted - actual) / ((actual + predicted) / 2)) * 100 / n
+}
+  
+
+
+n_day <- 1
+
+bind_rows(out, .id = "rep") %>%
+  mutate(day = n_day*(day %/% n_day)) %>%
+  group_by(rep, site, day, pathway) %>%
+  summarise(n = sum(n), n_pred = sum(n_pred)) %>%
+  group_by(site, day, pathway) %>%
+  summarise(smpe = smpe_custom(n, n_pred)) %>%
+  ggplot(aes(x = day, y = smpe)) + 
+  geom_line() +
+  facet_grid(pathway ~ site)
 
 ggsave(
   last_plot(),
-  filename = "./validation/validation_final_output.png",
+  filename = "./validation/scratch_validation_final_output_1.png",
+  scale = 0.6,
+  width = 20,
+  height = 10
+)
+
+bind_rows(out, .id = "rep") %>%
+  mutate(day = n_day*(day %/% n_day)) %>%
+  group_by(rep, site, day) %>%
+  summarise(n = sum(n), n_pred = sum(n_pred)) %>%
+  group_by(site, day) %>%
+  summarise(smpe = smpe_custom(n, n_pred)) %>%
+  ggplot(aes(x = day, y = smpe)) + 
+  geom_line() +
+  facet_grid(~ site)
+
+ggsave(
+  last_plot(),
+  filename = "./validation/scratch_validation_final_output_2.png",
+  scale = 0.6,
+  width = 20,
+  height = 10
+)
+
+bind_rows(out, .id = "rep") %>%
+  mutate(day = n_day*(day %/% n_day)) %>%
+  group_by(rep, site) %>%
+  summarise(n = sum(n), n_pred = sum(n_pred)) %>%
+  group_by(site) %>%
+  summarise(smpe = smpe_custom(n, n_pred)) %>%
+  ggplot(aes(x = site, y = smpe)) + 
+  geom_col()
+
+ggsave(
+  last_plot(),
+  filename = "./validation/scratch_validation_final_output_3.png",
   scale = 0.6,
   width = 20,
   height = 10
 )
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# create the table
-# RODBC::sqlQuery(con,
-#                 query = 'USE modelling_sql_area CREATE TABLE dbo.discharge_pathway_projections
-#                 (
-#                 "site" varchar(255),
-#                 "pathway" varchar(255),
-#                 "day" float,
-#                 "ctr" varchar(255),
-#                 "source" varchar(255),
-#                 "report_date" varchar(255),
-#                 "metric" varchar(255),
-#                 "value" float)'
-#                 )
-
-# change con to write to modelling sql area
-RODBC::odbcClose(con)
-con <- switch(.Platform$OS.type,
-              windows = {
-                "driver={SQL Server};server=Xsw-00-ash01;
-                 database=MODELLING_SQL_AREA;
-                 trusted_connection=true" |>
-                  RODBC::odbcDriverConnect()
-              },
-              unix = {
-                "/root/sql/sql_modelling_connect_string_linux" |>
-                  readr::read_lines() |>
-                  RODBC::odbcDriverConnect()
-              }
-)
-# delete old data
-query_delete <- "DELETE FROM MODELLING_SQL_AREA.dbo.discharge_pathway_projections"
-RODBC::sqlQuery(con, query_delete)
-RODBC::sqlSave(con,
-               plot_df,
-               tablename = 'discharge_pathway_projections',
-               rownames = FALSE,
-               append = TRUE)
 
