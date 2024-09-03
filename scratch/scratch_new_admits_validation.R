@@ -1,4 +1,8 @@
-n_rep <- 1000
+source("utils/utils.R")
+source("utils/theme.R")
+source("utils/colour_functions.R")
+
+n_rep <- 1E2
 start_date <- min(nctr_df$Census_Date) 
 start_date <- ymd("2024-01-01")
 
@@ -44,6 +48,9 @@ dates_samp <- dates[dates < max(dates) - ddays(10)]
 
 d_i <- sample(dates_samp, 50)
 
+
+
+options(future.globals.maxSize = 16000 * 1024^2)
 future::plan(future::multisession, workers = parallel::detectCores() - 6)
 
 
@@ -198,6 +205,26 @@ list(p = p, res_out = res_out)
 })
 
 
+
+
+map(out, "res_out") %>%
+  bind_rows(.id = "rep") %>%
+  ungroup() %>%
+  group_by(rep, site, day_end) %>%
+  mutate(smpe = smpe_custom(actual, sim)) %>%
+  group_by(site, day_end) %>%
+  summarise(smpe = mean(smpe, na.rm = TRUE))  %>%
+  filter(site != "nbt") %>%
+  ggplot(aes(x = day_end, y = smpe)) +
+  geom_col() +
+  facet_wrap(vars(site)) + 
+  theme_minimal() +
+  labs(y = str_wrap("Symmetric percentage error of numbers of new admissions becoming ready for discharge", 50),
+       x = "Day")
+
+
+
+
 (new_admits_plot <- map(out, "res_out") %>%
   bind_rows() %>%
   group_by(site, day_end) %>%
@@ -207,7 +234,7 @@ list(p = p, res_out = res_out)
 
   facet_wrap(vars(site)) + 
   theme_bw() +
-  labs(y = str_wrap("Residual numbers of new patients becoming ready for discharge between actual and simulation.", 50))
+  labs(y = str_wrap("Residual numbers of new patients becoming ready for discharge between actual and simulation.", 50)))
 
 ggsave(
   new_admits_plot,

@@ -104,7 +104,7 @@ dates <- nctr_df_full %>%
 
 
 set.seed(123)
-out <- map(sample(dates, 25), ~{
+out <- map(sample(dates, 50), ~{
 
 report_start <- .x
 report_end <- report_start + ddays(n_days)
@@ -375,11 +375,7 @@ nctr_sum_emp %>%
 
 })
 
-smpe_custom <- function(actual, predicted) {
-  n <- length(actual)
-  sum((predicted - actual) / ((actual + predicted) / 2)) * 100 / n
-}
-  
+saveRDS(out, "data/final_validation_out.RDS")
 
 
 n_day <- 1
@@ -392,14 +388,19 @@ bind_rows(out, .id = "rep") %>%
   summarise(smpe = smpe_custom(n, n_pred)) %>%
   ggplot(aes(x = day, y = smpe)) + 
   geom_line() +
-  facet_grid(pathway ~ site)
+  facet_grid(pathway ~ site) +
+  scale_x_continuous(breaks = 1:10) +
+  theme_minimal() +
+  labs(y = "Symmetric mean percentage error",
+       x = "Day")
 
 ggsave(
   last_plot(),
   filename = "./validation/scratch_validation_final_output_1.png",
-  scale = 0.6,
-  width = 20,
-  height = 10
+  bg = "white",
+  scale = 0.8,
+  width = 10,
+  height = 7.5
 )
 
 bind_rows(out, .id = "rep") %>%

@@ -52,6 +52,9 @@ nctr_df <-
   FROM Analyst_SQL_Area.dbo.vw_NCTR_Status_Report_Daily_JI"
   )
 
+validation_end <- ymd("2024-09-01")
+validation_start <- ymd("2023-07-01")
+nctr_df <- nctr_df %>% filter(between(Census_Date, validation_start, validation_end-ddays(1)))
 
 pathway_df <- nctr_df %>%
   mutate(pathway = recode(Current_Delay_Code_Standard,

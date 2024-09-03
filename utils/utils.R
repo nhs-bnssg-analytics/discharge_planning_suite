@@ -138,4 +138,8 @@ get_sd_from_ci <- function(ci, q = c(0.075, 0.925)) {
   (ci[1] - ci[2])/(qnorm(q[1]) - qnorm(q[2]))
 }
 
+smpe_custom <- function(actual, predicted) {
+  n <- length(actual)
+  sum((predicted - actual) / ((actual + predicted) / 2)) * 100 / n
+}
 
