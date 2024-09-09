@@ -47,15 +47,9 @@ validation_end <- ymd("2024-09-01")
 validation_start <- ymd("2023-07-01")
 nctr_df <- nctr_df %>% filter(between(Census_Date, validation_start, validation_end-ddays(1)))
 
-nctr_df_train <- nctr_df %>% filter(Census_Date < max(Census_Date) - dweeks(26))
-nctr_df_test <- nctr_df %>% filter(Census_Date >= max(Census_Date) - dweeks(26))
+date_co <- validation_start #as.Date(max_census - lubridate::dmonths(6))
 
-
-max_census <- max(nctr_df_train$Census_Date)
-
-date_co <- as.Date(max_census - lubridate::dmonths(6))
-
-los_df <- nctr_df_train %>%
+los_df <- nctr_df %>%
   ungroup() %>%
   filter(Census_Date > date_co, Date_Of_Admission > date_co) %>%
   filter(Person_Stated_Gender_Code %in% 1:2) %>%
@@ -78,21 +72,15 @@ los_df <- nctr_df_train %>%
   mutate(der_date_nctr = pmin(der_date_nctr, Date_NCTR, na.rm = TRUE)) %>%
   arrange(Census_Date) %>%
   group_by(spell_id) %>%
-  # mutate(
-  #   discharge_rdy_los = case_when(
-  #     !any(der_ctr) ~ max(der_los), # if never NCTR, take max LOS
-  #     der_ctr ~ tail(der_los, 1),  # where CTR take last LOS
-  #     length(der_los) == 1 ~ der_los, # if only 1 LOS record, take that
-  #   )
-  # ) %>%
-  mutate(discharge_rdy_los = (der_date_nctr - as.Date(Date_Of_Admission))/lubridate::ddays(1)) %>%
+  # minus one as you mLOS is less than the time observed across the census snapshots
+  mutate(discharge_rdy_los = ((der_date_nctr - as.Date(Date_Of_Admission))/lubridate::ddays(1))-1) %>%
   # take first discharge ready value
   group_by(NHS_Number, Date_Of_Admission) %>%
   arrange(discharge_rdy_los) %>% 
   slice(1) %>%
   mutate(day_of_admission = weekdays(Date_Of_Admission)) %>%
   ungroup() %>%
-  filter(discharge_rdy_los > 0) %>%
+  filter(discharge_rdy_los >= 0) %>%
   # filter(discharge_rdy_los < 60) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   mutate(Organisation_Site_Code = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt',
@@ -102,6 +90,7 @@ los_df <- nctr_df_train %>%
   mutate(Organisation_Site_Code = factor(Organisation_Site_Code)) %>%
   filter(Organisation_Site_Code != "nbt") %>%
   dplyr::select(
+    Census_Date,
     nhs_number = nhs_number,
     admission_date = Date_Of_Admission,
     site = Organisation_Site_Code,
@@ -114,65 +103,6 @@ los_df <- nctr_df_train %>%
   )  #%>%
 # # filter outlier LOS
 #filter(los < 50) # higher than Q(.99)
-
-
-los_testing <- nctr_df_test %>%
-  ungroup() %>%
-  filter(Census_Date > date_co, Date_Of_Admission > date_co) %>%
-  filter(Person_Stated_Gender_Code %in% 1:2) %>%
-  mutate(nhs_number = as.character(NHS_Number),
-         nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
-         sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>% 
-  group_by(nhs_number, Date_Of_Admission) %>%
-  mutate(spell_id = cur_group_id()) %>%
-  group_by(spell_id) %>%
-  mutate(
-    der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/lubridate::ddays(1),
-    der_ctr = case_when(
-      Criteria_To_Reside == "Y" | is.na(Criteria_To_Reside) ~ TRUE,
-      !is.na(Days_NCTR) ~ FALSE,
-      !is.na(Date_NCTR) ~ FALSE,
-      Criteria_To_Reside == "N" ~ FALSE
-    ),
-    der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - lubridate::ddays(1),max(Census_Date)))) %>%
-  ungroup() %>%
-  mutate(der_date_nctr = pmin(der_date_nctr, Date_NCTR, na.rm = TRUE)) %>%
-  arrange(Census_Date) %>%
-  group_by(spell_id) %>%
-  # mutate(
-  #   discharge_rdy_los = case_when(
-  #     !any(der_ctr) ~ max(der_los), # if never NCTR, take max LOS
-  #     der_ctr ~ tail(der_los, 1),  # where CTR take last LOS
-  #     length(der_los) == 1 ~ der_los, # if only 1 LOS record, take that
-  #   )
-  # ) %>%
-  mutate(discharge_rdy_los = (der_date_nctr - as.Date(Date_Of_Admission))/lubridate::ddays(1)) %>%
-  # take first discharge ready value
-  group_by(NHS_Number, Date_Of_Admission) %>%
-  arrange(discharge_rdy_los) %>% 
-  slice(1) %>%
-  mutate(day_of_admission = weekdays(Date_Of_Admission)) %>%
-  ungroup() %>%
-  filter(discharge_rdy_los > 0) %>%
-  # filter(discharge_rdy_los < 60) %>%
-  filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
-  mutate(Organisation_Site_Code = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt',
-                                            Organisation_Site_Code == 'RA701' ~ 'bri',
-                                            Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
-                                            TRUE ~ '')) %>%
-  mutate(Organisation_Site_Code = factor(Organisation_Site_Code)) %>%
-  filter(Organisation_Site_Code != "nbt") %>%
-  dplyr::select(
-    nhs_number = nhs_number,
-    admission_date = Date_Of_Admission,
-    site = Organisation_Site_Code,
-    day_of_admission,
-    sex,
-    age = Person_Age,
-    spec = Specialty_Code,
-    bed_type = Bed_Type,
-    los = discharge_rdy_los
-  )  
 
 mortality_df <- local({
   string_mortality <-"SELECT
@@ -205,6 +135,13 @@ los_df <- los_df %>%
   filter(is.na(date_death)) %>%
   select(-date_death, admission_date)
 
+los_testing <- los_df %>%
+  filter(Census_Date > validation_end - dweeks(26)) %>%
+  select(-Census_Date)
+
+los_train <- los_df %>%
+  filter(Census_Date <= validation_end - dweeks(26)) %>%
+  select(-Census_Date)
 
 
 # attributes to join
@@ -218,7 +155,7 @@ select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period
   )
 
 # modelling
-model_df <- los_df %>%
+model_df_train <- los_train %>%
   full_join(dplyr::select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
             by = join_by(nhs_number == nhs_number)) %>%
   # na.omit() %>%
@@ -237,9 +174,28 @@ model_df <- los_df %>%
   filter(sex != "Unknown",
          !is.na(los)) # remove this as only 1 case
 
+model_df_test <- los_testing %>%
+  full_join(dplyr::select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
+            by = join_by(nhs_number == nhs_number)) %>%
+  # na.omit() %>%
+  dplyr::select(los,
+                site,
+                # day_of_admission,
+                cambridge_score,
+                age,
+                sex,
+                #spec, # spec has too many levels, some of which don't get seen enough to reliably create a model pipeline
+                bed_type
+                # smoking,
+                # ethnicity,
+                #segment
+  ) %>%
+  filter(sex != "Unknown",
+         !is.na(los)) # remove this as only 1 case
+
 
 set.seed(123)
-los_folds <- vfold_cv(model_df, strata = los)
+los_folds <- vfold_cv(model_df_train, strata = los)
 los_folds
 
 
@@ -253,11 +209,11 @@ tree_spec <- decision_tree(
 
 
 tree_grid <- grid_regular(cost_complexity(),
-                          tree_depth(range = c(1, 4)),
-                          min_n(range = c(25, 300)), levels = 8)
+                          tree_depth(range = c(1, 5)),
+                          min_n(range = c(50, 300)), levels = 16)
 
 
-tree_rec <- recipe(los ~ ., data = los_train)  %>%
+tree_rec <- recipe(los ~ ., data = model_df_train)  %>%
   update_role(site, new_role = "site id") %>%  
   step_novel(all_nominal_predictors(), new_level = "other") %>%
   step_other(all_nominal_predictors(), threshold = 0.1)
@@ -268,7 +224,7 @@ tree_wf <- workflow() %>%
   add_recipe(tree_rec)
 
 
-# doParallel::registerDoParallel()
+doParallel::registerDoParallel()
 
 set.seed(345)
 tree_rs <- tune_grid(
@@ -278,39 +234,38 @@ tree_rs <- tune_grid(
   metrics = metric_set(rmse, rsq, mae, mape)
 )
 
-
 autoplot(tree_rs) + theme_light(base_family = "IBMPlexSans")
-collect_metrics(tree_rs)
+collect_metrics(tree_rs) %>% View()
 
-tuned_wf<- finalize_workflow(tree_wf, select_best(tree_rs, "mape"))
+tuned_wf<- finalize_workflow(tree_wf, select_best(tree_rs, "rmse"))
 
 tuned_wf
 
 # final fit
-tree_fit <- fit(tuned_wf, model_df)
+tree_fit <- fit(tuned_wf, model_df_train)
 
 tree <- extract_fit_engine(tree_fit)
 # 
-# node.fun1 <- function(x, labs, digits, varlen)
-# {
-#   paste(
-#     ifelse(x$frame$var == "<leaf>", paste("Leaf ID:", rownames(x$frame), "\n"), ""),
-#     "Mean LOS",
-#     round(x$frame$yval, 1),
-#     "\n",
-#     "n = ",
-#     scales::number(x$frame$n, big.mark = ",")
-#     )
-# }
-# 
-# png(filename = "materials/tree_plot.png",
-#     width = 1800,
-#     height = 1200,
-#     res = 299,
-#     bg = "white"
-#     )
-# rpart.plot::rpart.plot(tree, type = 2, extra = 101, node.fun = node.fun1)
-# dev.off()
+node.fun1 <- function(x, labs, digits, varlen)
+{
+  paste(
+    ifelse(x$frame$var == "<leaf>", paste("Leaf ID:", rownames(x$frame), "\n"), ""),
+    "Mean mLOS",
+    round(x$frame$yval, 1),
+    "\n",
+    "n = ",
+    scales::number(x$frame$n, big.mark = ",")
+    )
+}
+
+png(filename = "materials/tree_plot.png",
+    width = 1800,
+    height = 1200,
+    res = 299,
+    bg = "white"
+    )
+rpart.plot::rpart.plot(tree, type = 2, extra = 101, node.fun = node.fun1)
+dev.off()
 
 # partykit::as.party(tree) %>% plot(gp = gpar(fontsize = 6))
 
@@ -319,7 +274,7 @@ tree <- extract_fit_engine(tree_fit)
 
 # append leaf number onto original data:
 
-los_model_df <- model_df %>%
+los_model_df <- model_df_train %>%
   bake(extract_recipe(tree_fit), .) %>%
   mutate(leaf = treeClust::rpart.predict.leaves(tree, .))
 
@@ -336,18 +291,25 @@ ggplot(los_model_df, aes(x = los)) +
 
 dists <- c(
   "exp"
-  ,"norm"
   ,"lnorm"
   ,"gamma"
   ,"weibull"
 )
 
+fitdistcens_safe <- safely(fitdistcens)
 
 fit_dists <- los_model_df %>%
-  dplyr::select(leaf, los) %>%
+  dplyr::select(leaf, left = los) %>%
+  mutate(right = left + 2) %>%
   group_by(leaf) %>%
   nest() %>%
-  mutate(fit = map(data, function(data ) imap(dists, ~fitdist(data$los, .x)))) %>%
+  mutate(data = map(data, as.data.frame)) %>%
+  # fit dist on censored data safely
+  mutate(fit = map(data, function(data ) imap(dists, ~fitdistcens_safe(censdata = data, distr = .x)))) %>%
+  # throw out any dists that failed to fit with defaults
+  mutate(fit = map(fit, ~keep(.x, \(x) is.null(x$error)))) %>%
+  # pluck results
+  mutate(fit = map(fit, ~map(.x, "result"))) %>%
   mutate(min_aic = map_dbl(fit, function(group) min(map_dbl(group, ~pluck(.x, "aic"))))) %>%
   #select best based on lowest AIC
   mutate(fit = flatten(pmap(list(fit, min_aic), function(fits, aic) keep(fits, \(x) x$aic == aic)))) %>%

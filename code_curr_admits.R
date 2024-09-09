@@ -9,21 +9,14 @@ df_curr_admits <- local({
     filter(ctr)
   
   
-  # attributes
-  
-#   attr_df <-
-#     RODBC::sqlQuery(
-#       con,
-#       "select * from (
-# select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
-# [MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
-#     )
-  
   los_df <- los_df %>%
-    left_join(dplyr::select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
-                                                     by = join_by(nhs_number == nhs_number)) %>%
+    left_join(
+      dplyr::select(attr_df, -sex, -age) %>%
+        mutate(nhs_number = as.character(nhs_number)),
+      by = join_by(nhs_number == nhs_number)
+    ) %>%
     dplyr::select(age, sex, cambridge_score, bed_type, site, los) #%>%
-    #na.omit()
+  #na.omit()
   
   # pathway model
   
@@ -71,7 +64,7 @@ df_curr_admits <- local({
     mutate(los_remaining = los_remaining %/% 1) %>%
     group_by(site, id) %>%
     mutate(rep = 1:n()) %>%
-    group_by(rep, site, day = los_remaining, pathway = pathways) %>%
+    group_by(rep, site, day = los_remaining + 1, pathway = pathways) %>%
     count(name = "count") %>%
     ungroup() %>%
     complete(rep, site, day, pathway, fill =list(count = 0)) %>%

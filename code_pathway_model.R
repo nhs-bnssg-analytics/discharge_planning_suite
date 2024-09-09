@@ -85,12 +85,15 @@ pathway_df <- nctr_df %>%
          sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
   group_by(nhs_number) %>%
   arrange(Census_Date) %>%
-  reframe(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other"),
+  reframe(Census_Date = Census_Date[1],
+          pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other"),
           sex = sex[1],
           age = Person_Age[1],
           spec = Specialty_Code[1],
           bed_type = Bed_Type[1]) %>%
-  dplyr::select(nhs_number,
+  dplyr::select(
+         Census_Date,
+         nhs_number,
          sex,
          age,
          pathway,
@@ -140,13 +143,12 @@ select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period
   )
 
 
-
-
 # modelling
 model_df <- pathway_df %>%
   left_join(dplyr::select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
             by = join_by(nhs_number == nhs_number)) %>%
-  dplyr::select(pathway,
+  dplyr::select(Census_Date,
+         pathway,
          #site,
          cambridge_score,
          age,
@@ -162,18 +164,26 @@ model_df <- pathway_df %>%
 
 # save full proportions
 
-model_df %>%
+# splits based on 6 months from end of validation
+model_df_split <- make_splits(x = list(
+  analysis = which(model_df$Census_Date <= validation_end - dweeks(26)),
+  assessment = which(model_df$Census_Date > validation_end - dweeks(26))
+),
+data = select(model_df, -Census_Date))
+
+model_df <- model_df %>% select(-Census_Date)
+
+model_df_train <- training(model_df_split)
+model_df_test <- testing(model_df_split)
+
+
+model_df_train %>%
   pull(pathway) %>%
   table() %>%
   proportions() %>%
   as.list() %>%
   unlist() %>%
   saveRDS("data/pathway_prop.RDS")
-
-model_df_split <- initial_split(model_df, strata = pathway)
-model_df_train <- training(model_df_split)
-model_df_test <- testing(model_df_split)
-
 
 mod_rec <- recipe(pathway ~ ., data = model_df_split) %>%
   step_zv() %>%

@@ -1,9 +1,9 @@
-library(fitdistrplus)
-library(tidyverse)
-library(forecast)
-library(tsibble)
-library(fable)
-library(fabletools)
+require(fitdistrplus)
+require(tidyverse)
+require(forecast)
+require(tsibble)
+require(fable)
+require(fabletools)
 
 df_admit_fcast <- local({
   
@@ -36,7 +36,6 @@ admissions <- nctr_df %>%
   count() %>%
   filter(date > ymd("2023-07-01")) # data before this are spurious 
   
-
 models <- admissions %>%
   ungroup() %>%
   complete(date, site, fill = list(count = 0)) %>%
