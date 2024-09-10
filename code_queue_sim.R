@@ -18,14 +18,7 @@ discharges_ts <- nctr_df %>%
       TRUE ~ 'other'
     )) %>%
   mutate(pathway = recode(Current_Delay_Code_Standard,
-                          "P3 / Other Complex Discharge" = "P3",
-                          "Uncoded" = "Other",
-                          "Repatriation" = "Other",
-                          "NCTR Null" = "Other",
-                          "Not Set" = "Other",
-                          "18a  Infection  bxviii  Standard" = "Other",
-                          "xviii. Awaiting discharge to a care home but have not had a COVID 19 test (in 48 hrs preceding discharge)." = "Other",
-                          "15b  Repat  bxv  WGH" = "Other"),
+                          !!!pathway_recodes),
          pathway = coalesce(pathway, "Other")) %>%
   mutate(pathway = if_else(
     !pathway %in% c("P1", "P2", "P3", "P3" , "Other"),
@@ -75,13 +68,12 @@ pathway_queue <- nctr_sum %>%
   count() %>%
   mutate(source = "current_ctr_data",
          report_date = max_date,
-         day = 0) %>%
+         day = 1) %>%
   pivot_longer(cols = c(n),
                names_to = "metric",
                values_to = "value")
 
 t_sim <- n_days
-n_rep <- 1E4
 
 sim_fn <- function(q, d, c) {
   n_arrs <-
@@ -157,7 +149,7 @@ df_sim <- pathway_queue %>%
          n_l_l85 = map(sim_l, ~ map_dbl(array_branch(.x, margin = 2), ~ quantile(.x, .075)))) %>%
   dplyr::select(site, pathway, n, n_u85, n_l85, n_u, n_u_u85, n_u_l85, n_l, n_l_u85, n_l_l85) %>%
   unnest(c(n, n, n_u85, n_l85, n_u, n_u_u85, n_u_l85, n_l, n_l_u85, n_l_l85)) %>%
-  mutate(day = rep(c(0:n_days), times = n_distinct(site)*n_distinct(pathway))) %>%
+  mutate(day = rep(c(1:n_days), times = n_distinct(site)*n_distinct(pathway))) %>%
   mutate(ctr = "N",
          source = "queue_sim",
          report_date = max_date) %>%

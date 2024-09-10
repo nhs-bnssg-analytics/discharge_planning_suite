@@ -67,7 +67,8 @@ los_df <- nctr_df %>%
       !is.na(Date_NCTR) ~ FALSE,
       Criteria_To_Reside == "N" ~ FALSE
     ),
-    der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - lubridate::ddays(1),max(Census_Date)))) %>%
+    # der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - lubridate::ddays(1),max(Census_Date)))) %>%
+    der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) ,max(Census_Date)))) %>%
   ungroup() %>%
   mutate(der_date_nctr = pmin(der_date_nctr, Date_NCTR, na.rm = TRUE)) %>%
   arrange(Census_Date) %>%
@@ -210,7 +211,7 @@ tree_spec <- decision_tree(
 
 tree_grid <- grid_regular(cost_complexity(),
                           tree_depth(range = c(1, 4)),
-                          min_n(range = c(25, 300)), levels = 16)
+                          min_n(range = c(50, 300)), levels = 16)
 
 
 tree_rec <- recipe(los ~ ., data = model_df_train)  %>%
@@ -231,11 +232,16 @@ tree_rs <- tune_grid(
   tree_wf,
   resamples = los_folds,
   grid = tree_grid,
-  metrics = metric_set(rmse, rsq, mae, mape)
+  metrics = metric_set(
+    rmse,
+    rsq,
+    mae#,
+    #mape
+    )
 )
 
 autoplot(tree_rs) + theme_light(base_family = "IBMPlexSans")
-collect_metrics(tree_rs) %>% View()
+# collect_metrics(tree_rs) %>% View()
 
 tuned_wf<- finalize_workflow(tree_wf, select_best(tree_rs, "rmse"))
 

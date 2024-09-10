@@ -1,5 +1,10 @@
 source("utils/utils.R")
 n_rep <- 1E2
+validation_end <- ymd("2024-09-01")
+validation_start <- ymd("2023-07-01")
+start_date <- validation_end - dweeks(26) 
+nctr_df <- nctr_df %>% filter(between(Census_Date, validation_start, validation_end-ddays(1)))
+
 
 nctr_sum <- nctr_df %>%
   filter(Person_Stated_Gender_Code %in% 1:2) %>%
@@ -45,10 +50,13 @@ dates_spells <- dates_spells %>%
 
 
 dates <- nctr_df %>%
-  filter(Census_Date > ymd("2023-07-01"),
-         Census_Date < max(Census_Date) - ddays(50),
+  filter(Census_Date >= start_date,
+         Census_Date < validation_end,
+         Census_Date > ymd("2023-07-01"),
+         Census_Date < max(Census_Date) - ddays(n_days),
          # remove dates near Christmas
-         abs(interval(Census_Date, ymd("2023-12-25"))/ddays(1)) > 15) %>%
+         abs(lubridate::interval(Census_Date, ymd("2023-12-25"))/ddays(1)) > 15
+  ) %>%
   pull(Census_Date) %>%
   unique()
 
@@ -196,7 +204,7 @@ drain_fn <- function(date_i) {
   # mutate(prop = n/sum(n)) %>%
   
   out_df %>%
-    mutate(id = which(d_i == date_i))
+    mutate(id = which(dates == date_i))
 }
 
 drain_fn_safe <- safely(drain_fn)
@@ -204,8 +212,16 @@ drain_fn_safe <- safely(drain_fn)
 options(future.globals.maxSize = 16000 * 1024^2)
 future::plan(future::multisession, workers = parallel::detectCores() - 6)
 # future::plan(future::multisession, workers = 4)
-out <- furrr::future_map(d_i, ~drain_fn_safe(.x))
+out <- furrr::future_map(dates, ~drain_fn_safe(.x))
 # out <- map(d_i[1:10], ~drain_fn_safe(.x))
+
+map(out, "result") %>%
+  map_lgl(is.null) %>%
+  sum()
+
+map(out, "result") %>%
+  map_lgl(is.null) %>%
+  which()
 
 saveRDS(out, "data/drain_out_new.RDS")
 
@@ -281,7 +297,7 @@ out %>%
   scale_colour_manual(values = c("#8c96c6", "#88419d")) +
   scale_y_continuous(labels = scales::percent) +
   # scale_x_continuous(breaks = 0:n_days) +
-  labs(y = "Cumulative occupancy drain",
+  labs(y = "Cumulative Occupancy Drain",
        x = "Day",
        col = "")
 
