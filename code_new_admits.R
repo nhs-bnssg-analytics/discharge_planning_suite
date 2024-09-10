@@ -32,7 +32,8 @@ df_new_admit <- local({
     mutate(los = map(arrivals, function(arr) rdist(arr))) %>%
     unnest(los) %>%
     mutate(date_end = date + ddays(los)) %>%
-    group_by(site, day = (date_end - (report_start)) / ddays(1), rep) %>%
+    # day is + 1 to shift all predicted discharges to the next snapshot
+    group_by(site, day = 1 + (date_end - (report_start)) / ddays(1), rep) %>%
     count() %>%
     ungroup() %>%
     mutate(pathways = map(n, ~ factor(sample(names(props), size = .x, prob = props, replace = TRUE), levels = names(props))))  %>%

@@ -33,6 +33,7 @@ dates <- nctr_df %>%
 
 
 na_sim_fn <- function(d){
+  
   require(tidyverse)
   # n_rep <- 1E2
   # plot_int <- FALSE
@@ -133,11 +134,12 @@ na_sim_fn <- function(d){
 }
 
 sim_safe <- safely(na_sim_fn)
-d_i <- sample(dates, 5)
+d_i <- sample(dates, 25)
 
 options(future.globals.maxSize = 16000 * 1024^2)
 future::plan(future::multisession, workers = parallel::detectCores() - 8)
-out <- furrr::future_map(dates[1:100], sim_safe, .options = furrr::furrr_options(
+out <- furrr::future_map(d_i, sim_safe, .options = furrr::furrr_options(
+# out <- furrr::future_map(dates[1:100], sim_safe, .options = furrr::furrr_options(
   globals = c(
     "get_sd_from_ci",
     "n_days",

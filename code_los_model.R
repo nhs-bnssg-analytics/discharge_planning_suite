@@ -194,7 +194,7 @@ model_df_test <- los_testing %>%
          !is.na(los)) # remove this as only 1 case
 
 
-set.seed(123)
+set.seed(234)
 los_folds <- vfold_cv(model_df_train, strata = los)
 los_folds
 
@@ -209,8 +209,8 @@ tree_spec <- decision_tree(
 
 
 tree_grid <- grid_regular(cost_complexity(),
-                          tree_depth(range = c(1, 5)),
-                          min_n(range = c(50, 300)), levels = 16)
+                          tree_depth(range = c(1, 4)),
+                          min_n(range = c(25, 300)), levels = 16)
 
 
 tree_rec <- recipe(los ~ ., data = model_df_train)  %>%
@@ -291,6 +291,7 @@ ggplot(los_model_df, aes(x = los)) +
 
 dists <- c(
   "exp"
+  ,"norm"
   ,"lnorm"
   ,"gamma"
   ,"weibull"
@@ -328,7 +329,6 @@ fit_dists <- fit_dists %>%
   mutate(qdist = map2(dist, fit_parms, ~dist_ptl_gen(.x, .y, "q"))) %>%
   mutate(rdist = map2(dist, fit_parms, ~dist_ptl_gen(.x, .y, "r"))) %>%
   mutate(tdist = map2(pdist, qdist, ~partial(rtruncdist, pdist = .x, qdist = .y)))
-
 
 
 # adding a 'leaf' for full population distribution

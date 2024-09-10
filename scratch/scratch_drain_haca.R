@@ -1,5 +1,5 @@
 source("utils/utils.R")
-n_rep <- 1E3
+n_rep <- 1E2
 
 nctr_sum <- nctr_df %>%
   filter(Person_Stated_Gender_Code %in% 1:2) %>%
@@ -153,7 +153,7 @@ drain_fn <- function(date_i) {
                                 function(los, trunc_dist)
                                   trunc_dist(
                                     n_rep,
-                                    range = c(los-1, Inf)
+                                    range = c(los, Inf)
                                   ) - los) %>%
              reduce(rbind)) %>%
     select(site, los_remaining)  %>%
@@ -209,7 +209,6 @@ out <- furrr::future_map(d_i, ~drain_fn_safe(.x))
 
 saveRDS(out, "data/drain_out_new.RDS")
 
-
 map(out, "result") %>% bind_rows()
 
 n_days <- 10
@@ -235,7 +234,7 @@ out %>%
   filter(day <= n_days) %>%
   group_by(index_day, day, source) %>%
   summarise(mean_cum_prop = mean(mean_cum_prop)) %>%
-  mutate(source = recode(source, "empirical" = "Actual", "simulated" = "Simulated")) %>%
+  mutate(source = recode(source, "empirical" = "Observed", "simulated" = "Simulated")) %>%
   ggplot(aes(x = day, y = mean_cum_prop, fill = source)) +
   # geom_col(position = "dodge") +
   geom_line(aes(col = source)) +
@@ -249,18 +248,51 @@ out %>%
   scale_y_continuous(labels = scales::percent) +
   # scale_x_continuous(breaks = 0:n_days) +
   labs(y = "Cumulative occupancy drain",
-       x = "Day") +
+       x = "Day",
+       col = "") +
   facet_wrap(vars(index_day))
 
+out %>% 
+  map("result") %>%
+  reduce(bind_rows) %>%
+  group_by(id, site) %>%
+  filter(site == "system") %>%
+  pivot_longer(cols = -c(id, site, day, date, source), names_to = "metric", values_to = "value") %>%
+  filter(metric == "mean") %>%
+  group_by(source, id, metric) %>%
+  mutate(prop = value/sum(value)) %>%
+  mutate(cum_prop = cumsum(prop)) %>% 
+  pivot_longer(cols = -c(day, date, site, source, id, metric), names_to = "calc", values_to = "value") %>%
+  unite("metric", metric, calc, sep = "_") %>%
+  pivot_wider(names_from = metric, values_from = value) %>%
+  filter(day <= n_days) %>%
+  group_by(day, source) %>%
+  summarise(mean_cum_prop = mean(mean_cum_prop)) %>%
+  mutate(source = recode(source, "empirical" = "Observed", "simulated" = "Simulated")) %>%
+  ggplot(aes(x = day, y = mean_cum_prop, fill = source)) +
+  # geom_col(position = "dodge") +
+  geom_line(aes(col = source)) +
+  # geom_errorbar(aes(ymin = l95_cum_prop, ymax = u95_cum_prop), position = "dodge") +
+  # facet_wrap(vars(id), scales = "free")  +
+  # bnssgtheme() +
+  theme_minimal() +
+  theme(legend.position = "bottom", legend.justification = "center") +
+  # scale_fill_manual(values = unname(bnssgcols[c(3, 7)])) +
+  scale_colour_manual(values = c("#8c96c6", "#88419d")) +
+  scale_y_continuous(labels = scales::percent) +
+  # scale_x_continuous(breaks = 0:n_days) +
+  labs(y = "Cumulative occupancy drain",
+       x = "Day",
+       col = "")
 
 
 ggsave(
   last_plot(),
   filename = "./validation/validation_plot_los_drain_meancumulative.png",
+  bg = "white",
   height = 7.5,
   width = 7.5, 
   scale = 0.6)
-
 
 out %>%
   map("result") %>%
@@ -270,6 +302,26 @@ out %>%
   filter(site == "system") %>%
   ggplot(aes(x = day, y = mean, fill = source)) + geom_col(position = "dodge")
 
+
+(drain_plot_cum <- out %>% 
+    map("result") %>%
+    reduce(bind_rows) %>%
+    filter(site == "system") %>%
+    pivot_longer(cols = -c(id, site, day, date, source), names_to = "metric", values_to = "value") %>%
+    group_by(source, id, metric) %>%
+    mutate(prop = value/sum(value)) %>%
+    mutate(cum_prop = cumsum(prop)) %>%
+    pivot_longer(cols = -c(day, date, site, source, id, metric), names_to = "calc", values_to = "value") %>%
+    unite("metric", metric, calc, sep = "_") %>%
+    pivot_wider(names_from = metric, values_from = value) %>%
+    filter(day <= 50) %>%
+    ggplot(aes(x = day, y = mean_cum_prop, fill = source)) +
+    # geom_col(position = "dodge") +
+    geom_line(aes(col = source)) +
+    # geom_errorbar(aes(ymin = l95_cum_prop, ymax = u95_cum_prop), position = "dodge") +
+    facet_wrap(vars(id), scales = "free") +
+    labs(y = "Cumulative occupancy drain") +
+    theme_bw())
 
 
 # foo <- with(sim_drain,
