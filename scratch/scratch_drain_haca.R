@@ -32,14 +32,15 @@ nctr_sum <- nctr_df %>%
     )) 
 
 
-attr_df <-
-  RODBC::sqlQuery(
-    con,
-    "select * from (
-select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
-[MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
-  )
+# attr_df <-
+#   RODBC::sqlQuery(
+#     con,
+#     "select * from (
+# select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
+# [MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
+#   )
 
+attr_df <- readRDS("data/attr_df.RDS")
 
 dates_spells <- nctr_sum %>%
   group_by(Census_Date, Criteria_To_Reside, Days_NCTR, spell_id) %>%
@@ -213,7 +214,7 @@ options(future.globals.maxSize = 16000 * 1024^2)
 future::plan(future::multisession, workers = parallel::detectCores() - 6)
 # future::plan(future::multisession, workers = 4)
 out <- furrr::future_map(dates, ~drain_fn_safe(.x))
-# out <- map(d_i[1:10], ~drain_fn_safe(.x))
+out <- furrr::future_map(dates[1:50], ~drain_fn_safe(.x))
 
 map(out, "result") %>%
   map_lgl(is.null) %>%
@@ -229,44 +230,44 @@ map(out, "result") %>% bind_rows()
 
 n_days <- 10
 
-out %>% 
-  map("result") %>%
-  reduce(bind_rows) %>%
-  mutate(wday = weekdays(date)) %>%
-  group_by(id, site) %>%
-  mutate(index_day = wday[which.min(date)]) %>%
-  select(-wday) %>%
-  # filter(day <= 10, !wday %in% c("Saturday", "Sunday")) %>%
-  # select(-wday) %>%
-  filter(site == "system") %>%
-  pivot_longer(cols = -c(id, site, day, date, index_day, source), names_to = "metric", values_to = "value") %>%
-  filter(metric == "mean") %>%
-  group_by(source, id, metric, index_day) %>%
-  mutate(prop = value/sum(value)) %>%
-  mutate(cum_prop = cumsum(prop)) %>% 
-  pivot_longer(cols = -c(day, date, site, source, id, index_day, metric), names_to = "calc", values_to = "value") %>%
-  unite("metric", metric, calc, sep = "_") %>%
-  pivot_wider(names_from = metric, values_from = value) %>%
-  filter(day <= n_days) %>%
-  group_by(index_day, day, source) %>%
-  summarise(mean_cum_prop = mean(mean_cum_prop)) %>%
-  mutate(source = recode(source, "empirical" = "Observed", "simulated" = "Simulated")) %>%
-  ggplot(aes(x = day, y = mean_cum_prop, fill = source)) +
-  # geom_col(position = "dodge") +
-  geom_line(aes(col = source)) +
-  # geom_errorbar(aes(ymin = l95_cum_prop, ymax = u95_cum_prop), position = "dodge") +
-  # facet_wrap(vars(id), scales = "free")  +
-  # bnssgtheme() +
-  theme_minimal() +
-  theme(legend.position = "bottom", legend.justification = "center") +
-  # scale_fill_manual(values = unname(bnssgcols[c(3, 7)])) +
-  scale_colour_manual(values = c("#8c96c6", "#88419d")) +
-  scale_y_continuous(labels = scales::percent) +
-  # scale_x_continuous(breaks = 0:n_days) +
-  labs(y = "Cumulative occupancy drain",
-       x = "Day",
-       col = "") +
-  facet_wrap(vars(index_day))
+# out %>% 
+#   map("result") %>%
+#   reduce(bind_rows) %>%
+#   mutate(wday = weekdays(date)) %>%
+#   group_by(id, site) %>%
+#   mutate(index_day = wday[which.min(date)]) %>%
+#   select(-wday) %>%
+#   # filter(day <= 10, !wday %in% c("Saturday", "Sunday")) %>%
+#   # select(-wday) %>%
+#   filter(site == "system") %>%
+#   pivot_longer(cols = -c(id, site, day, date, index_day, source), names_to = "metric", values_to = "value") %>%
+#   filter(metric == "mean") %>%
+#   group_by(source, id, metric, index_day) %>%
+#   mutate(prop = value/sum(value)) %>%
+#   mutate(cum_prop = cumsum(prop)) %>% 
+#   pivot_longer(cols = -c(day, date, site, source, id, index_day, metric), names_to = "calc", values_to = "value") %>%
+#   unite("metric", metric, calc, sep = "_") %>%
+#   pivot_wider(names_from = metric, values_from = value) %>%
+#   filter(day <= n_days) %>%
+#   group_by(index_day, day, source) %>%
+#   summarise(mean_cum_prop = mean(mean_cum_prop)) %>%
+#   mutate(source = recode(source, "empirical" = "Observed", "simulated" = "Simulated")) %>%
+#   ggplot(aes(x = day, y = mean_cum_prop, fill = source)) +
+#   # geom_col(position = "dodge") +
+#   geom_line(aes(col = source)) +
+#   # geom_errorbar(aes(ymin = l95_cum_prop, ymax = u95_cum_prop), position = "dodge") +
+#   # facet_wrap(vars(id), scales = "free")  +
+#   # bnssgtheme() +
+#   theme_minimal() +
+#   theme(legend.position = "bottom", legend.justification = "center") +
+#   # scale_fill_manual(values = unname(bnssgcols[c(3, 7)])) +
+#   scale_colour_manual(values = c("#8c96c6", "#88419d")) +
+#   scale_y_continuous(labels = scales::percent) +
+#   # scale_x_continuous(breaks = 0:n_days) +
+#   labs(y = "Cumulative occupancy drain",
+#        x = "Day",
+#        col = "") +
+#   facet_wrap(vars(index_day))
 
 out %>% 
   map("result") %>%

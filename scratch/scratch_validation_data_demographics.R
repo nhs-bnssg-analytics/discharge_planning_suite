@@ -20,6 +20,7 @@ nctr_sum <- nctr_df %>%
   ) %>%
   group_by(Organisation_Site_Code) %>%
   # filter(Census_Date == max(Census_Date)) %>%
+  filter(site != "nbt") %>%
   ungroup() %>%
   mutate(
     der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/ddays(1),
@@ -86,49 +87,69 @@ mortality_df <- local({
 nctr_sum <- nctr_sum %>%
   filter(!nhs_number %in% mortality_df$nhs_number)
 
+
+# Lets use the los data instead as it has a few bespoke filters (~1k patient difference)
+
+los_df <- readRDS("data/los_df.RDS")
+
 # Number of admissions
 
-nctr_sum %>% 
-  select(nhs_number, date_of_admission) %>% 
+los_df %>% 
+  select(nhs_number, admission_date) %>% 
   distinct() %>%
   nrow()
 
+
 # Number of patients
 
-nctr_sum %>% 
+los_df %>% 
   select(nhs_number) %>% 
   distinct() %>%
   nrow()
 
 # demographic table
 
-attr_df <-
-  RODBC::sqlQuery(
-    con,
-    "select * from (
-select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
-[MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
-  )
+# attr_df <-
+#   RODBC::sqlQuery(
+#     con,
+#     "select * from (
+# select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
+# [MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
+#   )
 
+attr_df <- readRDS("data/attr_df.RDS")
 
-demo_tab <- nctr_sum %>%
+demo_tab <- los_df %>%
+  ungroup() %>%
+  mutate(grp = ifelse(Census_Date <= validation_end - dweeks(26), yes = "Training Set", no = "Testing Set")) %>%
+  mutate(grp = factor(grp, levels = c("Full Data", "Training Set", "Testing Set"))) %>%
+  mutate(s_id = cur_group_id(), .by = c(nhs_number, admission_date)) %>%
+  mutate(n_unique_adm = n_distinct(s_id), .by = grp) %>%
+  rbind(mutate(., grp = "Full Data")) %>%
   group_by(nhs_number) %>%
-  filter(date_of_admission == min(date_of_admission)) %>%
-  select(nhs_number, sex, age) %>%
+  filter(admission_date == min(admission_date)) %>%
+  select(grp, n_unique_adm, nhs_number, sex, age, bed_type) %>%
   distinct() %>%
-  left_join(select(attr_df, nhs_number, cambridge_score) %>% mutate(nhs_number = as.character(nhs_number))) %>%
-  filter(!str_detect(nhs_number, "unknown")) %>%
+  left_join(select(attr_df, nhs_number, cambridge_score) %>% 
+              mutate(nhs_number = as.character(nhs_number))) %>%
+  # filter(!str_detect(nhs_number, "unknown")) %>%
   ungroup() %>%
   select(-nhs_number)
+
+
+
+
 
 
 demo_tab %>%
  gtsummary::tbl_summary(label = list(
                                      sex = "Sex",
                                      age = "Age",
+                                     bed_type = "Bed Type",
                                      cambridge_score = "Cambridge Score"
                                      ),
-                        missing_text = "Missing") %>%
+                        missing_text = "Missing",
+                        by = grp) %>%
   gtsummary::as_hux_table() %>%
   huxtable::quick_html(file = "materials/demog_tab.html")
 

@@ -70,19 +70,21 @@ los_df <- nctr_df %>%
     # der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - lubridate::ddays(1),max(Census_Date)))) %>%
     der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) ,max(Census_Date)))) %>%
   ungroup() %>%
-  mutate(der_date_nctr = pmin(der_date_nctr, Date_NCTR, na.rm = TRUE)) %>%
+  mutate(der_date_nctr = pmax(Date_Of_Admission, pmin(der_date_nctr, Date_NCTR, na.rm = TRUE), na.rm = TRUE)) %>%
+  mutate(der_date_nctr = as.Date(der_date_nctr)) %>%
   arrange(Census_Date) %>%
   group_by(spell_id) %>%
-  # minus one as you mLOS is less than the time observed across the census snapshots
-  mutate(discharge_rdy_los = ((der_date_nctr - as.Date(Date_Of_Admission))/lubridate::ddays(1))-1) %>%
+  # minus one as you mLOS is less than the time observed across the census snapshots (i.e. this is the left censor value)
+  mutate(discharge_rdy_los = (der_date_nctr - as.Date(Date_Of_Admission))/lubridate::ddays(1)-1) %>%
+  # take max with zero for some cases where it is -1 due to date nctr == date admission and so los = -1
+  mutate(discharge_rdy_los = pmax(discharge_rdy_los, 0)) %>%
   # take first discharge ready value
   group_by(NHS_Number, Date_Of_Admission) %>%
   arrange(discharge_rdy_los) %>% 
   slice(1) %>%
   mutate(day_of_admission = weekdays(Date_Of_Admission)) %>%
   ungroup() %>%
-  filter(discharge_rdy_los >= 0) %>%
-  # filter(discharge_rdy_los < 60) %>%
+  # filter(discharge_rdy_los >= 0) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   mutate(Organisation_Site_Code = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt',
                                             Organisation_Site_Code == 'RA701' ~ 'bri',
@@ -136,6 +138,10 @@ los_df <- los_df %>%
   filter(is.na(date_death)) %>%
   select(-date_death, admission_date)
 
+# Take first admission
+
+saveRDS(los_df, "data/los_df.RDS")
+
 los_testing <- los_df %>%
   filter(Census_Date > validation_end - dweeks(26)) %>%
   select(-Census_Date)
@@ -147,20 +153,25 @@ los_train <- los_df %>%
 
 # attributes to join
 
-attr_df <-
-  RODBC::sqlQuery(
-    con,
-    "select * from (
-select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
-[MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
-  )
+# attr_df <-
+#   RODBC::sqlQuery(
+#     con,
+#     "select * from (
+# select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
+# [MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
+#   )
+# 
+# saveRDS(attr_df, "data/attr_df.RDS")
+attr_df <- readRDS("data/attr_df.RDS")
 
 # modelling
 model_df_train <- los_train %>%
   full_join(dplyr::select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
             by = join_by(nhs_number == nhs_number)) %>%
   # na.omit() %>%
-  dplyr::select(los,
+  dplyr::select(
+         # nhs_number,
+         los,
          site,
          # day_of_admission,
          cambridge_score,
@@ -175,11 +186,14 @@ model_df_train <- los_train %>%
   filter(sex != "Unknown",
          !is.na(los)) # remove this as only 1 case
 
+
 model_df_test <- los_testing %>%
   full_join(dplyr::select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
             by = join_by(nhs_number == nhs_number)) %>%
   # na.omit() %>%
-  dplyr::select(los,
+  dplyr::select(
+                #nhs_number,
+                los,
                 site,
                 # day_of_admission,
                 cambridge_score,
@@ -192,8 +206,7 @@ model_df_test <- los_testing %>%
                 #segment
   ) %>%
   filter(sex != "Unknown",
-         !is.na(los)) # remove this as only 1 case
-
+         !is.na(los)) 
 
 set.seed(234)
 los_folds <- vfold_cv(model_df_train, strata = los)
@@ -210,8 +223,8 @@ tree_spec <- decision_tree(
 
 
 tree_grid <- grid_regular(cost_complexity(),
-                          tree_depth(range = c(1, 4)),
-                          min_n(range = c(50, 300)), levels = 16)
+                          tree_depth(range = c(1, 5)),
+                          min_n(range = c(100, 300)), levels = 16)
 
 
 tree_rec <- recipe(los ~ ., data = model_df_train)  %>%
@@ -240,7 +253,48 @@ tree_rs <- tune_grid(
     )
 )
 
-autoplot(tree_rs) + theme_light(base_family = "IBMPlexSans")
+autoplot(tree_rs) +
+  theme_minimal(base_family = "IBMPlexSans") +
+  # scale_x_continuous(transform = "log10", labels = label_math()) +
+  scale_x_continuous(transform = "log10", labels = trans_format("log10", math_format(10^.x))) +
+  scale_color_viridis_d(begin = 0.1, end = 0.8)  +
+  labs(col = "Min n")
+
+
+
+labeller_tree_depth <- function(string, prefix = "Tree-Depth: ") paste0(prefix, string)
+labeller_metric <- c(mae = "Mean Absolute Error",
+                     rmse = "Root Mean Squared Error",
+                     rsq = "R Squared")
+
+tree_rs %>%
+  collect_metrics() %>%
+  ggplot(aes(x = cost_complexity, y = mean, col = factor(min_n))) +
+  geom_line() +
+  geom_point() +
+  facet_grid(.metric ~ tree_depth,
+             scales = "free_y",
+             labeller = labeller(
+               tree_depth = as_labeller(labeller_tree_depth),
+               .metric = as_labeller(labeller_metric)
+               )) +
+  theme_minimal() +
+  scale_x_continuous(transform = "log10", labels = trans_format("log10", math_format(10^.x))) +
+  scale_color_viridis_d(begin = 0.1, end = 0.8)  +
+  labs(col = "Min n",
+       x = "Cost-Complextiy Parameter",
+       y = "")
+
+
+ggsave(last_plot(),
+       filename = "./validation/los_calib_hyperparam.png",
+       bg = "white",
+       width = 15,
+       height = 10,
+       scale = 0.6)
+
+
+
 # collect_metrics(tree_rs) %>% View()
 
 tuned_wf<- finalize_workflow(tree_wf, select_best(tree_rs, "rmse"))
@@ -322,6 +376,28 @@ fit_dists <- los_model_df %>%
   mutate(fit = flatten(pmap(list(fit, min_aic), function(fits, aic) keep(fits, \(x) x$aic == aic)))) %>%
   mutate(dist = map_chr(fit, "distname")) %>%
   mutate(fit_parms = map(fit, "estimate")) 
+
+foo <- los_model_df %>%
+  dplyr::select(leaf, left = los) %>%
+  mutate(right = left + 2) %>%
+  group_by(leaf) %>%
+  nest() %>%
+  mutate(data = map(data, as.data.frame)) %>%
+  # first fit to non censored (right) boundary to get starting values
+  mutate(ini_fit = map(data, function(data) imap(dists, ~fitdistrplus::fitdist(data = data$right, distr = .x)))) %>%
+  mutate(ini_prms = map(ini_fit, function(fit) map(fit, "estimate"))) %>%
+  # fit dist on censored data safely, with starting parms established above
+  mutate(fit = map2(data, ini_prms, function(data, ini_prms_i) map2(dists, ini_prms_i, ~fitdistcens_safe(data, distr = .x, start = as.list(.y))))) %>%
+  # throw out any dists that failed to fit with defaults
+  mutate(fit = map(fit, ~keep(.x, \(x) is.null(x$error)))) %>%
+  # pluck results
+  mutate(fit = map(fit, ~map(.x, "result"))) %>%
+  mutate(min_aic = map_dbl(fit, function(group) min(map_dbl(group, ~pluck(.x, "aic"))))) %>%
+  #select best based on lowest AIC
+  mutate(fit = flatten(pmap(list(fit, min_aic), function(fits, aic) keep(fits, \(x) x$aic == aic)))) %>%
+  mutate(dist = map_chr(fit, "distname")) %>%
+  mutate(fit_parms = map(fit, "estimate")) 
+
 
 dist_ptl_gen <- function(dist, parms, type){
   stopifnot(type %in% c("d", "p", "q", "r"))
