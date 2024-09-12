@@ -12,8 +12,9 @@ df_new_admit <- local({
     pivot_wider(names_from = metric, values_from = value) %>%
     # filter(!is.na(fcast)) %>%
     dplyr::select(site, date, fcast, u_85, l_85) %>%
-    filter(date >= report_start,
-           date <= report_end)
+    # - 1 day to include day 0 arivals
+    filter(date >= report_start -ddays(1),
+           date < report_end)
   
   sites <- unique(df_admit_fcast_flt$site)
   dates <- sort(unique(df_admit_fcast_flt$date))
@@ -29,11 +30,12 @@ df_new_admit <- local({
            # coalesce in case we sample below zero
            day = rep(0:n_days, length(sites) * n_rep)) %>% 
     filter(arrivals > 0) %>%
-    mutate(los = map(arrivals, function(arr) rdist(arr))) %>%
+    # los plus one because it is stored as the left boundary of the interval censor (i.e. 0-2 should los 1)
+    mutate(los = map(arrivals, function(arr) rdist(arr) + 1)) %>%
     unnest(los) %>%
     mutate(date_end = date + ddays(los)) %>%
     # day is + 1 to shift all predicted discharges to the next snapshot
-    group_by(site, day = 1 + (date_end - (report_start)) / ddays(1), rep) %>%
+    group_by(site, day = lubridate::interval(report_date, date_end)/ddays(1), rep) %>%
     count() %>%
     ungroup() %>%
     mutate(pathways = map(n, ~ factor(sample(names(props), size = .x, prob = props, replace = TRUE), levels = names(props))))  %>%

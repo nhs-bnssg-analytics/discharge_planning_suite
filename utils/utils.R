@@ -143,3 +143,8 @@ smpe_custom <- function(actual, predicted) {
   sum((predicted - actual) / ((actual + predicted) / 2)) * 100 / n
 }
 
+show_in_excel <- function(.data) {
+  tmp <- paste0(tempfile(), ".csv")
+  write.csv(.data, tmp)
+  fs::file_show(path = tmp)
+}

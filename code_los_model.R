@@ -45,6 +45,7 @@ nctr_df <-
 
 validation_end <- ymd("2024-09-01")
 validation_start <- ymd("2023-07-01")
+weeks_test <- 13
 nctr_df <- nctr_df %>% filter(between(Census_Date, validation_start, validation_end-ddays(1)))
 
 date_co <- validation_start #as.Date(max_census - lubridate::dmonths(6))
@@ -138,16 +139,35 @@ los_df <- los_df %>%
   filter(is.na(date_death)) %>%
   select(-date_death, admission_date)
 
-# Take first admission
+
+# ECDF
+
+los_df %>%
+  ggplot() +
+  stat_ecdf(aes(x = los+1), geom = "step") +
+  scale_x_log10(guide = "axis_logticks") +
+  theme_minimal() +
+  theme(axis.ticks = element_line()) +
+  labs(y = "Empirical Cumulative Distribution Function",
+       x = "Midnights Crossed")
+
+
+ggsave(last_plot(),
+       filename = "./validation/los_ecdf.png",
+       bg = "white",
+       width = 10,
+       height = 7.5,
+       scale = 0.6)
+
 
 saveRDS(los_df, "data/los_df.RDS")
 
 los_testing <- los_df %>%
-  filter(Census_Date > validation_end - dweeks(26)) %>%
+  filter(Census_Date > validation_end - dweeks(weeks_test)) %>%
   select(-Census_Date)
 
 los_train <- los_df %>%
-  filter(Census_Date <= validation_end - dweeks(26)) %>%
+  filter(Census_Date <= validation_end - dweeks(weeks_test)) %>%
   select(-Census_Date)
 
 
@@ -222,9 +242,10 @@ tree_spec <- decision_tree(
   set_mode("regression")
 
 
-tree_grid <- grid_regular(cost_complexity(),
-                          tree_depth(range = c(1, 5)),
-                          min_n(range = c(100, 300)), levels = 16)
+tree_grid <- grid_regular(cost_complexity(range = c(-4, -1), trans = log10_trans()),
+                          tree_depth(range = c(2, 7)),
+                          min_n(range = c(100, 1000)),
+                          levels = 10)
 
 
 tree_rec <- recipe(los ~ ., data = model_df_train)  %>%
@@ -321,15 +342,13 @@ node.fun1 <- function(x, labs, digits, varlen)
 png(filename = "materials/tree_plot.png",
     width = 1800,
     height = 1200,
-    res = 299,
+    res = 275,
     bg = "white"
     )
 rpart.plot::rpart.plot(tree, type = 2, extra = 101, node.fun = node.fun1)
 dev.off()
 
 # partykit::as.party(tree) %>% plot(gp = gpar(fontsize = 6))
-
-
 
 
 # append leaf number onto original data:
@@ -351,7 +370,6 @@ ggplot(los_model_df, aes(x = los)) +
 
 dists <- c(
   "exp"
-  ,"norm"
   ,"lnorm"
   ,"gamma"
   ,"weibull"
@@ -359,25 +377,25 @@ dists <- c(
 
 fitdistcens_safe <- safely(fitdistcens)
 
-fit_dists <- los_model_df %>%
-  dplyr::select(leaf, left = los) %>%
-  mutate(right = left + 2) %>%
-  group_by(leaf) %>%
-  nest() %>%
-  mutate(data = map(data, as.data.frame)) %>%
-  # fit dist on censored data safely
-  mutate(fit = map(data, function(data ) imap(dists, ~fitdistcens_safe(censdata = data, distr = .x)))) %>%
-  # throw out any dists that failed to fit with defaults
-  mutate(fit = map(fit, ~keep(.x, \(x) is.null(x$error)))) %>%
-  # pluck results
-  mutate(fit = map(fit, ~map(.x, "result"))) %>%
-  mutate(min_aic = map_dbl(fit, function(group) min(map_dbl(group, ~pluck(.x, "aic"))))) %>%
-  #select best based on lowest AIC
-  mutate(fit = flatten(pmap(list(fit, min_aic), function(fits, aic) keep(fits, \(x) x$aic == aic)))) %>%
-  mutate(dist = map_chr(fit, "distname")) %>%
-  mutate(fit_parms = map(fit, "estimate")) 
+# fit_dists <- los_model_df %>%
+#   dplyr::select(leaf, left = los) %>%
+#   mutate(right = left + 2) %>%
+#   group_by(leaf) %>%
+#   nest() %>%
+#   mutate(data = map(data, as.data.frame)) %>%
+#   # fit dist on censored data safely
+#   mutate(fit = map(data, function(data) imap(dists, ~fitdistcens_safe(censdata = data, distr = .x)))) %>%
+#   # throw out any dists that failed to fit with defaults
+#   mutate(fit = map(fit, ~keep(.x, \(x) is.null(x$error)))) %>%
+#   # pluck results
+#   mutate(fit = map(fit, ~map(.x, "result"))) %>%
+#   mutate(min_aic = map_dbl(fit, function(group) min(map_dbl(group, ~pluck(.x, "aic"))))) %>%
+#   #select best based on lowest AIC
+#   mutate(fit = flatten(pmap(list(fit, min_aic), function(fits, aic) keep(fits, \(x) x$aic == aic)))) %>%
+#   mutate(dist = map_chr(fit, "distname")) %>%
+#   mutate(fit_parms = map(fit, "estimate")) 
 
-foo <- los_model_df %>%
+fit_dists_full <- los_model_df %>%
   dplyr::select(leaf, left = los) %>%
   mutate(right = left + 2) %>%
   group_by(leaf) %>%
@@ -392,11 +410,15 @@ foo <- los_model_df %>%
   mutate(fit = map(fit, ~keep(.x, \(x) is.null(x$error)))) %>%
   # pluck results
   mutate(fit = map(fit, ~map(.x, "result"))) %>%
-  mutate(min_aic = map_dbl(fit, function(group) min(map_dbl(group, ~pluck(.x, "aic"))))) %>%
-  #select best based on lowest AIC
-  mutate(fit = flatten(pmap(list(fit, min_aic), function(fits, aic) keep(fits, \(x) x$aic == aic)))) %>%
-  mutate(dist = map_chr(fit, "distname")) %>%
-  mutate(fit_parms = map(fit, "estimate")) 
+  mutate(aic = map(fit, function(group) map_dbl(group, ~pluck(.x, "aic")))) %>%
+  mutate(dist = map(fit, ~map_chr(.x, "distname"))) %>%
+  select(-ini_fit, -ini_prms, -data) %>%
+  unnest(cols = c(fit, aic, dist)) %>%
+  mutate(fit_parms = map(fit, "estimate")) %>%
+  ungroup()
+
+fit_dists <- fit_dists_full %>%
+  filter(aic == min(aic), .by = leaf)
 
 
 dist_ptl_gen <- function(dist, parms, type){
@@ -431,16 +453,16 @@ fit_dists <- fit_dists %>%
 
 
 saveRDS(fit_dists$fit_parms, "data/dist_split.RDS")
-saveRDS(dplyr::select(fit_dists, -data, -min_aic), "data/fit_dists.RDS")
+saveRDS(dplyr::select(fit_dists, -data, -aic), "data/fit_dists.RDS")
 saveRDS(tree_fit, "data/los_wf.RDS")
 cat("LOS model outputs written", fill = TRUE)
 
 # VALIDATION code
 # output table
-fit_dists %>%
+fit_dists_full %>%
   filter(leaf != -1) %>%
   ungroup() %>%
-  select(leaf, dist, fit_parms, aic = min_aic) %>%
+  select(leaf, dist, fit_parms, aic = aic) %>%
   mutate(aic = round(aic, 1),
          fit_parms = map_chr(fit_parms, ~paste0(paste(names(.x), "=", round(.x, 2)), collapse = ", ")),
          rule = rpart.plot::rpart.rules(tree) %>%
@@ -476,13 +498,14 @@ validation_df <- los_testing  %>%
                 # ethnicity,
                 #segment
   ) %>%
+  mutate(los = los + 1) %>%
   filter(sex != "Unknown",
          !is.na(los)) %>%
   bake(extract_recipe(tree_fit), .) %>%
   mutate(leaf = treeClust::rpart.predict.leaves(tree, .)) %>%
   group_by(leaf) %>%
   nest() %>%
-  left_join(select(fit_dists, -data, -min_aic) %>% group_by(leaf) %>% slice(1)) %>%
+  left_join(select(fit_dists, -data, -aic) %>% group_by(leaf) %>% slice(1)) %>%
   mutate(ks_test = pmap(list(data, pdist), ~ks.test(..1$los, ..2) %>% tidy())) %>%
   mutate(ad_test = pmap(list(data, pdist), ~DescTools::AndersonDarlingTest(..1$los, null = ..2))) %>%
   mutate(cdf_plot = pmap(

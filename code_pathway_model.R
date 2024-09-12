@@ -76,6 +76,7 @@ nctr_df <-
 
 validation_end <- ymd("2024-09-01")
 validation_start <- ymd("2023-07-01")
+weeks_test <- 13
 nctr_df <- nctr_df %>% filter(between(Census_Date, validation_start, validation_end-ddays(1)))
 
 pathway_df <- nctr_df %>%
@@ -102,9 +103,9 @@ pathway_df <- nctr_df %>%
          age,
          pathway,
          #spec, # spec is too multinomial
-         bed_type)
+         bed_type) %>%
+  na.omit()
 
-# attributes to join
 
 mortality_df <- local({
   string_mortality <-"SELECT
@@ -137,14 +138,17 @@ pathway_df <- pathway_df %>%
   filter(is.na(date_death)) %>%
   select(-date_death)
 
+# attributes to join
 
-attr_df <-
-  RODBC::sqlQuery(
-    con,
-    "select * from (
-select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
-[MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
-  )
+# attr_df <-
+#   RODBC::sqlQuery(
+#     con,
+#     "select * from (
+# select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
+# [MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
+#   )
+
+attr_df <- readRDS("data/attr_df.RDS")
 
 
 # modelling
@@ -170,8 +174,8 @@ model_df <- pathway_df %>%
 
 # splits based on 6 months from end of validation
 model_df_split <- make_splits(x = list(
-  analysis = which(model_df$Census_Date <= validation_end - dweeks(26)),
-  assessment = which(model_df$Census_Date > validation_end - dweeks(26))
+  analysis = which(model_df$Census_Date <= validation_end - dweeks(weeks_test)),
+  assessment = which(model_df$Census_Date > validation_end - dweeks(weeks_test))
 ),
 data = select(model_df, -Census_Date))
 
@@ -179,6 +183,19 @@ model_df <- model_df %>% select(-Census_Date)
 
 model_df_train <- training(model_df_split)
 model_df_test <- testing(model_df_split)
+
+
+# model_df_train %>%
+#   pull(pathway) %>%
+#   table() %>%
+#   proportions() %>%
+#   as.list() %>%
+#   as_tibble() %>%
+#   pivot_longer(cols = everything(),
+#                names_to = "IC Pathway",
+#                values_to = "Proportion") %>%
+#   mutate(Proportion = percent(Proportion)) %>%
+#   show_in_excel()
 
 
 model_df_train %>%
@@ -193,9 +210,9 @@ mod_rec <- recipe(pathway ~ ., data = model_df_split) %>%
   step_zv() %>%
   step_impute_mean(all_numeric_predictors()) %>%
   step_normalize(all_numeric_predictors()) %>%
-  step_novel(all_nominal_predictors(), new_level = "other") %>%
-  step_other(all_nominal_predictors(), threshold = 0.1) %>%
-  step_unknown(all_nominal_predictors()) %>%
+  step_novel(all_nominal_predictors(), -sex, new_level = "other") %>%
+  step_other(all_nominal_predictors(), -sex, threshold = 0.1) %>%
+  # step_unknown(all_nominal_predictors()) %>%
   step_nzv(all_predictors()) %>%
   # step_other(all_nominal_predictors(), threshold = 0.05) %>%
   step_dummy(all_nominal_predictors()) #%>%
@@ -215,6 +232,31 @@ rf_wf <- workflow() %>%
   add_model(rf_spec)
 
 rf_fit <- last_fit(rf_wf, model_df_split)
+
+rf_fit %>%
+  extract_fit_parsnip() %>%
+  vip::vi() %>%
+  mutate(Variable = recode(Variable 
+                           ,age = "Age"
+                           ,cambridge_score = "Cambridge Score"
+                           ,bed_type_Neuro.MSK = "Bed Type: Neuro-MSK"
+                           ,bed_type_Medicine = "Bed Type: Medicine"
+                           ,bed_type_Surgery = "Bed Type: Surgery"
+                           ,bed_type_other  = "Bed Type: Other"
+                           ,sex_Male = "Sex"
+                           )) %>%
+  mutate(Variable = factor(Variable)) %>%
+  mutate(Variable = fct_reorder(Variable, Importance)) %>%
+  ggplot(aes(x = Importance, y = Variable)) + 
+  geom_col() +
+  theme_minimal()
+
+ggsave(last_plot(),
+       filename = "validation/calib_pathway_importance.png",
+       bg = "white",
+       width = 10,
+       height = 7.5,
+       scale = 0.45)
 
 roc_df <- rf_fit$.predictions[[1]] %>%
   dplyr::select(starts_with(".pred"), truth = pathway, -.pred_class) %>%

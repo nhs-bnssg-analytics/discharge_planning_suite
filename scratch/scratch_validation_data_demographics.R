@@ -1,6 +1,7 @@
 validation_end <- ymd("2024-09-01")
 validation_start <- ymd("2023-07-01")
-start_date <- validation_end - dweeks(26) 
+weeks_testing <- 13
+start_date <- validation_end - dweeks(weeks_testing ) 
 nctr_df <- nctr_df %>% filter(between(Census_Date, validation_start, validation_end-ddays(1)))
 
 nctr_sum <- nctr_df %>%
@@ -121,14 +122,14 @@ attr_df <- readRDS("data/attr_df.RDS")
 
 demo_tab <- los_df %>%
   ungroup() %>%
-  mutate(grp = ifelse(Census_Date <= validation_end - dweeks(26), yes = "Training Set", no = "Testing Set")) %>%
-  mutate(grp = factor(grp, levels = c("Full Data", "Training Set", "Testing Set"))) %>%
-  mutate(s_id = cur_group_id(), .by = c(nhs_number, admission_date)) %>%
-  mutate(n_unique_adm = n_distinct(s_id), .by = grp) %>%
+  mutate(grp = ifelse(Census_Date <= validation_end - dweeks(weeks_testing), yes = "Calibration Set", no = "Validation Set")) %>%
+  mutate(grp = factor(grp, levels = c("Full Data", "Calibration Set", "Validation Set"))) %>%
+  # mutate(s_id = cur_group_id(), .by = c(nhs_number, admission_date)) %>%
+  # mutate(n_unique_adm = n_distinct(s_id), .by = grp) %>%
   rbind(mutate(., grp = "Full Data")) %>%
   group_by(nhs_number) %>%
   filter(admission_date == min(admission_date)) %>%
-  select(grp, n_unique_adm, nhs_number, sex, age, bed_type) %>%
+  select(grp, nhs_number, sex, age, bed_type) %>%
   distinct() %>%
   left_join(select(attr_df, nhs_number, cambridge_score) %>% 
               mutate(nhs_number = as.character(nhs_number))) %>%
@@ -136,12 +137,18 @@ demo_tab <- los_df %>%
   ungroup() %>%
   select(-nhs_number)
 
+n_adm <- los_df %>%
+  ungroup() %>%
+  mutate(grp = ifelse(Census_Date <= validation_end - dweeks(weeks_testing), yes = "Calibration Set", no = "Validation Set")) %>%
+  rbind(mutate(., grp = "Full Data")) %>%
+  mutate(grp = factor(grp, levels = c("Full Data", "Calibration Set", "Validation Set"))) %>%
+  arrange(grp) %>%
+  mutate(s_id = cur_group_id(), .by = c(nhs_number, admission_date)) %>%
+  summarise(n_unique_adm = n_distinct(s_id), .by = grp) %>%
+  pull(n_unique_adm) 
 
 
-
-
-
-demo_tab %>%
+demo_tab_out <- demo_tab %>%
  gtsummary::tbl_summary(label = list(
                                      sex = "Sex",
                                      age = "Age",
@@ -150,6 +157,17 @@ demo_tab %>%
                                      ),
                         missing_text = "Missing",
                         by = grp) %>%
-  gtsummary::as_hux_table() %>%
-  huxtable::quick_html(file = "materials/demog_tab.html")
+  gtsummary::as_hux_table() 
+
+
+# modify2(demo_tab_out, c(0, n_adm), .at = c("stat_1", "stat_2", "stat_3"), ~modify_at(.x, 1, \(x) str_c(x, number(.y, big.mark = ","))))
+
+
+demo_tab_out[[1+1]][1] <- str_c(demo_tab_out[[1+1]][1], " (N admissions = ", number(n_adm[1], big.mark = ","), ")")
+demo_tab_out[[1+2]][1] <- str_c(demo_tab_out[[1+2]][1], " (N admissions = ", number(n_adm[2], big.mark = ","), ")")
+demo_tab_out[[1+3]][1] <- str_c(demo_tab_out[[1+3]][1], " (N admissions = ", number(n_adm[3], big.mark = ","), ")")
+
+
+demo_tab_out %>%
+huxtable::quick_html(file = "materials/demog_tab.html")
 
