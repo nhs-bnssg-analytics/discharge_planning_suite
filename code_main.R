@@ -179,7 +179,7 @@ if(plot_int){
       u85 = {\(x) quantile(x, 0.925)},
       l85 = {\(x) quantile(x, 0.075)}
     ))) %>% 
-    filter(day <= n_days)  %>%
+    filter(between(day, 1, n_days))  %>%
     ggplot(aes(x = day, y = count_mean, fill = source)) +
     geom_col() +
     facet_grid(pathway ~ site, scales = "free") +

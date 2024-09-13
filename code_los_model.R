@@ -149,7 +149,7 @@ los_df %>%
   theme_minimal() +
   theme(axis.ticks = element_line()) +
   labs(y = "Empirical Cumulative Distribution Function",
-       x = "Midnights Crossed")
+       x = "mLOS (Midnights Crossed)")
 
 
 ggsave(last_plot(),

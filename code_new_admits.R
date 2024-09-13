@@ -1,4 +1,7 @@
 df_new_admit <- local({
+  
+  report_date <- report_start -ddays(1)
+  
   rdist <- readRDS("data/fit_dists.RDS") %>%
     filter(leaf == -1) %>%
   pull(rdist) %>%
@@ -31,7 +34,8 @@ df_new_admit <- local({
            day = rep(0:n_days, length(sites) * n_rep)) %>% 
     filter(arrivals > 0) %>%
     # los plus one because it is stored as the left boundary of the interval censor (i.e. 0-2 should los 1)
-    mutate(los = map(arrivals, function(arr) rdist(arr) + 1)) %>%
+    # mutate(los = map(arrivals, function(arr) rdist(arr) + 1)) %>%
+    mutate(los = map(arrivals, function(arr) rdist(arr)) %>% map(\(x) map_dbl(x, ~sample(seq(.x, .x + 2), 1)))) %>%
     unnest(los) %>%
     mutate(date_end = date + ddays(los)) %>%
     # day is + 1 to shift all predicted discharges to the next snapshot
