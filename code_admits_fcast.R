@@ -9,7 +9,8 @@ df_admit_fcast <- local({
   
 # arima training ends at the start of the reporting
 fc_train_length <- 26 # (train length in weeks)
-fc_end <- report_start - ddays(1) # deduct one day as we must consider arrivals one day zero
+# fc_end <- report_start - ddays(1) # (DEPRECATED) deduct one day as we must consider arrivals one day zero
+fc_end <- report_start - ddays(1) # The fc training period ends the day before the report starts
 fc_start <- fc_end  - dweeks(fc_train_length)
 
 min_adm_date <- nctr_df %>%
@@ -21,7 +22,6 @@ min_adm_date <- nctr_df %>%
   min()
 
 fcast_days <- ceiling((report_end - min_adm_date)/ddays(1))
-
 
 admissions <- nctr_df %>%
   filter(!is.na(NHS_Number)) %>%
@@ -64,10 +64,11 @@ models <- admissions %>%
   filter(!is.na(value)) %>%
   mutate(value = pmax(value, 0)) %>%
   mutate(source = "admit_fcast",
-         ctr = "N") %>%
+         ctr = "N") %>% 
   filter(date >= fc_start,
-         date <= report_end ) %>%
-  mutate(day = ((date - report_start)/ddays(1))-1,
+         date <= report_end) %>%
+  # mutate(day = ((date - report_start)/ddays(1))-1, (DEPRECATED - this was when I considered report_date to be 'day 0')
+  mutate(day = ((date - report_start)/ddays(1) + 1), # This sets the convention that 'day 1' is the 'today' (i.e. latest census date)
          report_date = run_date) %>%
   mutate(site = recode(site, 'SOUTHMEAD HOSPITAL' = 'nbt', 
                        'BRISTOL ROYAL INFIRMARY' = 'bri', 

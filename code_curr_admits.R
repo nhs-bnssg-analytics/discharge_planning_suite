@@ -64,7 +64,8 @@ df_curr_admits <- local({
     mutate(los_remaining = los_remaining %/% 1) %>%
     group_by(site, id) %>%
     mutate(rep = 1:n()) %>%
-    group_by(rep, site, day = los_remaining + 1, pathway = pathways) %>%
+    # group_by(rep, site, day = los_remaining + 1, pathway = pathways) %>% # (DEPRECATED - this was when I considered sim to start on 'day zero')
+    group_by(rep, site, day = los_remaining + 1, pathway = pathways) %>% # day is los_remaining + 1 as we start sim on 'day one' so zero day los on first day should be day = 1
     count(name = "count") %>%
     ungroup() %>%
     complete(rep, site, day, pathway, fill =list(count = 0)) %>%

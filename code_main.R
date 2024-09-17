@@ -153,8 +153,9 @@ nctr_sum <- nctr_df %>%
   ) %>%
   ungroup()
 
-# report start (i.e. date we start reporting new D2A - 1 day after max_date)
-report_start <- max_date + ddays(1)
+# (DEPRECATED) report start (i.e. date we start reporting new D2A - 1 day after max_date)
+# report start (i.e. date we start reporting new D2A - day of latest census)
+report_start <- max_date
 report_end <- report_start + ddays(n_days)
 
 

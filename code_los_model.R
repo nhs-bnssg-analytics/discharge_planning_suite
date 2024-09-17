@@ -75,8 +75,8 @@ los_df <- nctr_df %>%
   mutate(der_date_nctr = as.Date(der_date_nctr)) %>%
   arrange(Census_Date) %>%
   group_by(spell_id) %>%
-  # minus one as you mLOS is less than the time observed across the census snapshots (i.e. this is the left censor value)
-  mutate(discharge_rdy_los = (der_date_nctr - as.Date(Date_Of_Admission))/lubridate::ddays(1)-1) %>%
+  # (DEPRECATED) minus one as you mLOS is less than the time observed across the census snapshots (i.e. this is the left censor value)
+  mutate(discharge_rdy_los = (der_date_nctr - as.Date(Date_Of_Admission))/lubridate::ddays(1)) %>%
   # take max with zero for some cases where it is -1 due to date nctr == date admission and so los = -1
   mutate(discharge_rdy_los = pmax(discharge_rdy_los, 0)) %>%
   # take first discharge ready value
@@ -97,6 +97,8 @@ los_df <- nctr_df %>%
     Census_Date,
     nhs_number = nhs_number,
     admission_date = Date_Of_Admission,
+    date_nctr = Date_NCTR,
+    der_date_nctr,
     site = Organisation_Site_Code,
     day_of_admission,
     sex,
@@ -242,9 +244,9 @@ tree_spec <- decision_tree(
   set_mode("regression")
 
 
-tree_grid <- grid_regular(cost_complexity(range = c(-4, -1), trans = log10_trans()),
+tree_grid <- grid_regular(cost_complexity(range = c(-5, -1), trans = log10_trans()),
                           tree_depth(range = c(2, 7)),
-                          min_n(range = c(100, 1000)),
+                          min_n(range = c(1000, 5000)),
                           levels = 10)
 
 
@@ -397,7 +399,8 @@ fitdistcens_safe <- safely(fitdistcens)
 
 fit_dists_full <- los_model_df %>%
   dplyr::select(leaf, left = los) %>%
-  mutate(right = left + 2) %>%
+  mutate(left = pmax(left-1, 0),
+         right = left + 2) %>%
   group_by(leaf) %>%
   nest() %>%
   mutate(data = map(data, as.data.frame)) %>%
