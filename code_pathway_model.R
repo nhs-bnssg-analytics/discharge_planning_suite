@@ -207,13 +207,13 @@ model_df_train %>%
   saveRDS("data/pathway_prop.RDS")
 
 mod_rec <- recipe(pathway ~ ., data = model_df_split) %>%
-  step_zv() %>%
+  # step_zv() %>%
+  # step_nzv(all_predictors()) %>%
   step_impute_mean(all_numeric_predictors()) %>%
   step_normalize(all_numeric_predictors()) %>%
   step_novel(all_nominal_predictors(), -sex, new_level = "other") %>%
   step_other(all_nominal_predictors(), -sex, threshold = 0.1) %>%
   # step_unknown(all_nominal_predictors()) %>%
-  step_nzv(all_predictors()) %>%
   # step_other(all_nominal_predictors(), threshold = 0.05) %>%
   step_dummy(all_nominal_predictors()) #%>%
   # embed::step_lencode_glm(all_nominal_predictors(), outcome = vars(pathway)) %>%

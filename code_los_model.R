@@ -8,7 +8,6 @@ con <- switch(.Platform$OS.type,
               unix = xswauth::modelling_sql_area()
 )
 
-
 nctr_df <-
   RODBC::sqlQuery(
     con,
@@ -141,7 +140,6 @@ los_df <- los_df %>%
   filter(is.na(date_death)) %>%
   select(-date_death, admission_date)
 
-
 # ECDF
 
 los_df %>%
@@ -246,7 +244,7 @@ tree_spec <- decision_tree(
 
 tree_grid <- grid_regular(cost_complexity(range = c(-5, -1), trans = log10_trans()),
                           tree_depth(range = c(2, 7)),
-                          min_n(range = c(1000, 5000)),
+                          min_n(range = c(1500, 3000)),
                           levels = 10)
 
 
@@ -397,66 +395,30 @@ fitdistcens_safe <- safely(fitdistcens)
 #   mutate(dist = map_chr(fit, "distname")) %>%
 #   mutate(fit_parms = map(fit, "estimate")) 
 
-fit_dists_full <- los_model_df %>%
-  dplyr::select(leaf, left = los) %>%
-  mutate(left = pmax(left-1, 0),
-         right = left + 2) %>%
+# fit_dists_full <- 
+#   
+  
+  
+fit_dists <- los_model_df %>%
+  dplyr::select(leaf, los) %>%
+  bind_rows(mutate(., leaf = -1)) %>%
   group_by(leaf) %>%
   nest() %>%
-  mutate(data = map(data, as.data.frame)) %>%
-  # first fit to non censored (right) boundary to get starting values
-  mutate(ini_fit = map(data, function(data) imap(dists, ~fitdistrplus::fitdist(data = data$right, distr = .x)))) %>%
-  mutate(ini_prms = map(ini_fit, function(fit) map(fit, "estimate"))) %>%
-  # fit dist on censored data safely, with starting parms established above
-  mutate(fit = map2(data, ini_prms, function(data, ini_prms_i) map2(dists, ini_prms_i, ~fitdistcens_safe(data, distr = .x, start = as.list(.y))))) %>%
-  # throw out any dists that failed to fit with defaults
-  mutate(fit = map(fit, ~keep(.x, \(x) is.null(x$error)))) %>%
-  # pluck results
-  mutate(fit = map(fit, ~map(.x, "result"))) %>%
-  mutate(aic = map(fit, function(group) map_dbl(group, ~pluck(.x, "aic")))) %>%
-  mutate(dist = map(fit, ~map_chr(.x, "distname"))) %>%
-  select(-ini_fit, -ini_prms, -data) %>%
-  unnest(cols = c(fit, aic, dist)) %>%
-  mutate(fit_parms = map(fit, "estimate")) %>%
-  ungroup()
-
-fit_dists <- fit_dists_full %>%
-  filter(aic == min(aic), .by = leaf)
+  mutate(los = map(data, pull, los)) %>%
+  select(leaf, los)
 
 
-dist_ptl_gen <- function(dist, parms, type){
-  stopifnot(type %in% c("d", "p", "q", "r"))
-  fn <- get(glue::glue("{type}{dist}"))
-  partial(fn, !!!parms)
-}
 
-fit_dists <- fit_dists %>%
-  mutate(ddist = map2(dist, fit_parms, ~dist_ptl_gen(.x, .y, "d"))) %>%
-  mutate(pdist = map2(dist, fit_parms, ~dist_ptl_gen(.x, .y, "p"))) %>%
-  mutate(qdist = map2(dist, fit_parms, ~dist_ptl_gen(.x, .y, "q"))) %>%
-  mutate(rdist = map2(dist, fit_parms, ~dist_ptl_gen(.x, .y, "r"))) %>%
-  mutate(tdist = map2(pdist, qdist, ~partial(rtruncdist, pdist = .x, qdist = .y)))
+  # mutate(data = map(data, as.data.frame)) %>%
+  #   mutate(max_los = map_dbl(data, ~max(.x$los))) %>%
+  #   mutate(ddist = map(data, ~partial(EnvStats::demp, discrete = TRUE, obs = c(.x$los)))) %>%
+  #   mutate(pdist = map(data, ~partial(EnvStats::pemp, discrete = TRUE, obs = c(.x$los)))) %>%
+  #   mutate(qdist = map(data, ~partial(EnvStats::qemp, discrete = TRUE, obs = c(.x$los)))) %>%
+  #   mutate(rdist = map(data, ~partial(EnvStats::remp, obs = c(.x$los, 1e3)))) %>%
+  #   mutate(tdist = map2(pdist, qdist, ~partial(rtruncdist, pdist = .x, qdist = .y)))
 
 
-# adding a 'leaf' for full population distribution
-
-fit_dists <- fit_dists %>%
-  bind_rows(
-    los_model_df %>%
-      mutate(leaf = -1) %>%
-      group_by(leaf) %>%
-      nest() %>%
-      mutate(ddist = map(data, ~partial(EnvStats::demp, obs = .x$los))) %>%
-      mutate(pdist = map(data, ~partial(EnvStats::pemp, obs = .x$los))) %>%
-      mutate(qdist = map(data, ~partial(EnvStats::qemp, obs = .x$los))) %>%
-      mutate(rdist = map(data, ~partial(EnvStats::remp, obs = .x$los))) %>%
-      mutate(tdist = map2(pdist, qdist, ~partial(rtruncdist, pdist = .x, qdist = .y)))
-  ) %>%
-  mutate(fit_parms = set_names(fit_parms, leaf))
-
-
-saveRDS(fit_dists$fit_parms, "data/dist_split.RDS")
-saveRDS(dplyr::select(fit_dists, -data, -aic), "data/fit_dists.RDS")
+saveRDS(fit_dists, "data/fit_dists.RDS")
 saveRDS(tree_fit, "data/los_wf.RDS")
 cat("LOS model outputs written", fill = TRUE)
 

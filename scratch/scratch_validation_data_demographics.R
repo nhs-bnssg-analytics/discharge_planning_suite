@@ -88,7 +88,6 @@ mortality_df <- local({
 nctr_sum <- nctr_sum %>%
   filter(!nhs_number %in% mortality_df$nhs_number)
 
-
 # Lets use the los data instead as it has a few bespoke filters (~1k patient difference)
 
 los_df <- readRDS("data/los_df.RDS")

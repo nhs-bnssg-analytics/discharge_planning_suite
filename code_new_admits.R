@@ -5,8 +5,9 @@ df_new_admit <- local({
   
   rdist <- readRDS("data/fit_dists.RDS") %>%
     filter(leaf == -1) %>%
-  pull(rdist) %>%
-  `[[`(1)
+    pull(los) %>%
+    pluck(1) %>%
+    partial(EnvStats::remp, obs = .)
   
   props <- readRDS("data/pathway_prop.RDS") %>%
     set_names(c("Other", "P1", "P2", "P3"))

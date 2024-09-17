@@ -35,21 +35,24 @@ df_curr_admits <- local({
   # los distributions
   
   los_dist <- readRDS("data/fit_dists.RDS")  %>%
-    mutate(leaf = as.character(leaf))
+    mutate(leaf = as.character(leaf)) %>%
+    rename(los_hist = los)
+  
   
   
   df_pred <- los_df %>%
     mutate(id = 1:n()) %>%
     left_join(los_dist, by = join_by(leaf == leaf)) %>%
-    mutate(los_remaining = pmap(
-      list(los, tdist),
-      function(los, trunc_dist)
-        trunc_dist(
-          n_rep,
-          range = c(los, Inf)
-        ) - los
-    ),
-    pathways = pmap(list(.pred_Other,
+    # filter out any LOS less than current stay
+    mutate(los_hist = map2(los_hist, los, \(x, y) x[x >= y])) %>%
+    # If los history is now zero we add Inf
+    mutate(los_hist = map(los_hist, \(x) ifelse(length(x) < 10, list(Inf), list(x)))) %>%
+    mutate(los_hist = map(los_hist, pluck, 1)) %>%
+    # mutate(los_dist = map(los_hist, ~partial(EnvStats::remp, obs = .x))) %>%
+    # mutate(los_tot = map(los_dist,  ~.x(n_rep)))
+    mutate(los_tot = map(los_hist,  \(x) sample(x, size = n_rep, replace = TRUE))) %>%
+    mutate(los_remaining = map2(los_tot, los, \(x, y) x - y)) %>%
+    mutate( pathways = pmap(list(.pred_Other,
                          .pred_P1,
                          .pred_P2,
                          .pred_P3), 
@@ -73,3 +76,4 @@ df_curr_admits <- local({
   df_pred
   
 })
+    
