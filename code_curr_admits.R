@@ -1,7 +1,5 @@
 df_curr_admits <- local({
-
   # LOS predictions
-  
   los_df <- nctr_sum %>%
     # filter for our main sites / perhaps I shouldn't do this?
     # filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
@@ -30,7 +28,8 @@ df_curr_admits <- local({
     bake(extract_recipe(los_wf), .) %>%
     mutate(leaf = as.character(treeClust::rpart.predict.leaves(extract_fit_engine(los_wf), .))) %>%
     # bind RF pathway predicted probabilities
-    bind_cols(predict(rf_wf, los_df, type = "prob"))
+    bind_cols(predict(rf_wf, los_df, type = "prob")) %>%
+    mutate(site = fct_drop(site))
   
   # los distributions
   
@@ -74,6 +73,5 @@ df_curr_admits <- local({
     complete(rep, site, day, pathway, fill =list(count = 0)) %>%
     mutate(source = "current_admits")
   df_pred
-  
 })
     
