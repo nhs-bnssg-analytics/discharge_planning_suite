@@ -1,4 +1,5 @@
 df_curr_admits <- local({
+  require(tidyverse)
   # LOS predictions
   los_df <- nctr_sum %>%
     # filter for our main sites / perhaps I shouldn't do this?
@@ -25,8 +26,8 @@ df_curr_admits <- local({
   los_wf <- readRDS("data/los_wf.RDS")
   
   los_df <- los_df %>%
-    bake(extract_recipe(los_wf), .) %>%
-    mutate(leaf = as.character(treeClust::rpart.predict.leaves(extract_fit_engine(los_wf), .))) %>%
+    recipes::bake(workflows::extract_recipe(los_wf), .) %>%
+    mutate(leaf = as.character(treeClust::rpart.predict.leaves(workflows::extract_fit_engine(los_wf), .))) %>%
     # bind RF pathway predicted probabilities
     bind_cols(predict(rf_wf, los_df, type = "prob")) %>%
     mutate(site = fct_drop(site))

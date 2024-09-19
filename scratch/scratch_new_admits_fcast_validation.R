@@ -35,6 +35,7 @@ dates <- nctr_df %>%
 na_sim_fn <- function(d){
   
   require(tidyverse)
+  require(tidymodels)
   # n_rep <- 1E2
   # plot_int <- FALSE
   nctr_df_full <- nctr_df
