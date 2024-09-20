@@ -31,8 +31,10 @@ discharges_ts <- nctr_df %>%
   group_by(nhs_number, Date_Of_Admission) %>%
   mutate(id = cur_group_id()) %>%
   group_by(id) %>%
-  # take the first non-other pathway
-  filter(date == min(date)) %>%
+  # # (DEPRECATED) take the first non-other pathway
+  # filter(date == min(date)) %>%
+  # Find the last date for each ID
+  filter(date == max(date)) %>%
   group_by(site, pathway, date = date + ddays(1)) %>%
   count() %>%
   group_by(site, pathway) %>%

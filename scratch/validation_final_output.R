@@ -201,7 +201,8 @@ nctr_sum <- nctr_df %>%
   ) %>%
   ungroup()
 
-discharges_ts <- nctr_df %>%
+discharges_ts <- nctr_df_full %>%
+  filter(Census_Date <= d) %>%
   filter(!is.na(NHS_Number)) %>%
   # filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   filter(Organisation_Site_Code %in% c('RA701', 'RA301', 'RA7C2')) %>%
@@ -452,7 +453,12 @@ out <- furrr::future_map(dates, output_valid_fn_safe,
                            )))
 
 
-saveRDS(out, "data/final_validation_out.RDS")
+saveRDS(out, "data/final_validation_out_latest.RDS")
+
+out %>%
+  map("result") %>%
+  map_lgl(is.null) %>%
+  which()
 
 out %>%
   map("result") %>%
