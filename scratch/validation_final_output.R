@@ -75,6 +75,36 @@ nctr_df_full <-
   Where Census_Date <= '{run_date}'"
     ))
 
+
+pathway_recodes <- c(
+  "Pathway 3 - Other" = "P3",
+  "Awaiting confirmation MDT" = "Other",
+  "Awaiting referral to SPA" = "Other",
+  "Pathway 3 - D2A" = "P3",
+  "Pathway 0" = "Other",
+  "Pathway 1 - D2A" = "P1",
+  "Awaiting confirmation Social" = "Other",
+  "Pathway 2 - Other" = "P2",
+  "Pathway 2 - D2A" = "P2",
+  "Pathway 2" = "P2",
+  "Pathway 2  Safeguarding concern" = "P2",
+  "Pathway 2   Specialist  eg BIRU" = "P2",
+  "Awaiting confirmation Other" = "Other",
+  "Pathway 1 - Other" = "P1",
+  "Pathway 1" = "P1",
+  "P3 / Other Complex Discharge" = "P3",
+  "Pathway 3 / Other Complex Discharge" = "P3",
+  "Uncoded" = "Other",
+  "Repatriation" = "Other",
+  "NCTR Null" = "Other",
+  "Not Set" = "Other",
+  "18a  Infection  bxviii  Standard" = "Other",
+  "xviii. Awaiting discharge to a care home but have not had a COVID 19 test (in 48 hrs preceding discharge)." = "Other",
+  "15b  Repat  bxv  WGH" = "Other",
+  "Meets Criteria to Reside" = "Other"
+)
+
+
 # max census date
 
 max_date <- nctr_df_full %>%
@@ -160,25 +190,7 @@ nctr_sum <- nctr_df %>%
   mutate(
     pathway = recode(
       Current_Delay_Code_Standard,
-      "Pathway 3 - Other" = "P3",
-      "Awaiting confirmation MDT" = "Other",
-      "Awaiting referral to SPA" = "Other",
-      "Pathway 3 - D2A" = "P3",
-      "Pathway 0" = "P0",
-      "Pathway 1 - D2A" = "P1",
-      "Awaiting confirmation Social" = "Other",
-      "Pathway 2 - Other" = "P2",
-      "Pathway 2 - D2A" = "P2",
-      "Awaiting confirmation Other" = "Other",
-      "Pathway 1 - Other" = "P1",
-      "P3 / Other Complex Discharge" = "P3",
-      "Uncoded" = "Other",
-      "Repatriation" = "Other",
-      "NCTR Null" = "Other",
-      "Not Set" = "Other",
-      "18a  Infection  bxviii  Standard" = "Other",
-      "xviii. Awaiting discharge to a care home but have not had a COVID 19 test (in 48 hrs preceding discharge)." = "Other",
-      "15b  Repat  bxv  WGH" = "Other"
+      !!!pathway_recodes
     ),
     pathway = coalesce(pathway, "Other")
   ) %>%
@@ -348,25 +360,7 @@ nctr_sum_emp <- nctr_df_emp %>%
   mutate(
     pathway = recode(
       Current_Delay_Code_Standard,
-      "Pathway 3 - Other" = "P3",
-      "Awaiting confirmation MDT" = "Other",
-      "Awaiting referral to SPA" = "Other",
-      "Pathway 3 - D2A" = "P3",
-      "Pathway 0" = "P0",
-      "Pathway 1 - D2A" = "P1",
-      "Awaiting confirmation Social" = "Other",
-      "Pathway 2 - Other" = "P2",
-      "Pathway 2 - D2A" = "P2",
-      "Awaiting confirmation Other" = "Other",
-      "Pathway 1 - Other" = "P1",
-      "P3 / Other Complex Discharge" = "P3",
-      "Uncoded" = "Other",
-      "Repatriation" = "Other",
-      "NCTR Null" = "Other",
-      "Not Set" = "Other",
-      "18a  Infection  bxviii  Standard" = "Other",
-      "xviii. Awaiting discharge to a care home but have not had a COVID 19 test (in 48 hrs preceding discharge)." = "Other",
-      "15b  Repat  bxv  WGH" = "Other"
+      !!!pathway_recodes
     ),
     pathway = coalesce(pathway, "Other")
   ) %>%
@@ -478,6 +472,21 @@ out %>%
     facet_grid(pathway~site, scales = "free")
   
 
+out %>%
+  map("result") %>%
+  bind_rows(.id = "id") %>% 
+    filter(site != "NBT") %>%
+  mutate(day = 1 + lubridate::interval(min(date), date)/ddays(1), .by = id) %>%
+  mutate(sim_error = mae_vec(n, n_pred),
+         bl_error = mae_vec(n, naive_bl), .by = c(site, date, pathway, id)) %>%
+  summarise(sim_error = mean(sim_error),
+            bl_error = mean(bl_error),
+            .by = c(site, day, pathway)) %>%
+  select(site, day, pathway, sim_error, bl_error) %>%
+  pivot_longer(cols = c(sim_error, bl_error), names_to = "metric", values_to = "value") %>%
+    ggplot(aes(x = day, y = value, col = metric)) +
+    geom_line() +
+    facet_grid(pathway~site, scales = "free")
 # out <- map(sample(dates, 1), output_valid_fn_safe)
 # 
 # 

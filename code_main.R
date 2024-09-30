@@ -74,23 +74,28 @@ pathway_recodes <- c(
   "Awaiting confirmation MDT" = "Other",
   "Awaiting referral to SPA" = "Other",
   "Pathway 3 - D2A" = "P3",
-  "Pathway 0" = "P0",
+  "Pathway 0" = "Other",
   "Pathway 1 - D2A" = "P1",
   "Awaiting confirmation Social" = "Other",
   "Pathway 2 - Other" = "P2",
   "Pathway 2 - D2A" = "P2",
+  "Pathway 2" = "P2",
+  "Pathway 2  Safeguarding concern" = "P2",
+  "Pathway 2   Specialist  eg BIRU" = "P2",
   "Awaiting confirmation Other" = "Other",
   "Pathway 1 - Other" = "P1",
+  "Pathway 1" = "P1",
   "P3 / Other Complex Discharge" = "P3",
+  "Pathway 3 / Other Complex Discharge" = "P3",
   "Uncoded" = "Other",
   "Repatriation" = "Other",
   "NCTR Null" = "Other",
   "Not Set" = "Other",
   "18a  Infection  bxviii  Standard" = "Other",
   "xviii. Awaiting discharge to a care home but have not had a COVID 19 test (in 48 hrs preceding discharge)." = "Other",
-  "15b  Repat  bxv  WGH" = "Other"
+  "15b  Repat  bxv  WGH" = "Other",
+  "Meets Criteria to Reside" = "Other"
 )
-
 # max census date
 max_date <- nctr_df %>%
   filter(!is.na(NHS_Number)) %>%
