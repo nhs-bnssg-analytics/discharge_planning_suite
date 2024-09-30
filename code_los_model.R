@@ -173,15 +173,15 @@ los_train <- los_df %>%
 
 # attributes to join
 
-attr_df <-
-  RODBC::sqlQuery(
-    con,
-    "select * from (
-select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
-[MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
-  )
-
-saveRDS(attr_df, "data/attr_df.RDS")
+# attr_df <-
+#   RODBC::sqlQuery(
+#     con,
+#     "select * from (
+# select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
+# [MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
+#   )
+# 
+# saveRDS(attr_df, "data/attr_df.RDS")
 attr_df <- readRDS("data/attr_df.RDS")
 
 # modelling

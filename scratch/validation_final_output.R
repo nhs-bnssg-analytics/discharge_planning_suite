@@ -23,7 +23,7 @@ start_date <- validation_end - dweeks(13)
 
 plot_int <- FALSE
 
-n_rep <- 1E2
+n_rep <- 1E3
 
 run_date <- today()
 n_days <- 10
@@ -430,7 +430,7 @@ nctr_sum_emp %>%
 output_valid_fn_safe <- safely(output_valid_fn)
 
 options(future.globals.maxSize = 16000 * 1024^2)
-future::plan(future::multisession, workers = parallel::detectCores() - 6)
+future::plan(future::multisession, workers = parallel::detectCores() - 2)
 out <- furrr::future_map(dates, output_valid_fn_safe,
                          .options = furrr::furrr_options(
                            globals = c(
@@ -448,6 +448,7 @@ out <- furrr::future_map(dates, output_valid_fn_safe,
 
 
 saveRDS(out, "data/final_validation_out_latest.RDS")
+saveRDS(out, "S:/Finance/Shared Area/BNSSG - BI/8 Modelling and Analytics/working/nh/projects/discharge_pathway_projections/data/final_validation_out_latest.RDS")
 
 out %>%
   map("result") %>%
@@ -479,6 +480,47 @@ out %>%
   mutate(day = 1 + lubridate::interval(min(date), date)/ddays(1), .by = id) %>%
   mutate(sim_error = mae_vec(n, n_pred),
          bl_error = mae_vec(n, naive_bl), .by = c(site, date, pathway, id)) %>%
+  select(site, date, day, pathway, sim_error, bl_error) %>%
+  mutate(diff = bl_error - sim_error) %>%
+  nest(.by = site) %>%
+  mutate(plot = map(data, \(x) x %>% ggplot(aes(x = date, y = diff)) +
+                      ggforce::geom_link2(aes(colour = after_stat(ifelse(y > 0, "positve", "negative")))) +
+                      facet_grid(pathway~day, scales = "free"))) %>%
+  pull(plot)
+  # pivot_longer(cols = c(sim_error, bl_error), names_to = "error", values_to = "value") %>%
+  
+out %>%
+  map("result") %>%
+  bind_rows(.id = "id") %>%
+  filter(site != "NBT") %>%
+  mutate(day = 1 + lubridate::interval(min(date), date) / ddays(1),
+         .by = id) %>%
+  mutate(
+    sim_error = mae_vec(n, n_pred),
+    bl_error = mae_vec(n, naive_bl),
+    .by = c(site, date, pathway, id)
+  ) %>%
+  summarise(
+    bl_error = mean(bl_error),
+    sim_error = mean(sim_error),
+    date = min(date),
+    .by = c(id, site, pathway)
+  ) %>%
+select(site, date, pathway, sim_error, bl_error) %>%
+  mutate(diff = bl_error - sim_error) %>%
+  ggplot(aes(x = date, y = diff)) +
+  ggforce::geom_link2(aes(colour = after_stat(ifelse(y > 0, "positve", "negative")))) +
+  facet_grid(pathway ~ site, scales = "free") +
+  theme_minimal()
+
+
+out %>%
+  map("result") %>%
+  bind_rows(.id = "id") %>% 
+    filter(site != "NBT") %>%
+  mutate(day = 1 + lubridate::interval(min(date), date)/ddays(1), .by = id) %>%
+  mutate(sim_error = mae_vec(n, n_pred),
+         bl_error = mae_vec(n, naive_bl), .by = c(site, date, pathway, id)) %>%
   summarise(sim_error = mean(sim_error),
             bl_error = mean(bl_error),
             .by = c(site, day, pathway)) %>%
@@ -487,6 +529,10 @@ out %>%
     ggplot(aes(x = day, y = value, col = metric)) +
     geom_line() +
     facet_grid(pathway~site, scales = "free")
+
+
+
+
 # out <- map(sample(dates, 1), output_valid_fn_safe)
 # 
 # 
