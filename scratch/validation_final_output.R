@@ -23,7 +23,7 @@ start_date <- validation_end - dweeks(13)
 
 plot_int <- FALSE
 
-n_rep <- 1E3
+n_rep <- 1E2
 
 run_date <- today()
 n_days <- 10
@@ -126,10 +126,12 @@ attr_df <- readRDS("data/attr_df.RDS")
 
 # validation testing dates
 
-dates <- nctr_df_full %>%
+
+dates <- nctr_df_full  %>%
+  filter(between(Census_Date, validation_start, validation_end-ddays(1)))%>%
   filter(Census_Date >= start_date,
          Census_Date < validation_end,
-         Census_Date > ymd("2023-07-01"),
+         Census_Date > ymd("2023-07-01"), # data before this are spurious
          Census_Date < max(Census_Date) - ddays(n_days),
          # Data not submitted for UHBW on this day
          Census_Date != ymd("2024-07-17"),
@@ -407,7 +409,7 @@ nctr_sum_emp %>%
   count() %>%
   ungroup() %>%
   complete(site, date, pathway, fill = list(n = 0)) %>%
-  mutate(day = (date - report_start)/ddays(1)) %>%
+  mutate(day = 1 + (date - report_start)/ddays(1)) %>%
   left_join(plot_df %>%
               filter(source == "model_pred") %>%
               pivot_wider(names_from = "metric", values_from = "value") %>%
@@ -430,7 +432,7 @@ nctr_sum_emp %>%
 output_valid_fn_safe <- safely(output_valid_fn)
 
 options(future.globals.maxSize = 16000 * 1024^2)
-future::plan(future::multisession, workers = parallel::detectCores() - 2)
+future::plan(future::multisession, workers = parallel::detectCores() - 10)
 out <- furrr::future_map(dates, output_valid_fn_safe,
                          .options = furrr::furrr_options(
                            globals = c(
@@ -473,7 +475,7 @@ out %>%
     facet_grid(pathway~site, scales = "free")
   
 
-out %>%
+foo <- out %>%
   map("result") %>%
   bind_rows(.id = "id") %>% 
     filter(site != "NBT") %>%
@@ -509,7 +511,9 @@ out %>%
 select(site, date, pathway, sim_error, bl_error) %>%
   mutate(diff = bl_error - sim_error) %>%
   ggplot(aes(x = date, y = diff)) +
-  ggforce::geom_link2(aes(colour = after_stat(ifelse(y > 0, "positve", "negative")))) +
+  geom_line() +
+  geom_hline(yintercept = 0) +
+  # ggforce::geom_link2(aes(colour = after_stat(ifelse(y > 0, "positve", "negative")))) +
   facet_grid(pathway ~ site, scales = "free") +
   theme_minimal()
 

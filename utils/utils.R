@@ -140,7 +140,7 @@ get_sd_from_ci <- function(ci, q = c(0.075, 0.925)) {
 
 smpe_custom <- function(actual, predicted) {
   n <- length(actual)
-  sum((predicted - actual) / ((actual + predicted) / 2)) * 100 / n
+  sum((actual - predicted) / ((actual + predicted) / 2)) * 100 / n
 }
 
 show_in_excel <- function(.data) {

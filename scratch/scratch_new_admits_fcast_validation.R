@@ -1,36 +1,3 @@
-n_rep <- 1E3
-plot_int <- FALSE
-validation_end <- ymd("2024-09-01")
-validation_start <- ymd("2023-07-01")
-start_date <- validation_end - dweeks(26) 
-nctr_df <- nctr_df %>% filter(between(Census_Date, validation_start, validation_end-ddays(1)))
-
-rdist <- readRDS("data/fit_dists.RDS") %>%
-  filter(leaf == -1) %>%
-  pull("rdist") %>%
-  `[[`(1)
-
-n_days <- 10
-sites <- nctr_df %>%
-  filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
-  mutate(site = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt',
-                          Organisation_Site_Code == 'RA701' ~ 'bri',
-                          Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
-                          TRUE ~ '')) %>%
-  pull(site) %>%
-  unique()
-dates <- nctr_df %>%
-  filter(Census_Date >= start_date,
-         Census_Date < validation_end,
-         Census_Date > ymd("2023-07-01"),
-         Census_Date < max(Census_Date) - ddays(n_days),
-         # remove dates near Christmas
-         abs(lubridate::interval(Census_Date, ymd("2023-12-25"))/ddays(1)) > 15
-  ) %>%
-  pull(Census_Date) %>%
-  unique()
-
-
 
 na_sim_fn <- function(d){
   
@@ -41,7 +8,7 @@ na_sim_fn <- function(d){
   nctr_df_full <- nctr_df
   nctr_df <- nctr_df %>% filter(Census_Date <= d)
   run_date <- d
-  report_start <- d + ddays(1)
+  report_start <- d #+ ddays(1)
   report_end <- report_start + ddays(n_days)
   source("code_admits_fcast.R", local = TRUE)
   source("code_new_admits.R", local = TRUE)
@@ -127,19 +94,38 @@ na_sim_fn <- function(d){
     pivot_wider(names_from = source, values_from = n) %>% 
     mutate(residual = actual - sim) 
   
+  admissions <- nctr_df_full %>%
+    filter(!is.na(NHS_Number)) %>%
+    filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
+    mutate(site = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt',
+                            Organisation_Site_Code == 'RA701' ~ 'bri',
+                            Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
+                            TRUE ~ '')) %>%
+    group_by(nhs_number = NHS_Number) %>%
+    distinct(Date_Of_Admission, .keep_all = TRUE) %>%
+    group_by(site , date = as.Date(Date_Of_Admission)) %>%
+    count()
+  
+  fcast_diff_out <- df_admit_fcast %>%
+    filter(day > 0) %>%
+    pivot_wider(names_from = metric, values_from = value) %>%
+    left_join(admissions) %>%
+    mutate(diff = n - fcast)
+  
+  
   list(
     # p = p,
-    res_out = res_out
+    res_out = res_out,
+    fcast_diff_out = fcast_diff_out
     )
   
 }
 
 sim_safe <- safely(na_sim_fn)
-d_i <- sample(dates, 25)
 
 options(future.globals.maxSize = 16000 * 1024^2)
-future::plan(future::multisession, workers = parallel::detectCores() - 3)
-out <- furrr::future_map(d_i, sim_safe, .options = furrr::furrr_options(
+future::plan(future::multisession, workers = parallel::detectCores() - 8)
+out <- furrr::future_map(dates, sim_safe, .options = furrr::furrr_options(
 # out <- furrr::future_map(dates[1:100], sim_safe, .options = furrr::furrr_options(
   globals = c(
     "get_sd_from_ci",
@@ -151,15 +137,8 @@ out <- furrr::future_map(d_i, sim_safe, .options = furrr::furrr_options(
   )
 ))
 
+
 saveRDS(out, "data/validation_na_fcast_out.RDS")
-saveRDS(out, "S:/Finance/Shared Area/BNSSG - BI/8 Modelling and Analytics/working/nh/projects/discharge_pathway_projections/data/validation_na_fcast_out.RDS")
-
-
-
-out <- furrr::future_map(dates[1:50], sim_safe)
-out <- map(dates[1:100], sim_safe)
-saveRDS(out, "data/validation_na_fcast_out_1.RDS")
-out2 <- map(dates[100:171], sim_safe)
 
 map(out, "result") %>%
   map("res_out") %>%
@@ -171,7 +150,6 @@ map(out, "result") %>%
   map_lgl(is.null) %>%
   which()
 
-out <- readRDS("data/validation_na_fcast_out_1.RDS")
 
 
 
@@ -181,11 +159,11 @@ map(out, "result") %>%
   ungroup() %>%
   group_by(rep, site, day) %>%
   mutate(smpe = smpe_custom(actual, sim)) %>%
-  group_by(site, day) %>%
-  summarise(smpe = mean(smpe, na.rm = TRUE))  %>%
+  # group_by(site, day) %>%
+  # summarise(smpe = mean(smpe, na.rm = TRUE))  %>%
   filter(site != "nbt") %>%
   ggplot(aes(x = day, y = smpe)) +
-  geom_col() +
+  geom_boxplot() +
   facet_wrap(vars(site)) +
   theme_minimal() +
   labs(
@@ -196,7 +174,6 @@ map(out, "result") %>%
     x = "Day"
   )
 
-
 ggsave(
   last_plot(),
   filename = "./validation/validation_plot_new_admits_accumulation.png",
@@ -205,6 +182,32 @@ ggsave(
   width = 10, 
   scale = 0.6)
 
+map(out, "result") %>%
+  map("res_out") %>%
+  bind_rows(.id = "rep") %>%
+  ungroup() %>%
+  # summarise(residual = mean(residual, na.rm = TRUE),
+  #           .by = c(site, day))  %>%
+  filter(site != "nbt") %>%
+  ggplot(aes(x = day, y = residual)) +
+  geom_boxplot() +
+  facet_wrap(vars(site)) +
+  theme_minimal() +
+  labs(
+    y = str_wrap(
+      "Difference between observed and simulated patients becoming ready for discharge",
+      50
+    ),
+    x = "Forecast day"
+  )
+
+ggsave(
+  last_plot(),
+  filename = "./validation/validation_plot_new_admits_accumulation_obsdiff.png",
+  bg = "white",
+  height = 7.5,
+  width = 10, 
+  scale = 0.6)
 
 (new_admits_plot <- map(out, "res_out") %>%
     bind_rows(.id = "rep") %>%

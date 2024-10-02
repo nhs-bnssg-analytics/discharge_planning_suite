@@ -44,6 +44,7 @@ models <- admissions %>%
   nest() %>%
   mutate(data = map(data, as_tsibble, index = date)) %>%
   mutate(
+         # model = map(data, ~model(.x, mdl = fable.prophet::prophet(n))),
          model = map(data, ~model(.x, mdl = ARIMA(n))),
          fc = map(model, forecast, h = fcast_days)) %>%
   mutate(mean = map(fc, pluck, ".mean"),

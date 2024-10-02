@@ -127,6 +127,8 @@ mortality_df <- local({
   
   RODBC::sqlQuery(con, string_mortality) %>%
     na.omit() %>%
+    # filter(REG_DATE < ymd("2024-09-04")) %>%
+    filter(REG_DATE < validation_end) %>%
     mutate(Derived_Pseudo_NHS = as.character(Derived_Pseudo_NHS),
            REG_DATE_OF_DEATH = lubridate::ymd(REG_DATE_OF_DEATH)) %>%
     mutate(Derived_Pseudo_NHS = as.character(Derived_Pseudo_NHS)) %>%
@@ -314,8 +316,6 @@ ggsave(last_plot(),
        height = 10,
        scale = 0.6)
 
-
-
 # collect_metrics(tree_rs) %>% View()
 
 tuned_wf<- finalize_workflow(tree_wf, select_best(tree_rs, "rmse"))
@@ -347,8 +347,6 @@ png(filename = "materials/tree_plot.png",
     )
 rpart.plot::rpart.plot(tree, type = 2, extra = 101, node.fun = node.fun1)
 dev.off()
-
-# partykit::as.party(tree) %>% plot(gp = gpar(fontsize = 6))
 
 
 # append leaf number onto original data:
@@ -400,10 +398,11 @@ fitdistcens_safe <- safely(fitdistcens)
   
   
 fit_dists <- los_model_df %>%
-  dplyr::select(leaf, los) %>%
+  dplyr::select(site, leaf, los) %>%
   bind_rows(mutate(., leaf = -1)) %>%
   group_by(leaf) %>%
   nest() %>%
+  mutate(data = map(data, ~mutate(.x, los = set_names(los, site)))) %>%
   mutate(los = map(data, pull, los)) %>%
   select(leaf, los)
 
@@ -422,55 +421,117 @@ saveRDS(fit_dists, "data/fit_dists.RDS")
 saveRDS(tree_fit, "data/los_wf.RDS")
 cat("LOS model outputs written", fill = TRUE)
 
-# # VALIDATION code
-# # output table
-# fit_dists_full %>%
-#   filter(leaf != -1) %>%
-#   ungroup() %>%
-#   select(leaf, dist, fit_parms, aic = aic) %>%
-#   mutate(aic = round(aic, 1),
-#          fit_parms = map_chr(fit_parms, ~paste0(paste(names(.x), "=", round(.x, 2)), collapse = ", ")),
-#          rule = rpart.plot::rpart.rules(tree) %>%
-#            as.data.frame() %>%
-#            janitor::clean_names() %>%
-#            select(-y) %>%
-#            reduce(paste) %>%
-#            stringr::str_squish()) %>%
-#   show_in_excel()
+# VALIDATION code
+# output table
+fit_dists_full %>%
+  filter(leaf != -1) %>%
+  ungroup() %>%
+  select(leaf, dist, fit_parms, aic = aic) %>%
+  mutate(aic = round(aic, 1),
+         fit_parms = map_chr(fit_parms, ~paste0(paste(names(.x), "=", round(.x, 2)), collapse = ", ")),
+         rule = rpart.plot::rpart.rules(tree) %>%
+           as.data.frame() %>%
+           janitor::clean_names() %>%
+           select(-y) %>%
+           reduce(paste) %>%
+           stringr::str_squish()) %>%
+  show_in_excel()
+
+# validation on test data
+
+
+cdf_fn <- function(dist, x, parms) {
+  fn <- dist_ptl_gen(dist, parms, "d")
+  out <- cumsum(fn(x, !!!parms))
+  (out - min(out)) / (max(out) - min(out))
+}
+
+validation_df <- los_testing  %>%
+  full_join(dplyr::select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
+            by = join_by(nhs_number == nhs_number)) %>%
+  # na.omit() %>%
+  dplyr::select(los,
+                site,
+                # day_of_admission,
+                cambridge_score,
+                age,
+                sex,
+                #spec, # spec has too many levels, some of which don't get seen enough to reliably create a model pipeline
+                bed_type
+                # smoking,
+                # ethnicity,
+                #segment
+  ) %>%
+  mutate(los = los + 1) %>%
+  filter(sex != "Unknown",
+         !is.na(los)) %>%
+  bake(extract_recipe(tree_fit), .) %>%
+  mutate(leaf = treeClust::rpart.predict.leaves(tree, .)) %>%
+  group_by(leaf) %>%
+  nest() %>%
+  left_join(select(fit_dists, -data, -aic) %>% group_by(leaf) %>% slice(1)) %>%
+  mutate(ks_test = pmap(list(data, pdist), ~ks.test(..1$los, ..2) %>% tidy())) %>%
+  mutate(ad_test = pmap(list(data, pdist), ~DescTools::AndersonDarlingTest(..1$los, null = ..2))) %>%
+  mutate(cdf_plot = pmap(
+    list(data, dist, fit_parms),
+    ~
+      ggplot(..1, aes(x = los)) +
+      geom_function(
+        geom = "step",
+        col = "black",
+        fun = function(x) cdf_fn(x, dist = ..2, parms = ..3)#,
+        #args = list(.x$fit_parms[[1]])
+      ) +
+      stat_ecdf(geom = "step") +
+      labs(title = "CDF plot", x = "LOS", y = "CDF")+ theme_minimal())
+  ) %>%
+  mutate(qq_plot = pmap(
+    list(data, dist, fit_parms),
+    ~
+      ggplot(..1, aes(sample = los)) +
+      qqplotr::stat_qq_band(distribution = ..2, alpha = 0.5,
+                            dparams = ..3) +
+      qqplotr::stat_qq_line(distribution = ..2, col = "black",
+                            dparams = ..3) +
+      qqplotr::stat_qq_point(distribution = ..2,
+                             dparams = ..3) +
+      labs(title = "Q-Q plot", x = "Theoretical quantiles", y = "Empirical quantiles") + theme_minimal()
+  )) %>%
+  mutate(pp_plot = pmap(
+    list(data, dist, fit_parms),
+    ~
+      ggplot(..1, aes(sample = los)) +
+      qqplotr::stat_pp_band(distribution = ..2, alpha = 0.5,
+                            dparams = ..3) +
+      qqplotr::stat_pp_line(distribution = ..2, col = "black",
+                            dparams = ..3) +
+      qqplotr::stat_pp_point(distribution = ..2,
+                             dparams = ..3) +
+      labs(title = "P-P plot", x = "Theoretical\nprobabilities", y = "Empirical probabilities") + theme_minimal()
+  ))
+
+# in order to created grid of plot duets (one CDF & QQ for each LOS leaf
+# partition) NOTE: for some reason I have to use cowplot to make a duet with a
+# border, which can then be wrapped using patchwork
+
+plots <- pmap(list(validation_df$cdf_plot, validation_df$pp_plot, validation_df$leaf),
+              ~cowplot::plot_grid(..1, ..2, labels = paste(..3), hjust = -.2)
+              #+ theme(plot.background = element_rect(fill = NA, colour = 'black', size = 1))
+              )
+(validation_plot_los <- patchwork::wrap_plots(plots))
 # 
-# # validation on test data
-# 
-# 
-# cdf_fn <- function(dist, x, parms) {
-#   fn <- dist_ptl_gen(dist, parms, "d")
-#   out <- cumsum(fn(x, !!!parms))
-#   (out - min(out)) / (max(out) - min(out))
-# }
-# 
-# validation_df <- los_testing  %>%
-#   full_join(dplyr::select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
-#             by = join_by(nhs_number == nhs_number)) %>%
-#   # na.omit() %>%
-#   dplyr::select(los,
-#                 site,
-#                 # day_of_admission,
-#                 cambridge_score,
-#                 age,
-#                 sex,
-#                 #spec, # spec has too many levels, some of which don't get seen enough to reliably create a model pipeline
-#                 bed_type
-#                 # smoking,
-#                 # ethnicity,
-#                 #segment
-#   ) %>%
-#   mutate(los = los + 1) %>%
-#   filter(sex != "Unknown",
-#          !is.na(los)) %>%
+ggsave(validation_plot_los,
+       filename = "./validation/validation_plot_los.png",
+       width = 20,
+       height = 10,
+       scale = 0.7)
+
+# validation_df_tot <- los_test %>%
 #   bake(extract_recipe(tree_fit), .) %>%
-#   mutate(leaf = treeClust::rpart.predict.leaves(tree, .)) %>%
+#   mutate(leaf = -1) %>%
 #   group_by(leaf) %>%
 #   nest() %>%
-#   left_join(select(fit_dists, -data, -aic) %>% group_by(leaf) %>% slice(1)) %>%
+#   left_join(select(fit_dists, -data, -min_aic)) %>%
 #   mutate(ks_test = pmap(list(data, pdist), ~ks.test(..1$los, ..2) %>% tidy())) %>%
 #   mutate(ad_test = pmap(list(data, pdist), ~DescTools::AndersonDarlingTest(..1$los, null = ..2))) %>%
 #   mutate(cdf_plot = pmap(
@@ -484,7 +545,7 @@ cat("LOS model outputs written", fill = TRUE)
 #         #args = list(.x$fit_parms[[1]])
 #       ) +
 #       stat_ecdf(geom = "step") +
-#       labs(title = "CDF plot", x = "LOS", y = "CDF")+ theme_minimal())
+#       labs(title = "CDF plot", x = "LOS", y = "CDF")+ theme_minimal()) 
 #   ) %>%
 #   mutate(qq_plot = pmap(
 #     list(data, dist, fit_parms),
@@ -495,7 +556,7 @@ cat("LOS model outputs written", fill = TRUE)
 #       qqplotr::stat_qq_line(distribution = ..2, col = "black",
 #                             dparams = ..3) +
 #       qqplotr::stat_qq_point(distribution = ..2,
-#                              dparams = ..3) +
+#                              dparams = ..3) + 
 #       labs(title = "Q-Q plot", x = "Theoretical quantiles", y = "Empirical quantiles") + theme_minimal()
 #   )) %>%
 #   mutate(pp_plot = pmap(
@@ -507,77 +568,15 @@ cat("LOS model outputs written", fill = TRUE)
 #       qqplotr::stat_pp_line(distribution = ..2, col = "black",
 #                             dparams = ..3) +
 #       qqplotr::stat_pp_point(distribution = ..2,
-#                              dparams = ..3) +
-#       labs(title = "P-P plot", x = "Theoretical\nprobabilities", y = "Empirical probabilities") + theme_minimal()
-#   ))
+#                              dparams = ..3) + 
+#       labs(title = "P-P plot", x = "Theoretical probabilities", y = "Empirical probabilities") + theme_minimal()
+#   )) 
 # 
-# # in order to created grid of plot duets (one CDF & QQ for each LOS leaf
-# # partition) NOTE: for some reason I have to use cowplot to make a duet with a
-# # border, which can then be wrapped using patchwork
+# (validation_plot_los_tot <- cowplot::plot_grid(validation_df_tot$cdf_plot[[1]], validation_df_tot$pp_plot[[1]]))
 # 
-# plots <- pmap(list(validation_df$cdf_plot, validation_df$pp_plot, validation_df$leaf),
-#               ~cowplot::plot_grid(..1, ..2, labels = paste(..3), hjust = -.2)
-#               #+ theme(plot.background = element_rect(fill = NA, colour = 'black', size = 1))
-#               )
-# (validation_plot_los <- patchwork::wrap_plots(plots))
-# # 
-# ggsave(validation_plot_los,
-#        filename = "./validation/validation_plot_los.png",
-#        width = 20,
-#        height = 10,
-#        scale = 0.7)
-# 
-# # validation_df_tot <- los_test %>%
-# #   bake(extract_recipe(tree_fit), .) %>%
-# #   mutate(leaf = -1) %>%
-# #   group_by(leaf) %>%
-# #   nest() %>%
-# #   left_join(select(fit_dists, -data, -min_aic)) %>%
-# #   mutate(ks_test = pmap(list(data, pdist), ~ks.test(..1$los, ..2) %>% tidy())) %>%
-# #   mutate(ad_test = pmap(list(data, pdist), ~DescTools::AndersonDarlingTest(..1$los, null = ..2))) %>%
-# #   mutate(cdf_plot = pmap(
-# #     list(data, dist, fit_parms),
-# #     ~
-# #       ggplot(..1, aes(x = los)) +
-# #       geom_function(
-# #         geom = "step",
-# #         col = "black",
-# #         fun = function(x) cdf_fn(x, dist = ..2, parms = ..3)#,
-# #         #args = list(.x$fit_parms[[1]])
-# #       ) +
-# #       stat_ecdf(geom = "step") +
-# #       labs(title = "CDF plot", x = "LOS", y = "CDF")+ theme_minimal()) 
-# #   ) %>%
-# #   mutate(qq_plot = pmap(
-# #     list(data, dist, fit_parms),
-# #     ~
-# #       ggplot(..1, aes(sample = los)) +
-# #       qqplotr::stat_qq_band(distribution = ..2, alpha = 0.5,
-# #                             dparams = ..3) +
-# #       qqplotr::stat_qq_line(distribution = ..2, col = "black",
-# #                             dparams = ..3) +
-# #       qqplotr::stat_qq_point(distribution = ..2,
-# #                              dparams = ..3) + 
-# #       labs(title = "Q-Q plot", x = "Theoretical quantiles", y = "Empirical quantiles") + theme_minimal()
-# #   )) %>%
-# #   mutate(pp_plot = pmap(
-# #     list(data, dist, fit_parms),
-# #     ~
-# #       ggplot(..1, aes(sample = los)) +
-# #       qqplotr::stat_pp_band(distribution = ..2, alpha = 0.5,
-# #                             dparams = ..3) +
-# #       qqplotr::stat_pp_line(distribution = ..2, col = "black",
-# #                             dparams = ..3) +
-# #       qqplotr::stat_pp_point(distribution = ..2,
-# #                              dparams = ..3) + 
-# #       labs(title = "P-P plot", x = "Theoretical probabilities", y = "Empirical probabilities") + theme_minimal()
-# #   )) 
-# # 
-# # (validation_plot_los_tot <- cowplot::plot_grid(validation_df_tot$cdf_plot[[1]], validation_df_tot$pp_plot[[1]]))
-# # 
-# # ggsave(validation_plot_los_tot,
-# #        filename = "./validation/validation_plot_los_tot.png",
-# #        width = 14,
-# #        bg = "white",
-# #        height = 7,
-# #        scale = 0.6)
+# ggsave(validation_plot_los_tot,
+#        filename = "./validation/validation_plot_los_tot.png",
+#        width = 14,
+#        bg = "white",
+#        height = 7,
+#        scale = 0.6)

@@ -5,9 +5,13 @@ df_new_admit <- local({
   
   rdist <- readRDS("data/fit_dists.RDS") %>%
     filter(leaf == -1) %>%
-    pull(los) %>%
+    pull(los) %>% 
     pluck(1) %>%
-    partial(EnvStats::remp, obs = .)
+    c(set_names(., "nbt")) %>% # bind all rows together to make global dist for nbt
+    split(names(.)) %>%
+    map(~partial(EnvStats::remp, obs = .x)) %>%
+    enframe(name = "site", value = "rdist")
+    
   
   props <- readRDS("data/pathway_prop.RDS") %>%
     set_names(c("Other", "P1", "P2", "P3"))
@@ -35,9 +39,10 @@ df_new_admit <- local({
            # coalesce in case we sample below zero
            day = rep(1:n_days, length(sites) * n_rep)) %>% 
     filter(arrivals > 0) %>%
+    left_join(rdist) %>%
     # (DEPRECATED) los plus one because it is stored as the left boundary of the interval censor (i.e. 0-2 should los 1)
     # mutate(los = map(arrivals, function(arr) rdist(arr) + 1)) %>%
-    mutate(los = map(arrivals, function(arr) rdist(arr))) %>%
+    mutate(los = map2(arrivals, rdist, function(arr, dist_fn) dist_fn(arr))) %>%
     # mutate(los = map(arrivals, function(arr) rdist(arr)) %>% map(\(x) map_dbl(x, ~sample(seq(.x, .x + 2), 1)))) %>%
     unnest(los) %>%
     mutate(date_end = date + ddays(los)) %>%

@@ -1,27 +1,8 @@
-source("utils/utils.R")
-n_rep <- 1E2
-validation_end <- ymd("2024-09-01")
-validation_start <- ymd("2023-07-01")
-start_date <- validation_end - dweeks(13) 
-
 nctr_df_full <- nctr_df %>% filter(between(Census_Date, validation_start, validation_end-ddays(1))) %>%
   ungroup()
 rm(nctr_df)
 
 attr_df <- readRDS("data/attr_df.RDS")
-
-dates <- nctr_df_full %>%
-  filter(Census_Date >= start_date,
-         Census_Date < validation_end,
-         Census_Date > ymd("2023-07-01"),
-         Census_Date < max(Census_Date) - ddays(n_days),
-         # Data not submitted for UHBW on this day
-         Census_Date != ymd("2024-07-17"),
-         # remove dates near Christmas
-         abs(lubridate::interval(Census_Date, ymd("2023-12-25"))/ddays(1)) > 15
-  ) %>%
-  pull(Census_Date) %>%
-  unique()
 
 
 nctr_sum_full <- nctr_df_full %>%
@@ -41,7 +22,7 @@ nctr_sum_full <- nctr_df_full %>%
   ) %>%
   group_by(Organisation_Site_Code) %>%
   filter(site != "nbt") %>%
-  mutate(site = "system") %>%
+  # mutate(site = "system") %>%
   mutate(site = fct_drop(site)) %>%
   group_by(nhs_number, Date_Of_Admission) %>%
   mutate(spell_id = as.character(cur_group_id())) %>%
@@ -122,7 +103,7 @@ drain_fn <- function(d) {
     group_by(Organisation_Site_Code) %>%
     filter(Census_Date == max(Census_Date)) %>%
     filter(site != "nbt") %>%
-    mutate(site = "system") %>%
+    # mutate(site = "system") %>%
     mutate(site = fct_drop(site)) %>%
     ungroup() %>%
     mutate(
@@ -163,8 +144,7 @@ drain_fn <- function(d) {
   
   source("code_curr_admits.R", local = TRUE)
   df_curr_admits <- df_curr_admits %>%
-    # recode this level as it gets dropped by recipe
-    mutate(site = "system")
+    bind_rows(summarise(mutate(., site = "system"),count = sum(count), .by = -count)) 
   
   sid_i <- dates_spells %>%
     filter(Census_Date == d & ctr) %>%
@@ -198,7 +178,10 @@ drain_fn <- function(d) {
     mutate(days_until_rdy = (discharge_rdy_los - los)+1) %>%
     group_by(day = days_until_rdy, site) %>%
     count(name = "value") %>%
-    filter(between(day, 1, 10))
+    filter(between(day, 1, 10))  %>%
+    ungroup() %>%
+    bind_rows(summarise(mutate(., site = "system"),value = sum(value), .by = -value)) 
+    
   
   df_curr_admits %>%
     group_by(rep, site, day) %>%
@@ -218,7 +201,7 @@ drain_fn <- function(d) {
 
 drain_fn_safe <- safely(drain_fn)
 options(future.globals.maxSize = 16000 * 1024^2)
-future::plan(future::multisession, workers = parallel::detectCores() - 6)
+future::plan(future::multisession, workers = parallel::detectCores() - 8)
 out <- furrr::future_map(dates, ~drain_fn_safe(.x), .options = furrr::furrr_options(
   globals = c(
     "attr_df",
@@ -231,6 +214,8 @@ out <- furrr::future_map(dates, ~drain_fn_safe(.x), .options = furrr::furrr_opti
     "dates_spells",
     "plot_int"
   )))
+
+saveRDS(out, "data/validation_drain_out.RDS")
 
 
 map(out, "result") %>%

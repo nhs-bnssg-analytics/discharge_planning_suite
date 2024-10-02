@@ -1,5 +1,3 @@
-library(fitdistrplus)
-library(tidyverse)
 library(forecast)
 library(tsibble)
 library(fable)
@@ -7,82 +5,14 @@ library(fabletools)
 library(fable.prophet)
 
 
-con <- switch(.Platform$OS.type,
-              windows = RODBC::odbcConnect(dsn = "xsw"),
-              unix = {"/root/sql/sql_connect_string_linux" |>
-                  readr::read_lines() |>
-                  RODBC::odbcDriverConnect()}
-)
-
-nctr_df <-
-  RODBC::sqlQuery(
-    con,
-    "SELECT
-       [RN]
-      ,[Organisation_Code_Provider]
-      ,[Organisation_Code_Commissioner]
-      ,[Census_Date]
-      ,[Month_Date]
-      ,[Month]
-      ,[Day_Of_Week]
-      ,[Week_Start_Date]
-      ,[NHS_Number]
-      ,[Person_Stated_Gender_Code]
-      ,[Person_Age]
-      ,[CDS_Unique_Identifier]
-      ,[Sub_ICB_Location]
-      ,[Organisation_Site_Code]
-      ,[Current_Ward]
-      ,[Specialty_Code]
-      ,[Bed_Type]
-      ,[Date_Of_Admission]
-      ,[BNSSG]
-      ,[Local_Authority]
-      ,[Criteria_To_Reside]
-      ,[Date_NCTR]
-      ,[Current_LOS]
-      ,[Days_NCTR]
-      ,[Days_NCTR_On_Current_Code]
-      ,[Current_Delay_Code]
-      ,[Local_Authority_grouped]
-      ,[Site_Name]
-      ,[Current_Delay_Code_Standard]
-      ,[Current_Delay_Code_Detailed]
-      ,[Acute Community split]
-      ,[Current_Covid_Status]
-      ,[Planned_Date_Of_Discharge]
-      ,[Date_Toc_Form_Completed]
-      ,[Toc_Form_Status]
-      ,[Discharge_Pathway]
-      ,[DER_File_Name]
-      ,[DER_Load_Timestamp]
-  FROM Analyst_SQL_Area.dbo.vw_NCTR_Status_Report_Daily_JI"
-  )
-
-validation_end <- ymd("2024-09-01")
-validation_start <- ymd("2023-07-01")
-nctr_df <- nctr_df %>% filter(between(Census_Date, validation_start, validation_end-ddays(1)))
-
-
-
-
-  # arima training ends at the start of the reporting
   fc_train_length <- 26 # (train length in weeks)
-  # fc_end <- report_start
-  # fc_start <- fc_end  - dweeks(fc_train_length)
-  # 
-  # min_adm_date <- nctr_df %>%
-  #   filter(!is.na(NHS_Number)) %>%
-  #   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
-  #   group_by(Organisation_Site_Code) %>%
-  #   summarise(date = as.Date(max(Date_Of_Admission))) %>%
-  #   pull(date) %>%
-  #   min()
+
   
   fcast_days <- 10
   
   
   admissions <- nctr_df %>%
+    filter(between(Date_Of_Admission, validation_start, start_date)) %>%
     filter(!is.na(NHS_Number)) %>%
     filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
     mutate(site = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt',
@@ -110,13 +40,41 @@ nctr_df <- nctr_df %>% filter(between(Census_Date, validation_start, validation_
     mutate(acc = map2(fc, data, ~accuracy(.x, data = .y, by = c(".id", ".model")))) %>%
     mutate(mape = map_dbl(acc, ~.x %>% pull(MAPE) %>% mean)) %>%
     mutate(mae = map_dbl(acc, ~.x %>% pull(MAE) %>% mean))
+  
+  
+  fc <- models$fc[[1]] %>%
+    nest(.by = .id)
+  data <- models$data[[1]] %>%
+    rename(n_obs = n) %>%
+    ungroup()
+  
+  
+  
+  
+ plots <- map2(models$fc,
+       models$data,
+       \(fc, data) nest(fc, .by = .id) %>%
+         pull(data) %>% map( ~ full_join(.x, rename(data, n_obs = n)) %>%
+                               mutate(max_date = max(date[!is.na(.model)]))  %>%
+                               filter(between(date, max_date - dweeks(6), max_date)) %>%
+                               mutate(n = map(n, hilo)) %>%
+                               unnest(n) %>%
+                               mutate(lower = map_dbl(n, ~.x$lower)) %>%
+                               mutate(upper = map_dbl(n, ~.x$upper)) %>%
+                               ggplot(aes(x = date)) +
+                               geom_line(aes(y = n_obs), col = "black") +
+                               geom_line(aes(y = .mean), col = "blue") +
+                               geom_ribbon(aes(ymin = lower, ymax = upper), fill = "blue", alpha = 0.25) +
+                               theme_minimal() +
+                               labs(y = "Admissions", x = "Date")))
+                             
+                             )
+       )
 
-  # autoplot(models$fc[[1]] %>% filter(.model == "mdl", .id == 1) %>% select(-.id),
-  #          filter(models$data_tr[[1]], .id ==2) %>% filter(date >= max(date) -dweeks(6)) %>% select(-.id))
 
-    autoplot(models$fc[[1]] %>% filter(.model == "mdl", .id == 10) %>% select(-.id),
-             models$data[[1]] %>% filter(date >= max(date) -dweeks(6)))
 
+  
+  
   
   seq <- head(sort(unique(models$fc[[1]]$.id)), -1)
   
