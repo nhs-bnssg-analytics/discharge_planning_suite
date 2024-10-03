@@ -20,10 +20,10 @@ validation_end <- ymd("2024-09-01")
 validation_start <- ymd("2023-07-01")
 start_date <- validation_end - dweeks(13) 
 
-
+seed <- TRUE
 plot_int <- FALSE
 
-n_rep <- 1E2
+n_rep <- 1E0
 
 run_date <- today()
 n_days <- 10
@@ -435,6 +435,7 @@ options(future.globals.maxSize = 16000 * 1024^2)
 future::plan(future::multisession, workers = parallel::detectCores() - 10)
 out <- furrr::future_map(dates, output_valid_fn_safe,
                          .options = furrr::furrr_options(
+                           seed = TRUE,
                            globals = c(
                              "run_date",
                              "n_days",
@@ -445,7 +446,8 @@ out <- furrr::future_map(dates, output_valid_fn_safe,
                              "n_rep",
                              "get_sd_from_ci",
                              "attr_df",
-                             "max_date"
+                             "max_date",
+                             "seed"
                            )))
 
 

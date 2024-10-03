@@ -203,6 +203,7 @@ drain_fn_safe <- safely(drain_fn)
 options(future.globals.maxSize = 16000 * 1024^2)
 future::plan(future::multisession, workers = parallel::detectCores() - 8)
 out <- furrr::future_map(dates, ~drain_fn_safe(.x), .options = furrr::furrr_options(
+  seed = TRUE,
   globals = c(
     "attr_df",
     "drain_fn_safe",
@@ -212,7 +213,8 @@ out <- furrr::future_map(dates, ~drain_fn_safe(.x), .options = furrr::furrr_opti
     "n_rep",
     "pathway_recodes",
     "dates_spells",
-    "plot_int"
+    "plot_int",
+    "seed"
   )))
 
 saveRDS(out, "data/validation_drain_out.RDS")

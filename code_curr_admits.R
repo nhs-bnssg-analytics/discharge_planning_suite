@@ -1,4 +1,6 @@
 df_curr_admits <- local({
+  
+  if(seed) set.seed(123)
   require(tidyverse)
   # LOS predictions
   los_df <- nctr_sum %>%

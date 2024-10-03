@@ -7,6 +7,8 @@ require(fabletools)
 
 df_admit_fcast <- local({
   
+  if(seed) set.seed(123)
+  
 # arima training ends at the start of the reporting
 fc_train_length <- 26 # (train length in weeks)
 # fc_end <- report_start - ddays(1) # (DEPRECATED) deduct one day as we must consider arrivals one day zero

@@ -127,13 +127,15 @@ options(future.globals.maxSize = 16000 * 1024^2)
 future::plan(future::multisession, workers = parallel::detectCores() - 8)
 out <- furrr::future_map(dates, sim_safe, .options = furrr::furrr_options(
 # out <- furrr::future_map(dates[1:100], sim_safe, .options = furrr::furrr_options(
+  seed = TRUE,
   globals = c(
     "get_sd_from_ci",
     "n_days",
     "n_rep",
     "nctr_df",
     "plot_int",
-    "rdist"
+    "rdist",
+    "seed"
   )
 ))
 
