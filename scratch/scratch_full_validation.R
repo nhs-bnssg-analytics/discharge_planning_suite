@@ -405,69 +405,76 @@ output_valid_full_fn <- function(d) {
   
   
   # baseline model
-  
   nctr_df <- nctr_df_full
   nctr_df <- nctr_df_full %>% filter(Census_Date <= report_start,
                                      Organisation_Site_Code != 'RVJ01') # remove NBT for validation
   
 
   discharges_ts <- nctr_df_full %>%
-    filter(Census_Date <= d) %>%
-    filter(!is.na(NHS_Number)) %>%
-    # filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
-    filter(Organisation_Site_Code %in% c('RA701', 'RA301', 'RA7C2')) %>%
-    # filter for CTR, we wont predict the NCTR outcome for those already NCTR/on a queue
-    # filter(Criteria_To_Reside == "N") %>%
+    filter(Person_Stated_Gender_Code %in% 1:2) %>%
+    mutate(nhs_number = as.character(NHS_Number),
+           nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
+           sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
+    filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
     mutate(
       site = case_when(
         Organisation_Site_Code == 'RVJ01' ~ 'nbt',
         Organisation_Site_Code == 'RA701' ~ 'bri',
         Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
         TRUE ~ 'other'
-      )) %>%
+      ),
+      Date_Of_Admission = as.Date(Date_Of_Admission)
+    ) %>%
     filter(site != "nbt") %>%
-    mutate(site = fct_drop(site)) %>%
-    mutate(pathway = recode(Current_Delay_Code_Standard,
-                            !!!pathway_recodes),
-           pathway = coalesce(pathway, "Other")) %>% 
     ungroup() %>%
+    mutate(
+      der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/ddays(1),
+      der_ctr = case_when(
+        Criteria_To_Reside == "Y" | is.na(Criteria_To_Reside) ~ TRUE,
+        !is.na(Days_NCTR) ~ FALSE,
+        !is.na(Date_NCTR) ~ FALSE,
+        Criteria_To_Reside == "N" ~ FALSE
+      )) %>%
+    mutate(report_date = max(Census_Date)) %>%
+    mutate(los = (report_date - Date_Of_Admission) / ddays(1)) %>%
+    mutate(
+      pathway = recode(
+        Current_Delay_Code_Standard,
+        !!!pathway_recodes
+      ),
+      pathway = coalesce(pathway, "Other")
+    ) %>%
     mutate(pathway = if_else(
       !pathway %in% c("P1", "P2", "P3", "P3" , "Other"),
       "Other",
       pathway
     )) %>%
-    dplyr::select(nhs_number = NHS_Number, site, ctr = Criteria_To_Reside, Days_NCTR, Date_NCTR, pathway, date = Census_Date, Date_Of_Admission) %>%
-    distinct() %>%
-    # filter(pathway != "Other") %>%
-    group_by(nhs_number, Date_Of_Admission) %>%
-    mutate(spell_id = cur_group_id()) %>%
-    group_by(spell_id) %>%
-    mutate(
-      der_los = (as.Date(date) - as.Date(Date_Of_Admission))/lubridate::ddays(1),
-      der_ctr = case_when(
-        ctr == "Y" | is.na(ctr) ~ TRUE,
-        !is.na(Days_NCTR) ~ FALSE,
-        !is.na(Date_NCTR) ~ FALSE,
-        ctr == "N" ~ FALSE
-      ),
-      # der_date_nctr = as.Date(if_else(any(!der_ctr),min(date[!der_ctr]) - lubridate::ddays(1),max(date)))) %>%
-      der_date_nctr = as.Date(if_else(any(!der_ctr),min(date[!der_ctr]) ,max(date)))) %>%
+    group_by(NHS_Number, Date_Of_Admission) %>%
+    mutate(pathway = ifelse(any(!der_ctr), pathway[!der_ctr][1], "Other")) %>%
+    mutate(keep_date = case_when(any(!der_ctr) ~ Census_Date[!der_ctr][1], .default = tail(Census_Date, 1))) %>%
+    filter(Census_Date < max(Census_Date)) %>%
+    dplyr::select(
+      date = keep_date,
+      nhs_number,
+      site,
+      pathway
+    ) %>%
     ungroup() %>%
-    mutate(der_date_nctr = pmax(Date_Of_Admission, pmin(der_date_nctr, Date_NCTR, na.rm = TRUE), na.rm = TRUE)) %>%
-    mutate(der_date_nctr = as.Date(der_date_nctr)) %>%
-    filter(date == der_date_nctr) %>%
+    distinct()  %>%
     group_by(site, pathway, date = date + ddays(1)) %>%
     count() %>%
+    ungroup() %>%
+    complete(nesting(site, date), pathway, fill = list(n = 0)) %>%
     group_by(site, pathway) %>%
-    filter(date < max(date)) %>%
-    arrange(date) %>%
-    slice(-1) 
+    filter(date != max(date),
+           date != min(date)) %>%
+    filter(date > max(date) - dweeks(4)) 
   
   
   # mean number of discharges per day/site
   bl_out_df <- discharges_ts %>%
     ungroup() %>%
-    filter(date >= (max(date) - dweeks(4))) %>%
+    # filter(date >= (max(date) - dweeks(4))) %>%
     summarise(n = mean(n, na.rm = TRUE), .by = c(site, pathway)) %>%
     expand_grid(day = 1:10) %>%
     mutate(date = d + ddays(day - 1)) %>%
@@ -505,7 +512,7 @@ out <- furrr::future_map(dates, output_valid_full_fn_safe,
                            )))
 
 
-saveRDS(out, "data/final_validation_full_out.RDS")
+saveRDS(out, "data/final_validation_full_out_1e1.RDS")
 saveRDS(out, "S:/Finance/Shared Area/BNSSG - BI/8 Modelling and Analytics/working/nh/projects/discharge_pathway_projections/data/final_validation_full_out.RDS")
 
 out <- readRDS("data/final_validation_full_out.RDS")
@@ -573,7 +580,8 @@ summarise(simulated = sum(simulated),
               map("bl_out_df") %>%
               bind_rows(.id = "id") %>% 
               mutate(day = factor(day, levels = 1:10)) %>%
-              filter(site != "nbt")) %>%
+              filter(site != "nbt") %>%
+            complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0))) %>%
   mutate(diff_bl = observed - n) %>%
   select(id, site, day, pathway, diff, diff_bl) %>%
   pivot_longer(cols = c(diff, diff_bl)) %>%
@@ -606,14 +614,15 @@ bind_rows(out %>%
 ) %>% 
 summarise(simulated = sum(simulated),
           observed = sum(observed), .by = c(id, site, day, pathway))%>%
-  mutate(diff = observed - simulated) %>%
+  mutate(diff = observed - simulated) %>% 
   left_join(out %>%
               map("result") %>%
               map("bl_out_df") %>%
               bind_rows(.id = "id") %>% 
               mutate(day = factor(day, levels = 1:10)) %>%
-              filter(site != "nbt")) %>%
-  mutate(diff_bl = observed - n) %>%
+              filter(site != "nbt")%>% 
+              complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0))) %>%
+  mutate(diff_bl = observed - n) %>% 
   summarise(diff = mean(diff), diff_bl = mean(diff_bl), .by = c(site, pathway, day)) %>%
   pivot_longer(cols = c(diff, diff_bl)) %>%
   ggplot(aes(x = as.numeric(day), y = value, col = name)) +
@@ -649,14 +658,16 @@ summarise(simulated = sum(simulated),
               map("bl_out_df") %>%
               bind_rows(.id = "id") %>% 
               mutate(day = factor(day, levels = 1:10)) %>%
-              filter(site != "nbt")) %>%
+              filter(site != "nbt") %>%
+              complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0))) %>%
   mutate(diff_bl = observed - n) %>%
   summarise(diff = mean(diff), diff_bl = mean(diff_bl), .by = c(site, day, pathway)) %>%
   mutate(perf = abs(diff_bl) - abs(diff)) %>%
-  filter(site != "system", pathway != "Other") %>%
+  filter(site != "system") %>%
   ggplot(aes(x = as.numeric(day), y = perf)) +
   geom_hline(yintercept = 0, linetype = 2) +
   ggforce::geom_link2(aes(colour = after_stat(ifelse(y > 0, "positve", "negative")))) +
   # geom_line() +
-  facet_grid(site ~ pathway)
+  facet_wrap(vars(site, pathway), scales = "free", nrow = 2)
+  ggh4x::facet_grid2(site ~ pathway, scales = "free_y")
   
