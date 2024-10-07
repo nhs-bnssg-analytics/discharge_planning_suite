@@ -6,7 +6,6 @@ library(fable.prophet)
 
 
   fc_train_length <- 26 # (train length in weeks)
-
   
   fcast_days <- 10
   
@@ -28,11 +27,17 @@ library(fable.prophet)
   models <- admissions %>%
     ungroup() %>%
     complete(date, site, fill = list(count = 0)) %>%
+    filter(site != "nbt") %>%
+    mutate(site = recode(site,
+                         "bri" = "Bristol Royal Infirmary",
+                         "weston" = "Weston General Hospital"
+    )) %>%
     group_by(site) %>%
     arrange(date) %>%
     nest() %>%
     mutate(data = map(data, as_tsibble, index = date)) %>%
-    mutate(data_tr = map(data, stretch_tsibble, .init = fc_train_length*7, .step = 10)) %>%
+    mutate(data_tr = map(data, stretch_tsibble, .init = fc_train_length*7, .step = 35)) %>%
+    # pull(data_tr) %>% pluck(1) %>% as_tibble() %>% pull(".id") %>% table()
     mutate(
       # model = map(data, ~model(.x, mdl = prophet(n))),
       model = map(data_tr, ~model(.x, mdl = ARIMA(n))),
@@ -51,9 +56,11 @@ library(fable.prophet)
   
   
   
- plots <- map2(models$fc,
-       models$data,
-       \(fc, data) nest(fc, .by = .id) %>%
+ plots <- pmap(list(models$fc,
+                    models$data,
+                    models$site,
+                    models$mape),
+       \(fc, data, site, mape) nest(fc, .by = .id) %>%
          pull(data) %>% map( ~ full_join(.x, rename(data, n_obs = n)) %>%
                                mutate(max_date = max(date[!is.na(.model)]))  %>%
                                filter(between(date, max_date - dweeks(6), max_date)) %>%
@@ -66,42 +73,21 @@ library(fable.prophet)
                                geom_line(aes(y = .mean), col = "blue") +
                                geom_ribbon(aes(ymin = lower, ymax = upper), fill = "blue", alpha = 0.25) +
                                theme_minimal() +
-                               labs(y = "Admissions", x = "Date")))
-                             
+                               labs(x = "Date", y = glue::glue("Daily admissions, {site} (MAPE: {round(mape,2 )})"))
                              )
        )
 
 
 
-  
-  
-  
-  seq <- head(sort(unique(models$fc[[1]]$.id)), -1)
-  
-  
- out <- pmap(list(models$fc,
-                  models$data_tr,
-                  recode(models$site, "weston" = "wgh"),
-                  models$mape), function(fc, data, site, mape) {
-   map(seq, ~ {
-     autoplot(
-       fc %>% filter(.model == "mdl", .id == .x) %>% select(-.id),
-       filter(data, .id == .x + 1) %>%
-             filter(date >= max(date) - dweeks(6)) %>%
-             select(-.id) 
-     ) + theme_bw() + theme(legend.position = "off") +
-       labs(y = glue::glue("Daily admissions, {str_to_upper(site)} (MAPE: {round(mape,2 )})")) 
-   })
- })
-       
-
-plots <- map2(out, models$site, ~{
-  patchwork::wrap_plots(.x, ncol = 1, axes = "collect", guides = "collect") +
-  patchwork::plot_annotation(title = .y)
-})  
-
-(validation_plot_fc <- patchwork::wrap_plots(plots, nrow = 1, axes = "collect", guides = "collect"))
-
+ (validation_plot_fc <- plots %>%
+   map( ~ patchwork::wrap_plots(
+     .x,
+     ncol = 1,
+     axes = "collect",
+     guides = "collect"
+   )) %>%
+   patchwork::wrap_plots(nrow = 1, axes = "collect"))
+ 
 
 ggsave(
   validation_plot_fc,
@@ -110,3 +96,11 @@ ggsave(
   width = 16,
   height = 12
 )
+
+# 
+# plots %>%
+#   flatten %>%
+#   `[`(1:6) %>%
+#  patchwork::wrap_plots(nrow = 5,
+#                        axes = "collect",
+#                        guides = "collect")
