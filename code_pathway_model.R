@@ -12,21 +12,27 @@ pathway_recodes <- c(
   "Awaiting confirmation MDT" = "Other",
   "Awaiting referral to SPA" = "Other",
   "Pathway 3 - D2A" = "P3",
-  "Pathway 0" = "P0",
+  "Pathway 0" = "Other",
   "Pathway 1 - D2A" = "P1",
   "Awaiting confirmation Social" = "Other",
   "Pathway 2 - Other" = "P2",
   "Pathway 2 - D2A" = "P2",
+  "Pathway 2" = "P2",
+  "Pathway 2  Safeguarding concern" = "P2",
+  "Pathway 2   Specialist  eg BIRU" = "P2",
   "Awaiting confirmation Other" = "Other",
   "Pathway 1 - Other" = "P1",
+  "Pathway 1" = "P1",
   "P3 / Other Complex Discharge" = "P3",
+  "Pathway 3 / Other Complex Discharge" = "P3",
   "Uncoded" = "Other",
   "Repatriation" = "Other",
   "NCTR Null" = "Other",
   "Not Set" = "Other",
   "18a  Infection  bxviii  Standard" = "Other",
   "xviii. Awaiting discharge to a care home but have not had a COVID 19 test (in 48 hrs preceding discharge)." = "Other",
-  "15b  Repat  bxv  WGH" = "Other"
+  "15b  Repat  bxv  WGH" = "Other",
+  "Meets Criteria to Reside" = "Other"
 )
 
 
@@ -88,9 +94,26 @@ pathway_df <- nctr_df %>%
   mutate(nhs_number = as.character(NHS_Number),
          nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
          sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
+  group_by(nhs_number, Date_Of_Admission) %>%
+  mutate(spell_id = cur_group_id()) %>%
+  group_by(spell_id) %>%
+  mutate(
+    der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/lubridate::ddays(1),
+    der_ctr = case_when(
+      Criteria_To_Reside == "Y" | is.na(Criteria_To_Reside) ~ TRUE,
+      !is.na(Days_NCTR) ~ FALSE,
+      !is.na(Date_NCTR) ~ FALSE,
+      Criteria_To_Reside == "N" ~ FALSE
+    ),
+    # der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - lubridate::ddays(1),max(Census_Date)))) %>%
+    der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) ,max(Census_Date)))) %>%
+  ungroup() %>%
+  mutate(der_date_nctr = pmax(Date_Of_Admission, pmin(der_date_nctr, Date_NCTR, na.rm = TRUE), na.rm = TRUE)) %>%
+  mutate(der_date_nctr = as.Date(der_date_nctr)) %>%
   group_by(nhs_number) %>%
   arrange(Census_Date) %>%
   reframe(Census_Date = Census_Date[1],
+          date_nctr = der_date_nctr[1],
           pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other"),
           sex = sex[1],
           age = Person_Age[1],
@@ -98,6 +121,7 @@ pathway_df <- nctr_df %>%
           bed_type = Bed_Type[1]) %>%
   dplyr::select(
          Census_Date,
+         date_nctr,
          nhs_number,
          sex,
          age,
@@ -125,6 +149,8 @@ mortality_df <- local({
   
   RODBC::sqlQuery(con, string_mortality) %>%
     na.omit() %>%
+    # filter(REG_DATE < ymd("2024-09-04")) %>%
+    filter(REG_DATE < validation_end) %>%
     mutate(Derived_Pseudo_NHS = as.character(Derived_Pseudo_NHS),
            REG_DATE_OF_DEATH = lubridate::ymd(REG_DATE_OF_DEATH)) %>%
     mutate(Derived_Pseudo_NHS = as.character(Derived_Pseudo_NHS)) %>%
@@ -135,7 +161,7 @@ mortality_df <- local({
 
 pathway_df <- pathway_df %>%
   left_join(mortality_df) %>% 
-  filter(is.na(date_death)) %>%
+  filter(is.na(date_death) | date_death > date_nctr) %>%
   select(-date_death)
 
 # attributes to join

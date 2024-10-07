@@ -139,19 +139,25 @@ mortality_df <- local({
 
 los_df <- los_df %>%
   left_join(mortality_df) %>% 
-  filter(is.na(date_death)) %>%
+  filter(is.na(date_death) | date_death > der_date_nctr) %>%
   select(-date_death, admission_date)
 
 # ECDF
 
 los_df %>%
+  mutate(site = recode(site,
+                       "bri" = "Bristol Royal Infirmary",
+                       "weston" = "Weston General Hospital"
+                       )) %>%
   ggplot() +
   stat_ecdf(aes(x = los+1), geom = "step") +
   scale_x_log10(guide = "axis_logticks") +
+  scale_y_continuous(breaks = seq(0, 1, 0.1)) +
   theme_minimal() +
   theme(axis.ticks = element_line()) +
   labs(y = "Empirical Cumulative Distribution Function",
-       x = "mLOS (Midnights Crossed)")
+       x = "mLOS (Midnights Crossed)") +
+  facet_wrap(vars(site), nrow = 1)
 
 
 ggsave(last_plot(),
@@ -345,7 +351,7 @@ png(filename = "materials/tree_plot.png",
     res = 275,
     bg = "white"
     )
-rpart.plot::rpart.plot(tree, type = 2, extra = 101, node.fun = node.fun1)
+rpart.plot::rpart.plot(tree, fallen.leaves = FALSE, type = 2, extra = 101, node.fun = node.fun1)
 dev.off()
 
 
