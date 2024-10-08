@@ -450,7 +450,7 @@ output_valid_full_fn <- function(d) {
       pathway
     )) %>%
     group_by(NHS_Number, Date_Of_Admission) %>%
-    mutate(pathway = ifelse(any(!der_ctr), pathway[!der_ctr][1], "Other")) %>%
+    mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
     mutate(keep_date = case_when(any(!der_ctr) ~ Census_Date[!der_ctr][1], .default = tail(Census_Date, 1))) %>%
     filter(Census_Date < max(Census_Date)) %>%
     dplyr::select(
@@ -464,8 +464,7 @@ output_valid_full_fn <- function(d) {
     group_by(site, pathway, date = date + ddays(1)) %>%
     count() %>%
     ungroup() %>%
-    complete(nesting(site, date), pathway, fill = list(n = 0)) %>%
-    group_by(site, pathway) %>%
+    complete(nesting(site, date), pathway, fill = list(n = 0))  %>%
     filter(date != max(date),
            date != min(date)) %>%
     filter(date > max(date) - dweeks(4)) 
@@ -689,7 +688,7 @@ bind_rows(
   ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") +
   labs(x = "Day",
        colour = "",
-       y = str_wrap("Difference between baseline model residual and simulation model residual", 50)) &
+       y = str_wrap("Difference between baseline model residual and simulation model residual", 50)) +
   theme(legend.position = "bottom")
 
 
@@ -769,66 +768,6 @@ summarise(
        y = str_wrap("Difference between baseline model residual and simulation model residual", 50)) &
   theme(legend.position = "bottom")
   
-
-
-discharges_ts <- nctr_df_full %>%
-  filter(Person_Stated_Gender_Code %in% 1:2) %>%
-  mutate(nhs_number = as.character(NHS_Number),
-         nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
-         sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
-  filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
-  mutate(
-    site = case_when(
-      Organisation_Site_Code == 'RVJ01' ~ 'nbt',
-      Organisation_Site_Code == 'RA701' ~ 'bri',
-      Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
-      TRUE ~ 'other'
-    ),
-    Date_Of_Admission = as.Date(Date_Of_Admission)
-  ) %>%
-  filter(site != "nbt") %>%
-  ungroup() %>%
-  mutate(
-    der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/ddays(1),
-    der_ctr = case_when(
-      Criteria_To_Reside == "Y" | is.na(Criteria_To_Reside) ~ TRUE,
-      !is.na(Days_NCTR) ~ FALSE,
-      !is.na(Date_NCTR) ~ FALSE,
-      Criteria_To_Reside == "N" ~ FALSE
-    )) %>%
-  mutate(report_date = max(Census_Date)) %>%
-  mutate(los = (report_date - Date_Of_Admission) / ddays(1)) %>%
-  mutate(
-    pathway = recode(
-      Current_Delay_Code_Standard,
-      !!!pathway_recodes
-    ),
-    pathway = coalesce(pathway, "Other")
-  ) %>%
-  mutate(pathway = if_else(
-    !pathway %in% c("P1", "P2", "P3", "P3" , "Other"),
-    "Other",
-    pathway
-  )) %>%
-  group_by(NHS_Number, Date_Of_Admission) %>%
-  mutate(spell_id = cur_group_id()) %>%
-  mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
-  mutate(keep_date = case_when(any(!der_ctr) ~ Census_Date[!der_ctr][1], .default = tail(Census_Date, 1))) %>%
-  filter(Census_Date < max(Census_Date)) %>%
-  dplyr::select(
-    date = keep_date,
-    nhs_number,
-    site,
-    pathway
-  ) %>%
-  ungroup() %>%
-  distinct()  %>%
-  group_by(site, pathway, date = date + ddays(1)) %>%
-  count() %>%
-  ungroup() %>%
-  complete(nesting(site, date), pathway, fill = list(n = 0))  %>%
-  filter(date != max(date),
-         date != min(date))
 
 start_date <- validation_end - dweeks(13) 
 

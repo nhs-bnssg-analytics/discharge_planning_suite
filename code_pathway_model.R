@@ -113,7 +113,8 @@ pathway_df <- nctr_df %>%
   group_by(nhs_number) %>%
   arrange(Census_Date) %>%
   group_by(nhs_number, Date_Of_Admission) %>%
-  mutate(pathway = ifelse(any(!der_ctr), pathway[!der_ctr][1], "Other")) %>%
+  mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
+  # mutate(pathway = ifelse(any(!der_ctr), pathway[!der_ctr][1], "Other")) %>%
   ungroup() %>%
   group_by(nhs_number) %>%
   reframe(Census_Date = Census_Date[1],
