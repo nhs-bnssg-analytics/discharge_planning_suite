@@ -16,6 +16,7 @@ source("utils/colour_functions.R")
 
 # plot intermediate results?
 plot_int <- TRUE
+seed <- FALSE
 
 n_rep <- 1E3
 
