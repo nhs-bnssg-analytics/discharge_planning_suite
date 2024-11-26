@@ -6,6 +6,9 @@ RUN mkdir utils
 # Copy the scripts
 COPY utils/utils.R /root/utils/utils.R
 COPY code_main.R /root/code_main.R
+COPY code_admits_fcast.R /root/code_admits_fcast.R
+COPY code_new_admits.R /root/code_new_admits.R
+COPY code_curr_admits.R /root/code_curr_admits.R
 COPY utils/theme.R /root/utils/theme.R
 COPY utils/colour_functions.R /root/utils/colour_functions.R
 
