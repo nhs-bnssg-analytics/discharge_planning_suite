@@ -1,7 +1,7 @@
 FROM ubuntu2204_r422_dpp
 
 RUN apt update && apt -y install cron
-mkdir utils
+RUN mkdir utils
 
 # Copy the scripts
 COPY utils/utils.R /root/utils/utils.R
