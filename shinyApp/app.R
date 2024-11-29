@@ -81,7 +81,7 @@ server <- shinyServer(function(input, output) {
   output$dpp_plot <- renderGirafe({
     p_pred <- data_dpp %>%
       mutate(pathway_add = fct_relevel(pathway_add, "..not for D2A service", after = Inf)) %>%
-      mutate(day = report_date + ddays(day+1)) %>%
+      mutate(day = report_date + ddays(day-1)) %>%
       filter(ctr == "Y", source == "model_pred") %>%
       # ggplot(aes(x = fct_recode(ctr, "NCTR (with NCTR status)" = "N", "CTR (with CTR status)" = "Y"), y = n, fill = fct_rev(pathway))) +
       ggplot(aes(x = day, y = n, fill = pathway_add, group = pathway_add)) +
@@ -165,7 +165,7 @@ server <- shinyServer(function(input, output) {
     p <- data_dpp %>%
       filter(source == "queue_sim") %>%
       select(-any_of(select_vec)) %>%
-      mutate(day = report_date + ddays(day+1)) %>%
+      mutate(day = report_date + ddays(day-1)) %>%
       rename(!!!rename_vec) %>%
       ggplot(aes(x = day, y = n, fill = pathway_q, group = pathway_q)) +
       geom_ribbon_interactive(aes(ymin = n_l85, ymax = n_u85), alpha = 0.33)  +
