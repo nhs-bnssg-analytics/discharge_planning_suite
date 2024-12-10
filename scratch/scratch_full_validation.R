@@ -495,7 +495,7 @@ output_valid_full_fn <- function(d) {
 output_valid_full_fn_safe <- safely(output_valid_full_fn)
 
 options(future.globals.maxSize = 16000 * 1024^2)
-future::plan(future::multisession, workers = parallel::detectCores() - 10)
+future::plan(future::multisession, workers = parallel::detectCores() - 12)
 out <- furrr::future_map(dates, output_valid_full_fn_safe,
                          .options = furrr::furrr_options(
                            seed = TRUE,
