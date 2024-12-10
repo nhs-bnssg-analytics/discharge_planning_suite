@@ -505,146 +505,41 @@ dates_left <- setdiff(dates, int_dates) %>% as_date()
 
 out_int <- map(int_files, readRDS)
 
-options(future.globals.maxSize = 16000 * 1024^2)
-future::plan(future::multisession, workers = parallel::detectCores() - 10)
-out <- furrr::future_map(dates_left, output_valid_full_fn_safe,
-                         .options = furrr::furrr_options(
-                           seed = TRUE,
-                           globals = c(
-                             "run_date",
-                             "n_days",
-                             "dates_spells",
-                             "nctr_df",
-                             "nctr_df_full",
-                             "nctr_sum_full",
-                             "pathway_recodes",
-                             "plot_int",
-                             "n_rep",
-                             "get_sd_from_ci",
-                             "attr_df",
-                             "max_date",
-                             "seed"
-                           )))
+# options(future.globals.maxSize = 16000 * 1024^2)
+# future::plan(future::multisession, workers = parallel::detectCores() - 10)
+# out <- furrr::future_map(dates_left, output_valid_full_fn_safe,
+#                          .options = furrr::furrr_options(
+#                            seed = TRUE,
+#                            globals = c(
+#                              "run_date",
+#                              "n_days",
+#                              "dates_spells",
+#                              "nctr_df",
+#                              "nctr_df_full",
+#                              "nctr_sum_full",
+#                              "pathway_recodes",
+#                              "plot_int",
+#                              "n_rep",
+#                              "get_sd_from_ci",
+#                              "attr_df",
+#                              "max_date",
+#                              "seed"
+#                            )))
 
 
-out <- c(out_int, map(out, "result"))
+out <- out_int
 
 out %>%
   # map("result") %>%
   map_lgl(is.null) %>%
   which()
 
-bind_rows(out %>%
-            # map("result") %>%
-            map("na_out_df") %>%
-            bind_rows(.id = "id") %>% 
-            filter(site != "nbt") %>%
-            complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
-            select(id, site, day, pathway, source, n ) %>%
-            pivot_wider(values_from = n, names_from = source) %>%
-            mutate(diff = observed - simulated,
-                   metric = "new_admits"),
-          out %>%
-            # map("result") %>%
-            map("ca_out_df") %>%
-            bind_rows(.id = "id") %>% 
-            filter(site != "NBT") %>%
-            complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
-            select(id, site, day, pathway, source, n) %>%
-            pivot_wider(values_from = n, names_from = source) %>%
-            mutate(diff = observed - simulated,
-                   metric = "curr_admits")
-) %>% 
-  filter(site != "system", pathway != "Other") %>%
-  ggplot(aes(x = factor(day), y = diff, col = metric)) + 
-  geom_boxplot() +
-  geom_hline(yintercept = 0, linetype = 2) +
-  theme_minimal() +
-  facet_wrap(vars(site, pathway))
 
 
-bind_rows(out %>%
-            # map("result") %>%
-            map("na_out_df") %>%
-            bind_rows(.id = "id") %>% 
-            filter(site != "nbt") %>%
-            complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
-            select(id, site, day, pathway, source, n ) %>%
-            pivot_wider(values_from = n, names_from = source) %>%
-            mutate(diff = observed - simulated,
-                   metric = "new_admits"),
-          out %>%
-            # map("result") %>%
-            map("ca_out_df") %>%
-            bind_rows(.id = "id") %>% 
-            filter(site != "NBT") %>%
-            complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
-            select(id, site, day, pathway, source, n) %>%
-            pivot_wider(values_from = n, names_from = source) %>%
-            mutate(diff = observed - simulated,
-                   metric = "curr_admits")
-) %>%
-  summarise(simulated = sum(simulated),
-            observed = sum(observed), .by = c(id, site, day, pathway))%>%
-  mutate(diff = observed - simulated) %>%
-  left_join(out %>%
-              # map("result") %>%
-              map("bl_out_df") %>%
-              bind_rows(.id = "id") %>% 
-              mutate(day = factor(day, levels = 1:10)) %>%
-              filter(site != "nbt") %>%
-              complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0))) %>%
-  mutate(diff_bl = observed - n) %>%
-  select(id, site, day, pathway, diff, diff_bl) %>%
-  pivot_longer(cols = c(diff, diff_bl)) %>%
-  filter(pathway != "Other", site != "system") %>%
-  ggplot(aes(x = day, y = value, col = name)) + 
-  geom_boxplot() +
-  facet_wrap(vars(site, pathway))
-
-
-bind_rows(out %>%
-            # map("result") %>%
-            map("na_out_df") %>%
-            bind_rows(.id = "id") %>% 
-            filter(site != "nbt") %>%
-            complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
-            select(id, site, day, pathway, source, n ) %>%
-            pivot_wider(values_from = n, names_from = source) %>%
-            mutate(diff = observed - simulated,
-                   metric = "new_admits"),
-          out %>%
-            # map("result") %>%
-            map("ca_out_df") %>%
-            bind_rows(.id = "id") %>% 
-            filter(site != "NBT") %>%
-            complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
-            select(id, site, day, pathway, source, n) %>%
-            pivot_wider(values_from = n, names_from = source) %>%
-            mutate(diff = observed - simulated,
-                   metric = "curr_admits")
-) %>% 
-  summarise(simulated = sum(simulated),
-            observed = sum(observed), .by = c(id, site, day, pathway))%>%
-  mutate(diff = observed - simulated) %>% 
-  left_join(out %>%
-              # map("result") %>%
-              map("bl_out_df") %>%
-              bind_rows(.id = "id") %>% 
-              mutate(day = factor(day, levels = 1:10)) %>%
-              filter(site != "nbt")%>% 
-              complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0))) %>%
-  mutate(diff_bl = observed - n) %>% 
-  summarise(diff = mean(diff), diff_bl = mean(diff_bl), .by = c(site, pathway, day)) %>%
-  pivot_longer(cols = c(diff, diff_bl)) %>%
-  # filter(pathway != "Other") %>%
-  ggplot(aes(x = as.numeric(day), y = value, col = name)) +
-  geom_line() +
-  facet_grid(site ~ pathway)
 
 bind_rows(
   out %>%
-    # map("result") %>%
+    #map("result") %>%
     map("na_out_df") %>%
     bind_rows(.id = "id") %>%
     filter(site != "nbt") %>%
@@ -653,7 +548,7 @@ bind_rows(
     pivot_wider(values_from = n, names_from = source) %>%
     mutate(diff = observed - simulated, metric = "new_admits"),
   out %>%
-    # map("result") %>%
+    #map("result") %>%
     map("ca_out_df") %>%
     bind_rows(.id = "id") %>%
     filter(site != "NBT") %>%
@@ -667,52 +562,39 @@ bind_rows(
     observed = sum(observed),
     .by = c(id, site, day, pathway)
   ) %>%
-  mutate(diff = observed - simulated) %>%
   left_join(
     out %>%
-      # map("result") %>%
+     # map("result") %>%
       map("bl_out_df") %>%
       bind_rows(.id = "id") %>%
       mutate(day = factor(day, levels = 1:10)) %>%
       filter(site != "nbt") %>%
-      complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0))
+      complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
+      rename(baseline = n)
   ) %>%
-  mutate(diff_bl = observed - n) %>%
-  summarise(
-    diff = mean(diff),
-    diff_bl = mean(diff_bl),
-    .by = c(site, day, pathway)
-  ) %>%
-  mutate(perf = diff_bl - diff) %>%
+  summarise(across(c(simulated, baseline), \(x) yardstick::rmse_vec(observed, x)), .by = c(site, day, pathway)) %>%
+  mutate(ratio = baseline/simulated)%>%
   filter(site != "system") %>%
-  mutate(site = recode(site, "bri" = "Bristol Royal Infirmary", "weston" = "Weston General Hospital")) %>%
-  ggplot(aes(x = as.numeric(day), y = perf)) +
-  geom_hline(yintercept = 0, linetype = 2) +
+  ggplot(aes(x = as.numeric(day), y = ratio)) +
+  geom_hline(yintercept = 1, linetype = 2) +
   scale_x_continuous(breaks = 1:10) +
   scale_colour_manual(values = c("green3", "red2")) +
   theme_minimal() +
+  # geom_line() +
   ggforce::geom_link2(aes(colour = after_stat(
     ifelse(
-      y > 0,
+      y > 1,
       "Model outperforms baseline",
       "Model underperforms baseline"
     )
   ))) +
-  # geom_line() +
-  ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") +
+  facet_grid(site ~ pathway) +
+  # ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") +
   labs(x = "Day",
        colour = "",
-       y = str_wrap("Difference between baseline model residual and simulation model residual", 50)) +
+       y = str_wrap("RMSE ratio between baseline and simulation models", 50)) +
   theme(legend.position = "bottom")
 
-
-ggsave(
-  last_plot(),
-  filename = "./validation/validation_final_baseline_diff.png",
-  bg = "white",
-  height = 7.5,
-  width = 10, 
-  scale = 0.7)
 
 
 bind_rows(
@@ -749,16 +631,26 @@ bind_rows(
       filter(site != "nbt") %>%
       complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
       rename(baseline = n)
-  ) %>%
-  summarise(across(c(simulated, baseline), \(x) yardstick::rmse_vec(observed, x)), .by = c(site, day, pathway)) %>%
-  mutate(ratio = baseline/simulated)%>%
+  ) %>% 
+  mutate(across(c(simulated, baseline), \(x) abs(observed - x))) %>%
+  summarise(across(c(simulated, baseline), list(mean = \(x) median(x),
+                                                upper = \(x) quantile(x, 0.75),
+                                                lower = \(x) quantile(x, 0.25))
+                   ), .by = c(site, day, pathway)) %>%
+  # mutate(across(matches(c("simulated", "baseline")), sqrt)) %>%
+  pivot_longer(-c(site, day, pathway), names_sep = "_", names_to = c("metric", "stat")) %>%
+  pivot_wider(names_from = metric, values_from = value) %>%
+  mutate(ratio = baseline/simulated) %>%
+  select(-simulated, -baseline) %>%
+  pivot_wider(names_from = stat, values_from = ratio) %>%
   filter(site != "system") %>%
-  ggplot(aes(x = as.numeric(day), y = ratio)) +
+  ggplot(aes(x = as.numeric(day), y = mean)) +
   geom_hline(yintercept = 1, linetype = 2) +
   scale_x_continuous(breaks = 1:10) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.25) +
+  
   scale_colour_manual(values = c("green3", "red2")) +
   theme_minimal() +
-  # geom_line() +
   ggforce::geom_link2(aes(colour = after_stat(
     ifelse(
       y > 1,
@@ -772,6 +664,70 @@ bind_rows(
        colour = "",
        y = str_wrap("RMSE ratio between baseline and simulation models", 50)) +
   theme(legend.position = "bottom")
+
+
+
+
+bind_rows(
+  out %>%
+    #map("result") %>%
+    map("na_out_df") %>%
+    bind_rows(.id = "id") %>%
+    filter(site != "nbt") %>%
+    complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
+    select(id, site, day, pathway, source, n) %>%
+    pivot_wider(values_from = n, names_from = source) %>%
+    mutate(diff = observed - simulated, metric = "new_admits"),
+  out %>%
+    #map("result") %>%
+    map("ca_out_df") %>%
+    bind_rows(.id = "id") %>%
+    filter(site != "NBT") %>%
+    complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
+    select(id, site, day, pathway, source, n) %>%
+    pivot_wider(values_from = n, names_from = source) %>%
+    mutate(diff = observed - simulated, metric = "curr_admits")
+) %>%
+  summarise(
+    simulated = sum(simulated),
+    observed = sum(observed),
+    .by = c(id, site, day, pathway)
+  ) %>%
+  left_join(
+    out %>%
+      # map("result") %>%
+      map("bl_out_df") %>%
+      bind_rows(.id = "id") %>%
+      mutate(day = factor(day, levels = 1:10)) %>%
+      filter(site != "nbt") %>%
+      complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
+      rename(baseline = n)
+  ) %>%
+  mutate(sim_start_date = min(date), .by = id) %>%
+  summarise(across(c(simulated, baseline), \(x) yardstick::rmse_vec(observed, x)), .by = c(site, sim_start_date, pathway)) %>%
+  mutate(ratio = baseline/simulated) %>%
+  filter(site != "system") %>% 
+  mutate(group = str_c(site, "_", pathway)) %>%
+  ggplot(aes(x = sim_start_date, y = ratio, group = group)) +
+  geom_hline(yintercept = 1, linetype = 2) +
+  # scale_x_continuous(breaks = 1:10) +
+  scale_colour_manual(values = c("green3", "red2")) +
+  theme_minimal() +
+  geom_line() +
+  # ggforce::geom_link2(aes(colour = after_stat(
+  #   ifelse(
+  #     y > 1,
+  #     "Model outperforms baseline",
+  #     "Model underperforms baseline"
+  #   )
+  # ))) +
+  facet_grid(site ~ pathway) +
+  # ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") +
+  labs(x = "Day",
+       colour = "",
+       y = str_wrap("RMSE ratio between baseline and simulation models", 50)) +
+  theme(legend.position = "bottom")
+
 
 bind_rows(
   out %>%
@@ -793,7 +749,6 @@ bind_rows(
     pivot_wider(values_from = n, names_from = source) %>%
     mutate(diff = observed - simulated, metric = "curr_admits")
 ) %>%
-  
   summarise(
     simulated = sum(simulated),
     observed = sum(observed),
@@ -828,54 +783,142 @@ bind_rows(
 
 
 
-
-
-start_date <- validation_end - dweeks(13) 
-
+discharges_ts <- nctr_df_full %>%
+  filter(Person_Stated_Gender_Code %in% 1:2) %>%
+  mutate(nhs_number = as.character(NHS_Number),
+         nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
+         sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
+  filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
+  mutate(
+    site = case_when(
+      Organisation_Site_Code == 'RVJ01' ~ 'nbt',
+      Organisation_Site_Code == 'RA701' ~ 'bri',
+      Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
+      TRUE ~ 'other'
+    ),
+    Date_Of_Admission = as.Date(Date_Of_Admission)
+  ) %>%
+  filter(site != "nbt") %>%
+  ungroup() %>%
+  mutate(
+    der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/ddays(1),
+    der_ctr = case_when(
+      Criteria_To_Reside == "Y" | is.na(Criteria_To_Reside) ~ TRUE,
+      !is.na(Days_NCTR) ~ FALSE,
+      !is.na(Date_NCTR) ~ FALSE,
+      Criteria_To_Reside == "N" ~ FALSE
+    )) %>%
+  mutate(report_date = max(Census_Date)) %>%
+  mutate(los = (report_date - Date_Of_Admission) / ddays(1)) %>%
+  mutate(
+    pathway = recode(
+      Current_Delay_Code_Standard,
+      !!!pathway_recodes
+    ),
+    pathway = coalesce(pathway, "Other")
+  ) %>%
+  mutate(pathway = if_else(
+    !pathway %in% c("P1", "P2", "P3", "P3" , "Other"),
+    "Other",
+    pathway
+  )) %>%
+  group_by(NHS_Number, Date_Of_Admission) %>%
+  mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
+  mutate(keep_date = case_when(any(!der_ctr) ~ Census_Date[!der_ctr][1], .default = tail(Census_Date, 1))) %>%
+  filter(Census_Date < max(Census_Date)) %>%
+  dplyr::select(
+    date = keep_date,
+    nhs_number,
+    site,
+    pathway
+  ) %>%
+  ungroup() %>%
+  distinct()  %>%
+  group_by(site, pathway, date = date + ddays(1)) %>%
+  count() %>%
+  ungroup() %>%
+  complete(nesting(site, date), pathway, fill = list(n = 0)) 
 
 discharges_ts %>%
-  mutate(calib = ifelse(date < start_date, "yes", "no")) %>%
-  summarise(mean_n = mean(n), .by = c(site, pathway, calib)) %>%
-  pivot_wider(names_from = calib, values_from = mean_n, names_prefix = "calib_") %>%
-  mutate(perc_diff = (calib_no - calib_yes)/calib_yes)
-
-discharges_ts %>%
-  mutate(month =  floor_date(date, "month")) %>%
-  summarise(n = sum(n), .by = c(site, pathway, month)) %>% 
-  pivot_wider(names_from = pathway, values_from = n) %>% View()
-
-ggplot(discharges_ts,
-       aes(x = date, y = n)) +
-  geom_line() +
-  ggh4x::facet_grid2(site~pathway, scales = "free_y", independent = "y")
+  filter(date < max(date)) %>%
+  filter(date >= max(date) - dweeks(26)) %>%
+ggplot(aes(x = date, y = n)) + geom_line() + ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") + geom_smooth()
 
 
-# bind_rows(out %>%
-#             map("result") %>%
-#             map("na_out_df") %>%
-#             bind_rows(.id = "id") %>% 
-#             filter(site != "nbt") %>%
-#             complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
-#             select(id, site, day, pathway, source, n ) %>%
-#             pivot_wider(values_from = n, names_from = source) %>%
-#             mutate(smpe = smpe_custom(observed, simulated),
-#                    metric = "new_admits", .by = c(id, site, day, pathway)),
-#           out %>%
-#             map("result") %>%
-#             map("ca_out_df") %>%
-#             bind_rows(.id = "id") %>% 
-#             filter(site != "NBT") %>%
-#             complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
-#             select(id, site, day, pathway, source, n) %>%
-#             pivot_wider(values_from = n, names_from = source) %>%
-#             mutate(smpe = smpe_custom(observed, simulated),
-#                    metric = "curr_admits", .by = c(id, site, day, pathway))
-# ) %>% 
-#   summarise(smpe = mean(smpe), .by = c(site, day, pathway, metric)) %>%
-#   filter(site != "system", pathway != "Other") %>%
-#   ggplot(aes(x = factor(day), y = smpe, fill = metric)) + 
-#   geom_col(position = "dodge") +
-#   geom_hline(yintercept = 0, linetype = 2) +
-#   theme_minimal() +
-#   facet_wrap(vars(site, pathway))
-# 
+day_cap <- 3
+
+bind_rows(
+  out %>%
+    #map("result") %>%
+    map("na_out_df") %>%
+    bind_rows(.id = "id") %>%
+    filter(site != "nbt") %>%
+    complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
+    select(id, site, day, pathway, source, n) %>%
+    pivot_wider(values_from = n, names_from = source) %>%
+    mutate(diff = observed - simulated, metric = "new_admits"),
+  out %>%
+    #map("result") %>%
+    map("ca_out_df") %>%
+    bind_rows(.id = "id") %>%
+    filter(site != "NBT") %>%
+    complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
+    select(id, site, day, pathway, source, n) %>%
+    pivot_wider(values_from = n, names_from = source) %>%
+    mutate(diff = observed - simulated, metric = "curr_admits")
+) %>%
+  filter(as.numeric(as.character(day)) <= day_cap) %>%
+  summarise(
+    simulated = sum(simulated),
+    observed = sum(observed),
+    .by = c(id, site, pathway)
+  ) %>%
+  left_join(
+    out %>%
+      # map("result") %>%
+      map("bl_out_df") %>%
+      bind_rows(.id = "id") %>%
+      mutate(day = factor(day, levels = 1:10)) %>%
+      filter(site != "nbt") %>%
+      complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
+      rename(baseline = n)  %>%
+      filter(as.numeric(as.character(day)) <= day_cap) %>%
+      summarise(
+        baseline = sum(baseline),
+        .by = c(id, site, pathway)
+      ) 
+  ) %>%
+  # pivot_longer(cols = c(simulated, observed, baseline)) %>%
+  # summarise(value = mean(value), .by = c(site, pathway, name)) %>%
+  # mutate(prop = value/sum(value), .by = c(site, name)) %>%
+  # select(site, pathway, name, prop) %>%
+  # filter(site != "system") %>%
+  # ggplot(aes(x = pathway, y = prop, fill = name)) + geom_col(position = "dodge") + facet_wrap(vars(site))
+
+  # pivot_wider(names_from = name, values_from = prop) %>%
+  summarise(across(c(simulated, baseline), \(x) yardstick::rmse_vec(observed, x)), .by = c(site, pathway)) %>%
+  mutate(ratio = baseline/simulated) %>%
+  filter(site != "system") %>%
+  ggplot(aes(x = pathway, y = ratio)) +
+  geom_hline(yintercept = 1, linetype = 2) +
+  geom_col() +
+  facet_wrap(vars(site))
+
++
+  scale_x_continuous(breaks = 1:10) +
+  scale_colour_manual(values = c("green3", "red2")) +
+  theme_minimal() +
+  # geom_line() +
+  ggforce::geom_link2(aes(colour = after_stat(
+    ifelse(
+      y > 1,
+      "Model outperforms baseline",
+      "Model underperforms baseline"
+    )
+  ))) +
+  facet_grid(site ~ pathway) +
+  # ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") +
+  labs(x = "Day",
+       colour = "",
+       y = str_wrap("RMSE ratio between baseline and simulation models", 50)) +
+  theme(legend.position = "bottom")

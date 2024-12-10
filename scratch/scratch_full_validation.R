@@ -23,7 +23,7 @@ start_date <- validation_end - dweeks(13)
 seed <- FALSE
 plot_int <- FALSE
 
-n_rep <- 5E2
+n_rep <- 1E1
 
 run_date <- today()
 n_days <- 10
@@ -412,6 +412,7 @@ output_valid_full_fn <- function(d) {
   
 
   discharges_ts <- nctr_df_full %>%
+    filter(Census_Date < d) %>%
     filter(Person_Stated_Gender_Code %in% 1:2) %>%
     mutate(nhs_number = as.character(NHS_Number),
            nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
@@ -515,8 +516,8 @@ out <- furrr::future_map(dates, output_valid_full_fn_safe,
                            )))
 
 
-saveRDS(out, "data/final_validation_full_out_1e1_2.RDS")
-saveRDS(out, "S:/Finance/Shared Area/BNSSG - BI/8 Modelling and Analytics/working/nh/projects/discharge_pathway_projections/data/final_validation_full_out.RDS")
+saveRDS(out, "data/final_validation_full_out_1e1.RDS")
+saveRDS(out, "S:/Finance/Shared Area/BNSSG - BI/8 Modelling and Analytics/working/nh/projects/discharge_pathway_projections/data/final_validation_full_1e2.RDS")
 
 out <- readRDS("data/final_validation_full_out.RDS")
 
