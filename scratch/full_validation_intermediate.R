@@ -839,6 +839,19 @@ discharges_ts <- nctr_df_full %>%
   ungroup() %>%
   complete(nesting(site, date), pathway, fill = list(n = 0)) 
 
+
+discharges_ts %>%
+  mutate(calib = ifelse(between(date, validation_start, start_date), "yes", "no" )) %>%
+  summarise(n = sum(n), .by = c(site, pathway, calib)) %>%
+  mutate(prop = n/sum(n), .by = c(site, calib)) %>%
+  ggplot(aes(x = pathway, y = prop, fill = calib)) +
+  geom_col(position = "dodge") +
+  facet_wrap(vars(site))
+
+%>%
+  select(site, pathway, calib, prop) %>%
+  pivot_wider(names_from = calib, values_from = prop)
+
 discharges_ts %>%
   filter(date < max(date)) %>%
   filter(date >= max(date) - dweeks(26)) %>%
