@@ -528,13 +528,75 @@ out_int <- map(int_files, readRDS)
 
 
 out <- out_int
+out <- out %>% map("result")
 
 out %>%
   # map("result") %>%
   map_lgl(is.null) %>%
   which()
 
-
+bind_rows(
+  out %>%
+    # map("result") %>%
+    map("na_out_df") %>%
+    bind_rows(.id = "id") %>%
+    filter(site != "nbt") %>%
+    complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
+    select(id, site, day, pathway, source, n) %>%
+    pivot_wider(values_from = n, names_from = source) %>%
+    mutate(diff = observed - simulated, metric = "new_admits"),
+  out %>%
+    # map("result") %>%
+    map("ca_out_df") %>%
+    bind_rows(.id = "id") %>%
+    filter(site != "NBT") %>%
+    complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
+    select(id, site, day, pathway, source, n) %>%
+    pivot_wider(values_from = n, names_from = source) %>%
+    mutate(diff = observed - simulated, metric = "curr_admits")
+) %>%
+  summarise(
+    simulated = sum(simulated),
+    observed = sum(observed),
+    .by = c(id, site, day, pathway)
+  ) %>%
+    mutate(diff = observed - simulated) %>%
+  left_join(
+    out %>%
+      # map("result") %>%
+      map("bl_out_df") %>%
+      bind_rows(.id = "id") %>%
+      mutate(day = factor(day, levels = 1:10)) %>%
+      filter(site != "nbt") %>%
+      complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0))
+  ) %>%
+  mutate(diff_bl = observed - n) %>%
+  summarise(
+    diff = mean(diff),
+    diff_bl = mean(diff_bl),
+    .by = c(site, day, pathway)
+  ) %>%
+  mutate(perf = diff_bl - diff) %>%
+  filter(site != "system") %>%
+  mutate(site = recode(site, "bri" = "Bristol Royal Infirmary", "weston" = "Weston General Hospital")) %>%
+  ggplot(aes(x = as.numeric(day), y = perf)) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  scale_x_continuous(breaks = 1:10) +
+  scale_colour_manual(values = c("green3", "red2")) +
+  theme_minimal() +
+  ggforce::geom_link2(aes(colour = after_stat(
+    ifelse(
+      y > 0,
+      "Model outperforms baseline",
+      "Model underperforms baseline"
+    )
+  ))) +
+  # geom_line() +
+  ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") +
+  labs(x = "Day",
+       colour = "",
+       y = str_wrap("Difference between baseline model residual and simulation model residual", 50)) +
+  theme(legend.position = "bottom")
 
 
 bind_rows(
