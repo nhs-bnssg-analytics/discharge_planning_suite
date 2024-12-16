@@ -1,5 +1,4 @@
-df_new_admit <- local({
-  browser()
+df_new_admit <- local({  
   if(seed) set.seed(123)
   # report_date <- report_start -ddays(1) # (DEPRECATED)
   report_date <- report_start
@@ -46,7 +45,7 @@ df_new_admit <- local({
     mutate(los = map2(arrivals, rdist, function(arr, dist_fn) dist_fn(arr))) %>%
     # mutate(los = map(arrivals, function(arr) rdist(arr)) %>% map(\(x) map_dbl(x, ~sample(seq(.x, .x + 2), 1)))) %>%
     unnest(los) %>%
-    mutate(date_end = date + ddays(los)) %>%
+    mutate(date_end = date + ddays(pmax(los-1, 0))) %>%
     #(DEPRECATED) day is + 1 to shift all predicted discharges to the next snapshot
     # group_by(site, day = lubridate::interval(report_date, date_end)/ddays(1), rep) %>%
     # day is + 1 as an interval of zero for new arrivals on day x that are NCTR on x should counted on should be on day x + 1 (day 1 events are on day 1 etc)
