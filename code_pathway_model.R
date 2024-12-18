@@ -1,6 +1,6 @@
 library(fitdistrplus)
 library(tidyverse)
-library(tidymodels)
+
 
 con <- switch(.Platform$OS.type,
               windows = RODBC::odbcConnect(dsn = "xsw"),

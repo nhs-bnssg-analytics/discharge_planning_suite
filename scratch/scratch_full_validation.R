@@ -23,7 +23,7 @@ start_date <- validation_end - dweeks(13)
 seed <- FALSE
 plot_int <- FALSE
 
-n_rep <- 1E3
+n_rep <- 1E1
 
 run_date <- today()
 n_days <- 10
@@ -106,7 +106,6 @@ pathway_recodes <- c(
 
 
 # max census date
-
 max_date <- nctr_df_full %>%
   filter(!is.na(NHS_Number)) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
@@ -125,7 +124,6 @@ max_date <- nctr_df_full %>%
 attr_df <- readRDS("data/attr_df.RDS")
 
 # validation testing dates
-
 
 dates <- nctr_df_full  %>%
   filter(between(Census_Date, validation_start, validation_end-ddays(1)))%>%
@@ -223,8 +221,8 @@ output_valid_full_fn <- function(d) {
   # run the separate codes
   
   # NEW ADMITS
-  
   nctr_df <- nctr_df %>% filter(Census_Date <= d)
+
   source("code_admits_fcast.R", local = TRUE)
   
   # # use actual admits, not fcast"
@@ -514,7 +512,7 @@ output_valid_full_fn <- function(d) {
 output_valid_full_fn_safe <- safely(output_valid_full_fn)
 
 options(future.globals.maxSize = 16000 * 1024^2)
-future::plan(future::multisession, workers = parallel::detectCores() - 14)
+future::plan(future::multisession, workers = parallel::detectCores() - 12)
 out <- furrr::future_map(dates, output_valid_full_fn_safe,
                          .options = furrr::furrr_options(
                            seed = TRUE,
@@ -535,7 +533,7 @@ out <- furrr::future_map(dates, output_valid_full_fn_safe,
                            )))
 
 
-saveRDS(out, "data/final_validation_full_out_1e1.RDS")
+saveRDS(out, "data/final_validation_full_out_1e1_newpwmodel.RDS")
 saveRDS(out, "S:/Finance/Shared Area/BNSSG - BI/8 Modelling and Analytics/working/nh/projects/discharge_pathway_projections/data/final_validation_full_1e2.RDS")
 
 out <- readRDS("data/final_validation_full_out.RDS")

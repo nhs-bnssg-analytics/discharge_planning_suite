@@ -6,6 +6,7 @@ require(fable)
 require(fabletools)
 
 df_admit_fcast <- local({
+  
   if(seed) set.seed(123)
   
 # arima training ends at the start of the reporting
@@ -51,13 +52,13 @@ models <- admissions %>%
   mutate(mean = map(fc, pluck, ".mean"),
          u_85 = map(fc, ~pluck(.x, "n") %>% quantile(0.925)),
          l_85 = map(fc, ~pluck(.x, "n") %>% quantile(0.075)),
-         frame = pmap(list(data, mean), ~tibble(date = seq(max(pluck(..1, "date")) + ddays(1),
+         frame = pmap(list(data, mean), ~tibble(date = seq(max(pluck(..1, "date")),
                                                           by = "days",
                                                           length.out = fcast_days),
                                                fcast = ..2)),
          frame = pmap(list(frame, u_85, l_85), ~mutate(..1, u_85 = ..2, l_85 = ..3)),
-         frame = map2(data, frame, bind_rows),
-         frame = map(frame, as_tibble)) %>%
+         data = map(data, as_tibble),
+         frame = map2(data, frame, bind_rows)) %>%
   dplyr::select(site, frame) %>%
   unnest(cols = c(frame)) %>%
   pivot_longer(cols = -c(site, date),
