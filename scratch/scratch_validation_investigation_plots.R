@@ -1,6 +1,6 @@
 library(tidyverse)
 
-out <- readRDS("data/final_validation_full_1e3.RDS")
+out <- readRDS("data/final_validation_full_out_1e1_newpwmodel2.RDS")
 
 bind_rows(
   out %>%
@@ -36,6 +36,31 @@ bind_rows(
   geom_point() +
   geom_errorbar(aes(ymin = l95, ymax = u95)) +
   facet_grid(site~.) 
+
+
+
+  summarise(across(c(simulated, baseline), \(x) yardstick::rmse_vec(observed, x)), .by = c(site, day)) %>%
+  mutate(ratio = baseline/simulated)%>%
+  filter(site != "system") %>%
+  ggplot(aes(x = as.numeric(day), y = ratio)) +
+  geom_hline(yintercept = 1, linetype = 2) +
+  scale_x_continuous(breaks = 1:10) +
+  scale_colour_manual(values = c("green3", "red2")) +
+  theme_minimal() +
+  # geom_line() +
+  ggforce::geom_link2(aes(colour = after_stat(
+    ifelse(
+      y > 1,
+      "Model outperforms baseline",
+      "Model underperforms baseline"
+    )
+  ))) +
+  facet_grid(~site) +
+  # ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") +
+  labs(x = "Day",
+       colour = "",
+       y = str_wrap("RMSE ratio between baseline and simulation models", 50)) +
+  theme(legend.position = "bottom")
 
 
 bind_rows(
@@ -295,7 +320,7 @@ bind_rows(
   geom_point() +
   geom_errorbar(aes(ymin = l95, ymax = u95)) +
   facet_grid(site~metric)
-
+  
 bind_rows(
   out %>%
     map("result") %>%
@@ -323,16 +348,14 @@ bind_rows(
   ) %>%
   mutate(diff = observed - simulated) %>%
   filter(site != "system") %>%
-  summarise(mean_diff = mean(diff), u95 = quantile(diff, 0.975), l95 = quantile(diff, 0.025), .by = c(site, metric, pathway)) %>%
+  summarise(mean_diff = mean(diff),
+            u95 = quantile(diff, 0.975),
+            l95 = quantile(diff, 0.025), .by = c(site, metric, pathway)) %>%
   ggplot(aes(x = pathway, y = mean_diff)) +
   geom_point() +
   geom_errorbar(aes(ymin = l95, ymax = u95)) +
   facet_grid(site~metric)
   
-
-
-
-
 
 summarise(across(c(simulated), \(x) yardstick::rmse_vec(observed, x)), .by = c(site, day))
 
@@ -418,8 +441,6 @@ bind_rows(
   theme(legend.position = "bottom")
 
 
-
-out_bind <- 
 bind_rows(
   out %>%
     map("result") %>%
@@ -439,25 +460,26 @@ bind_rows(
     select(id, site, day, pathway, source, n) %>%
     pivot_wider(values_from = n, names_from = source) %>%
     mutate(diff = observed - simulated, metric = "curr_admits")
-) 
-
-
-
-out_bind %>%
+) %>%
+  filter(site != "system",
+         metric == "curr_admits") %>%
   summarise(
     simulated = sum(simulated),
     observed = sum(observed),
-    .by = c(id, site, day, metric)
+    .by = c(id, site, day)
   ) %>%
-  mutate(diff = observed - simulated) %>%
-  summarise(mean_diff = mean(diff),
-            u95 = quantile(diff, 0.975),
-            l95 = quantile(diff, 0.025), .by = c(site, day, metric)) %>%
-  filter(site != "system") %>%
-  ggplot(aes(x = day, y = mean_diff)) +
-  geom_point() +
-  geom_errorbar(aes(ymin = l95, ymax = u95)) +
-  facet_grid(site~metric) 
-
-
-
+  summarise(
+    sim_mean = mean(simulated),
+    sim_u95 = quantile(simulated, 0.975),
+    sim_l95 = quantile(simulated, 0.025),
+    obs_mean = mean(observed),
+    obs_u95 = quantile(observed, 0.975),
+    obs_l95 = quantile(observed, 0.025),
+    .by = c(site, day)) %>%
+  ggplot(aes(x = as.numeric(day))) +
+  geom_ribbon(aes(ymin = sim_l95, ymax = sim_u95, fill = "simulated"), alpha = 0.1) +
+  geom_line(aes(y = sim_mean, col = "simulated")) +
+  geom_ribbon(aes(ymin = obs_l95, ymax = obs_u95, fill = "observed"), alpha = 0.1) +
+  geom_line(aes(y = obs_mean, col = "observed")) +
+  facet_wrap(site~., nrow = 2, scales = "free") +
+  labs(title = "New admits")

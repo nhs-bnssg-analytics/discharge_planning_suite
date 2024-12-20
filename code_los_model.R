@@ -324,7 +324,7 @@ ggsave(last_plot(),
 
 # collect_metrics(tree_rs) %>% View()
 
-tuned_wf<- finalize_workflow(tree_wf, select_best(tree_rs, "rmse"))
+tuned_wf<- finalize_workflow(tree_wf, select_best(tree_rs, metric = "rmse"))
 
 tuned_wf
 
@@ -405,6 +405,7 @@ fitdistcens_safe <- safely(fitdistcens)
   
 fit_dists <- los_model_df %>%
   dplyr::select(site, leaf, los) %>%
+  mutate(site = fct_drop(site)) %>%
   bind_rows(mutate(., leaf = -1)) %>%
   group_by(leaf) %>%
   nest() %>%
