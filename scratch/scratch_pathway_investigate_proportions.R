@@ -29,3 +29,44 @@ preds %>%
   geom_point() +
   geom_errorbar(aes(ymin = l95, ymax = u95)) +
   facet_wrap(vars(pathway), scales = "free", nrow = 1)
+
+
+
+
+bind_rows(
+  out %>%
+    map("result") %>%
+    map("na_out_df") %>%
+    bind_rows(.id = "id") %>%
+    filter(site != "nbt") %>%
+    complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
+    select(id, site, day, pathway, source, n) %>%
+    pivot_wider(values_from = n, names_from = source) %>%
+    mutate(diff = observed - simulated, metric = "new_admits"),
+  out %>%
+    map("result") %>%
+    map("ca_out_df") %>%
+    bind_rows(.id = "id") %>%
+    filter(site != "NBT") %>%
+    complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
+    select(id, site, day, pathway, source, n) %>%
+    pivot_wider(values_from = n, names_from = source) %>%
+    mutate(diff = observed - simulated, metric = "curr_admits")
+) %>%
+  filter(site != "system") %>%
+  summarise(
+    simulated = sum(simulated),
+    observed = sum(observed),
+    .by = c(id, site, pathway)
+  ) %>%
+  mutate(
+    sim_prop = simulated/sum(simulated),
+    obs_prop = observed/sum(observed),
+    .by = c(site, id)) %>%
+  summarise(sim_prop = mean(sim_prop), obs_prop = mean(obs_prop), .by = c(site, pathway)) %>%
+  mutate(ratio = obs_prop/sim_prop) %>%
+  ggplot(aes(x = pathway, y = ratio)) +
+  geom_col() +
+  geom_hline(aes(yintercept = 1)) +
+  facet_wrap(vars(site))
+  

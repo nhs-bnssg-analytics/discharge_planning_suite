@@ -227,21 +227,21 @@ output_valid_full_fn <- function(d) {
   
   # # use actual admits, not fcast"
   # 
-  # df_admit_fcast <- nctr_df_full %>%
-  #   filter(Census_Date >= d, Date_Of_Admission >=d) %>%
-  #   group_by(CDS_Unique_Identifier, Date_Of_Admission, Site_Name) %>%
-  #   count() %>%
-  #   group_by(date = as_date(Date_Of_Admission), Site_Name) %>%
-  #   count() %>%
-  #   filter(Site_Name %in% c("SOUTHMEAD HOSPITAL", "WESTON GENERAL HOSPITAL", "BRISTOL ROYAL INFIRMARY")) %>%
-  #   mutate(site = recode(Site_Name,
-  #                        "SOUTHMEAD HOSPITAL" = "nbt",
-  #                        "WESTON GENERAL HOSPITAL" = "weston",
-  #                        "BRISTOL ROYAL INFIRMARY" = "bri")) %>%
-  #   mutate(ctr = "N", report_date = today(), source = "admit_fcast") %>%
-  #   select(site, date = date, value = n, source, report_date) %>%
-  #   mutate(day = 1 + (date - d)/ddays(1)) %>%
-  #   expand_grid(metric = c("fcast", "u_85", "l_85"))
+  df_admit_fcast <- nctr_df_full %>%
+    filter(Census_Date >= d, Date_Of_Admission >=d) %>%
+    group_by(CDS_Unique_Identifier, Date_Of_Admission, Site_Name) %>%
+    count() %>%
+    group_by(date = as_date(Date_Of_Admission), Site_Name) %>%
+    count() %>%
+    filter(Site_Name %in% c("SOUTHMEAD HOSPITAL", "WESTON GENERAL HOSPITAL", "BRISTOL ROYAL INFIRMARY")) %>%
+    mutate(site = recode(Site_Name,
+                         "SOUTHMEAD HOSPITAL" = "nbt",
+                         "WESTON GENERAL HOSPITAL" = "weston",
+                         "BRISTOL ROYAL INFIRMARY" = "bri")) %>%
+    mutate(ctr = "N", report_date = today(), source = "admit_fcast") %>%
+    dplyr::select(site, date = date, value = n, source, report_date) %>%
+    mutate(day = 1 + (date - d)/ddays(1)) %>%
+    expand_grid(metric = c("fcast", "u_85", "l_85"))
 
   source("code_new_admits.R", local = TRUE)
   
@@ -633,6 +633,7 @@ bind_rows(out %>%
             mutate(diff = observed - simulated,
                    metric = "curr_admits")
 ) %>% 
+  filter(site != "system") %>%
 summarise(simulated = sum(simulated),
           observed = sum(observed), .by = c(id, site, day, pathway))%>%
   mutate(diff = observed - simulated) %>% 
@@ -649,7 +650,7 @@ summarise(simulated = sum(simulated),
   # filter(pathway != "Other") %>%
   ggplot(aes(x = as.numeric(day), y = value, col = name)) +
   geom_line() +
-  facet_grid(site ~ pathway)
+  ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y")
 
 bind_rows(
   out %>%

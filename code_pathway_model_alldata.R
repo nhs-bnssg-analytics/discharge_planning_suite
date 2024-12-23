@@ -126,15 +126,14 @@ pathway_df <- nctr_df %>%
           spec = Specialty_Code[1],
           bed_type = Bed_Type[1]) %>%
   dplyr::select(
-         Census_Date,
-         site,
-         date_nctr,
-         nhs_number,
-         sex,
-         age,
-         pathway,
-         #spec, # spec is too multinomial
-         bed_type) %>%
+    Census_Date,
+    date_nctr,
+    nhs_number,
+    sex,
+    age,
+    pathway,
+    #spec, # spec is too multinomial
+    bed_type) %>%
   na.omit()
 
 
@@ -189,26 +188,26 @@ model_df <- pathway_df %>%
   left_join(dplyr::select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
             by = join_by(nhs_number == nhs_number)) %>%
   dplyr::select(Census_Date,
-         pathway,
-         #site,
-         cambridge_score,
-         age,
-         sex,
-         #spec,
-         bed_type
-         # smoking,
-         # ethnicity,
-         #segment
+                pathway,
+                #site,
+                cambridge_score,
+                age,
+                sex,
+                #spec,
+                bed_type
+                # smoking,
+                # ethnicity,
+                #segment
   ) %>%
   filter(!is.na(pathway))
-  #na.omit()
+#na.omit()
 
 # save full proportions
 
 # splits based on 6 months from end of validation
-model_df_split <- make_splits(x = list(
-  analysis = which(model_df$Census_Date <= validation_end - dweeks(weeks_test)),
-  assessment = which(model_df$Census_Date > validation_end - dweeks(weeks_test))
+model_df_split <- rsample::make_splits(x = list(
+  analysis = 1:nrow(model_df),
+  assessment = 1:nrow(model_df)
 ),
 data = select(model_df, -Census_Date))
 
@@ -245,12 +244,7 @@ mod_rec <- recipe(pathway ~ ., data = model_df_split) %>%
   step_impute_mean(all_numeric_predictors()) %>%
   step_normalize(all_numeric_predictors()) %>%
   step_novel(all_nominal_predictors(), -sex, new_level = "other") %>%
-  step_other(all_nominal_predictors(), -sex, threshold = 0.1) %>%
-  # step_unknown(all_nominal_predictors()) %>%
-  # step_other(all_nominal_predictors(), threshold = 0.05) %>%
-  step_dummy(all_nominal_predictors()) #%>%
-  # embed::step_lencode_glm(all_nominal_predictors(), outcome = vars(pathway)) %>%
-  # themis::step_smote(pathway)
+  step_other(all_nominal_predictors(), -sex, threshold = 0.1) 
 
 
 rf_spec <- rand_forest(
@@ -277,7 +271,7 @@ rf_fit %>%
                            ,bed_type_Surgery = "Bed Type: Surgery"
                            ,bed_type_other  = "Bed Type: Other"
                            ,sex_Male = "Sex"
-                           )) %>%
+  )) %>%
   mutate(Variable = factor(Variable)) %>%
   mutate(Variable = fct_reorder(Variable, Importance)) %>%
   ggplot(aes(x = Importance, y = Variable)) + 
@@ -314,17 +308,17 @@ roc_df <- rf_fit$.predictions[[1]] %>%
 
 
 (validation_plot_pathway <-
-  ggplot(roc_df, aes(
-    x = 1 - specificity,
-    y = sensitivity,
-    col = glue::glue("{class}\nAUC: {round(.estimate, 2)}")
-  )) +
-  geom_line() +
-  ggplot2::geom_abline(lty = 3) +
-  ggplot2::coord_equal() +
-  ggplot2::theme_minimal() +
-  theme(legend.position = "bottom") +
-  labs(colour = ""))
+    ggplot(roc_df, aes(
+      x = 1 - specificity,
+      y = sensitivity,
+      col = glue::glue("{class}\nAUC: {round(.estimate, 2)}")
+    )) +
+    geom_line() +
+    ggplot2::geom_abline(lty = 3) +
+    ggplot2::coord_equal() +
+    ggplot2::theme_minimal() +
+    theme(legend.position = "bottom") +
+    labs(colour = ""))
 
 ggsave(validation_plot_pathway,
        filename = "validation/validation_plot_pathway.png",

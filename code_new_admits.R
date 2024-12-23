@@ -35,7 +35,7 @@ df_new_admit <- local({
     left_join(df_admit_fcast_flt, join_by(site, date == date)) %>%
     rowwise() %>%
     mutate(#fcast_samp = rnorm(1, mean = fcast, sd = get_sd_from_ci(ci = c(l_85, u_85))),
-           arrivals = pmax(extraDistr::rdnorm(1, mean = fcast),0)
+           arrivals = pmax(extraDistr::rdnorm(1, mean = (1.16*fcast)+0.5),0)
            ) %>%
     ungroup() %>%
     mutate(

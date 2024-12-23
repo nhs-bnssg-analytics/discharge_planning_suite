@@ -461,8 +461,9 @@ bind_rows(
     pivot_wider(values_from = n, names_from = source) %>%
     mutate(diff = observed - simulated, metric = "curr_admits")
 ) %>%
-  filter(site != "system",
-         metric == "curr_admits") %>%
+  filter(site != "system") %>%
+  nest(.by = metric) %>%
+  mutate(plot = map(data, \(x) x %>%
   summarise(
     simulated = sum(simulated),
     observed = sum(observed),
@@ -481,5 +482,7 @@ bind_rows(
   geom_line(aes(y = sim_mean, col = "simulated")) +
   geom_ribbon(aes(ymin = obs_l95, ymax = obs_u95, fill = "observed"), alpha = 0.1) +
   geom_line(aes(y = obs_mean, col = "observed")) +
-  facet_wrap(site~., nrow = 2, scales = "free") +
-  labs(title = "New admits")
+  facet_wrap(site~., nrow = 2, scales = "free"))) %>%
+  mutate(plot = map2(plot, metric, \(x, y) x + labs(title = glue::glue("{y}")))) %>%
+  pull(plot) %>%
+  patchwork::wrap_plots(ncol = 2, axes = "collect", guides = "collect")
