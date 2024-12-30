@@ -14,8 +14,15 @@ df_new_admit <- local({
     enframe(name = "site", value = "rdist")
     
   
-  props <- readRDS("data/pathway_prop.RDS") %>%
-    set_names(c("Other", "P1", "P2", "P3"))
+  # props <- readRDS("data/pathway_prop.RDS") %>%
+  #   set_names(c("Other", "P1", "P2", "P3"))
+  
+   props_site <- readRDS("data/rf_fit_props_site.RDS") %>% 
+     mutate(props = map(fit, "props")) %>%
+     mutate(props = map(props, ~set_names(.x, c("Other", "P1", "P2", "P3")))) %>%
+     dplyr::select(site, props) #%>%
+     #mutate(props = set_names(props, site)) %>%
+    # pull(props)
   
   # daily A&E forecasts to be used later
   df_admit_fcast_flt <- df_admit_fcast %>%
@@ -58,10 +65,15 @@ df_new_admit <- local({
     group_by(site, day = lubridate::interval(report_date, date_end)/ddays(1) + 1, rep) %>%
     count() %>%
     ungroup() %>%
-    mutate(pathways = map(n, ~ factor(sample(names(props), size = .x, prob = props, replace = TRUE), levels = names(props))))  %>%
+    left_join(props_site) %>%
+    mutate(pathways = map2(n, props, ~ factor(sample(names(.y),
+                                                     size = .x,
+                                                     prob = .y,
+                                                     replace = TRUE),
+                                              levels = names(.y))))  %>%
     mutate(pathways = map(pathways, table)) %>%
     unnest_wider(pathways) %>%
-    dplyr::select(-n) %>%
+    dplyr::select(-n, -props) %>%
     pivot_longer(
       cols = -c(site, day, rep),
       names_to = "pathway",

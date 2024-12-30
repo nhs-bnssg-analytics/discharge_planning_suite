@@ -21,25 +21,34 @@ df_curr_admits <- local({
   
   # pathway model
   
-  rf_wf <- readRDS("data/rf_wf.RDS")
+  # rf_wf <- readRDS("data/rf_wf.RDS")
+  
+  rf_wf_site <- readRDS("data/rf_fit_props_site.RDS") %>% 
+    mutate(fit = map(fit, "fit")) %>%
+    mutate(wf = map(fit, extract_workflow)) %>%
+    mutate(wf = set_names(wf, site)) %>%
+    pull(wf)
   
   # los_tree
   
   los_wf <- readRDS("data/los_wf.RDS")
   
+
+  
   los_df <- los_df %>%
     recipes::bake(workflows::extract_recipe(los_wf), .) %>%
     mutate(leaf = as.character(treeClust::rpart.predict.leaves(workflows::extract_fit_engine(los_wf), .))) %>%
-    # bind RF pathway predicted probabilities
-    bind_cols(predict(rf_wf, los_df, type = "prob")) %>%
+    nest(.by = site) %>%
+    mutate(pred = map2(data, site, ~predict(rf_wf_site[[.y]], .x, type = "prob"))) %>%
+    unnest(cols = c(data, pred)) %>%
     mutate(site = fct_drop(site))
+  
   
   # los distributions
   
   los_dist <- readRDS("data/fit_dists.RDS")  %>%
     mutate(leaf = as.character(leaf)) %>%
     rename(los_hist = los)
-  
   
   
   df_pred <- los_df %>%

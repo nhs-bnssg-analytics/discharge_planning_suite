@@ -95,6 +95,14 @@ pathway_df <- nctr_df %>%
   mutate(nhs_number = as.character(NHS_Number),
          nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
          sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
+  filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
+  mutate(
+    site = case_when(
+      Organisation_Site_Code == 'RVJ01' ~ 'nbt',
+      Organisation_Site_Code == 'RA701' ~ 'bri',
+      Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
+      TRUE ~ 'other'
+    )) %>%
   group_by(nhs_number, Date_Of_Admission) %>%
   mutate(spell_id = cur_group_id()) %>%
   group_by(spell_id) %>%
@@ -120,6 +128,7 @@ pathway_df <- nctr_df %>%
   group_by(nhs_number) %>%
   reframe(Census_Date = Census_Date[1],
           date_nctr = der_date_nctr[1],
+          site = site[1],
           pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other"),
           sex = sex[1],
           age = Person_Age[1],
@@ -128,6 +137,7 @@ pathway_df <- nctr_df %>%
   dplyr::select(
     Census_Date,
     date_nctr,
+    site,
     nhs_number,
     sex,
     age,
@@ -160,7 +170,7 @@ mortality_df <- local({
     mutate(Derived_Pseudo_NHS = as.character(Derived_Pseudo_NHS),
            REG_DATE_OF_DEATH = lubridate::ymd(REG_DATE_OF_DEATH)) %>%
     mutate(Derived_Pseudo_NHS = as.character(Derived_Pseudo_NHS)) %>%
-    select(nhs_number = Derived_Pseudo_NHS, date_death = REG_DATE_OF_DEATH)
+    dplyr::select(nhs_number = Derived_Pseudo_NHS, date_death = REG_DATE_OF_DEATH)
 })
 
 # remove patients who died
@@ -168,7 +178,7 @@ mortality_df <- local({
 pathway_df <- pathway_df %>%
   left_join(mortality_df) %>% 
   filter(is.na(date_death) | date_death > date_nctr) %>%
-  select(-date_death)
+  dplyr::select(-date_death)
 
 # attributes to join
 
@@ -182,14 +192,13 @@ pathway_df <- pathway_df %>%
 
 attr_df <- readRDS("data/attr_df.RDS")
 
-
 # modelling
 model_df <- pathway_df %>%
   left_join(dplyr::select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
             by = join_by(nhs_number == nhs_number)) %>%
   dplyr::select(Census_Date,
                 pathway,
-                #site,
+                site,
                 cambridge_score,
                 age,
                 sex,
@@ -200,18 +209,18 @@ model_df <- pathway_df %>%
                 #segment
   ) %>%
   filter(!is.na(pathway))
-#na.omit()
 
-# save full proportions
 
-# splits based on 6 months from end of validation
+fit_rf_model <- function(model_df) {
+
+# Splits are the full data (this is a cheat to see if I can fix pathway props)
 model_df_split <- rsample::make_splits(x = list(
   analysis = 1:nrow(model_df),
   assessment = 1:nrow(model_df)
 ),
-data = select(model_df, -Census_Date))
+data = dplyr::select(model_df, -Census_Date))
 
-model_df <- model_df %>% select(-Census_Date)
+model_df <- model_df %>% dplyr::select(-Census_Date)
 
 model_df_train <- training(model_df_split)
 model_df_test <- testing(model_df_split)
@@ -230,13 +239,12 @@ model_df_test <- testing(model_df_split)
 #   show_in_excel()
 
 
-model_df_train %>%
+props <- model_df_train %>%
   pull(pathway) %>%
   table() %>%
   proportions() %>%
   as.list() %>%
-  unlist() %>%
-  saveRDS("data/pathway_prop.RDS")
+  unlist() 
 
 mod_rec <- recipe(pathway ~ ., data = model_df_split) %>%
   # step_zv() %>%
@@ -260,74 +268,88 @@ rf_wf <- workflow() %>%
 
 rf_fit <- last_fit(rf_wf, model_df_split)
 
-rf_fit %>%
-  extract_fit_parsnip() %>%
-  vip::vi() %>%
-  mutate(Variable = recode(Variable 
-                           ,age = "Age"
-                           ,cambridge_score = "Cambridge Score"
-                           ,bed_type_Neuro.MSK = "Bed Type: Neuro-MSK"
-                           ,bed_type_Medicine = "Bed Type: Medicine"
-                           ,bed_type_Surgery = "Bed Type: Surgery"
-                           ,bed_type_other  = "Bed Type: Other"
-                           ,sex_Male = "Sex"
-  )) %>%
-  mutate(Variable = factor(Variable)) %>%
-  mutate(Variable = fct_reorder(Variable, Importance)) %>%
-  ggplot(aes(x = Importance, y = Variable)) + 
-  geom_col() +
-  theme_minimal()
-
-ggsave(last_plot(),
-       filename = "validation/calib_pathway_importance.png",
-       bg = "white",
-       width = 10,
-       height = 7.5,
-       scale = 0.45)
-
-roc_df <- rf_fit$.predictions[[1]] %>%
-  dplyr::select(starts_with(".pred"), truth = pathway, -.pred_class) %>%
-  pivot_longer(
-    cols = starts_with(".pred"),
-    names_to = "class",
-    values_to = "prob",
-    names_prefix = ".pred_"
-  ) %>%
-  mutate(truth = factor(truth), class = factor(class)) %>%
-  group_by(class) %>%
-  nest() %>%
-  mutate(data = map2(data,
-                     class,
-                     ~ mutate(.x, truth = factor(
-                       if_else(truth == .y, truth, "X")
-                     )))) %>%
-  mutate(roc = map(data, ~roc_curve(.x, truth = truth, prob))) %>%
-  mutate(auc = map(data, ~roc_auc(.x, truth = truth, prob))) %>%
-  dplyr::select(class, roc, auc) %>%
-  unnest(cols = c(roc, auc))
-
-
-(validation_plot_pathway <-
-    ggplot(roc_df, aes(
-      x = 1 - specificity,
-      y = sensitivity,
-      col = glue::glue("{class}\nAUC: {round(.estimate, 2)}")
-    )) +
-    geom_line() +
-    ggplot2::geom_abline(lty = 3) +
-    ggplot2::coord_equal() +
-    ggplot2::theme_minimal() +
-    theme(legend.position = "bottom") +
-    labs(colour = ""))
-
-ggsave(validation_plot_pathway,
-       filename = "validation/validation_plot_pathway.png",
-       bg = "white",
-       width = 10,
-       height = 10,
-       scale = 0.45)
+# rf_fit %>%
+#   extract_fit_parsnip() %>%
+#   vip::vi() %>%
+#   mutate(Variable = recode(Variable 
+#                            ,age = "Age"
+#                            ,cambridge_score = "Cambridge Score"
+#                            ,bed_type_Neuro.MSK = "Bed Type: Neuro-MSK"
+#                            ,bed_type_Medicine = "Bed Type: Medicine"
+#                            ,bed_type_Surgery = "Bed Type: Surgery"
+#                            ,bed_type_other  = "Bed Type: Other"
+#                            ,sex_Male = "Sex"
+#   )) %>%
+#   mutate(Variable = factor(Variable)) %>%
+#   mutate(Variable = fct_reorder(Variable, Importance)) %>%
+#   ggplot(aes(x = Importance, y = Variable)) + 
+#   geom_col() +
+#   theme_minimal()
+# 
+# ggsave(last_plot(),
+#        filename = "validation/calib_pathway_importance.png",
+#        bg = "white",
+#        width = 10,
+#        height = 7.5,
+#        scale = 0.45)
+# 
+# roc_df <- rf_fit$.predictions[[1]] %>%
+#   dplyr::select(starts_with(".pred"), truth = pathway, -.pred_class) %>%
+#   pivot_longer(
+#     cols = starts_with(".pred"),
+#     names_to = "class",
+#     values_to = "prob",
+#     names_prefix = ".pred_"
+#   ) %>%
+#   mutate(truth = factor(truth), class = factor(class)) %>%
+#   group_by(class) %>%
+#   nest() %>%
+#   mutate(data = map2(data,
+#                      class,
+#                      ~ mutate(.x, truth = factor(
+#                        if_else(truth == .y, truth, "X")
+#                      )))) %>%
+#   mutate(roc = map(data, ~roc_curve(.x, truth = truth, prob))) %>%
+#   mutate(auc = map(data, ~roc_auc(.x, truth = truth, prob))) %>%
+#   dplyr::select(class, roc, auc) %>%
+#   unnest(cols = c(roc, auc))
+# 
+# 
+# (validation_plot_pathway <-
+#     ggplot(roc_df, aes(
+#       x = 1 - specificity,
+#       y = sensitivity,
+#       col = glue::glue("{class}\nAUC: {round(.estimate, 2)}")
+#     )) +
+#     geom_line() +
+#     ggplot2::geom_abline(lty = 3) +
+#     ggplot2::coord_equal() +
+#     ggplot2::theme_minimal() +
+#     theme(legend.position = "bottom") +
+#     labs(colour = ""))
+# 
+# ggsave(validation_plot_pathway,
+#        filename = "validation/validation_plot_pathway.png",
+#        bg = "white",
+#        width = 10,
+#        height = 10,
+#        scale = 0.45)
 
 # save workflow
 final_wf <- rf_fit %>% extract_workflow()
-saveRDS(final_wf, "data/rf_wf.RDS")
+list(props = props, fit = rf_fit)
+}
 
+
+fits <- model_df %>%
+  nest(.by = site) %>%
+  mutate(fit = map(data, ~fit_rf_model(.x)))
+
+saveRDS(dplyr::select(fits, site, fit), "data/rf_fit_props_site.RDS") 
+
+# 
+# saveRDS(final_wf, "data/rf_wf.RDS")
+# 
+# 
+# %>%
+#   saveRDS("data/pathway_prop.RDS")
