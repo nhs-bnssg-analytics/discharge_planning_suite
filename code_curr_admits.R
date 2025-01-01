@@ -26,8 +26,11 @@ df_curr_admits <- local({
   rf_wf_site <- readRDS("data/rf_fit_props_site.RDS") %>% 
     mutate(fit = map(fit, "fit")) %>%
     mutate(wf = map(fit, extract_workflow)) %>%
-    mutate(wf = set_names(wf, site)) %>%
-    pull(wf)
+    dplyr::select(site, wf)
+  
+  # %>%
+  #   mutate(wf = set_names(wf, site)) %>%
+  #   pull(wf)
   
   # los_tree
   
@@ -39,9 +42,11 @@ df_curr_admits <- local({
     recipes::bake(workflows::extract_recipe(los_wf), .) %>%
     mutate(leaf = as.character(treeClust::rpart.predict.leaves(workflows::extract_fit_engine(los_wf), .))) %>%
     nest(.by = site) %>%
-    mutate(pred = map2(data, site, ~predict(rf_wf_site[[.y]], .x, type = "prob"))) %>%
+    left_join(rf_wf_site) %>%
+    mutate(pred = map2(data, wf, ~predict(.y, .x, type = "prob"))) %>%
     unnest(cols = c(data, pred)) %>%
-    mutate(site = fct_drop(site))
+    mutate(site = fct_drop(site)) %>%
+    dplyr::select(-wf)
   
   
   # los distributions

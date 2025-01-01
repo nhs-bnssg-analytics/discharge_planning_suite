@@ -1,6 +1,6 @@
 library(tidyverse)
 
-out <- readRDS("data/final_validation_full_out_1e1_newpwmodel3.RDS")
+out <- readRDS("data/final_validation_full_out_1e1_newpwmodel_hackednewadmits.RDS")
 
 discharge_plots <- local({
   out_df <- bind_rows(
@@ -36,6 +36,7 @@ discharge_plots <- local({
               l95 = quantile(diff, 0.025), .by = c(site, day)) %>%
     filter(site != "system") %>%
     ggplot(aes(x = day, y = mean_diff)) +
+    annotate(geom = "rect", xmin = -Inf, xmax = Inf, ymin = -2.5, ymax = 2.5, alpha = 0.25) + 
     geom_point() +
     geom_errorbar(aes(ymin = l95, ymax = u95)) +
     facet_grid(site~.) +
@@ -53,9 +54,10 @@ discharge_plots <- local({
               l95 = quantile(diff, 0.025), .by = c(site, pathway, day)) %>%
     filter(site != "system") %>%
     ggplot(aes(x = day, y = mean_diff)) +
+    annotate(geom = "rect", xmin = -Inf, xmax = Inf, ymin = -2.5, ymax = 2.5, alpha = 0.25) +
     geom_point() +
     geom_errorbar(aes(ymin = l95, ymax = u95)) +
-    facet_grid(site~pathway) +
+    ggh4x::facet_grid2(site~pathway, independent = "y", scales = "free") +
     labs(title = "Discharges per site/pathway", y = "Observed minus simulated discharges")
   
   p3 <- out_df %>%
@@ -127,6 +129,8 @@ discharge_plots <- local({
   
   list(p1, p2, p3, p4, p5)
   })
+
+discharge_plots
 
 pathway_plots <- local({
   out_df <- bind_rows(
@@ -247,7 +251,7 @@ pathway_plots <- local({
  list(p1, p2, p3, p4)
   })
 
-
+pathway_plots
 
 
 bind_rows(

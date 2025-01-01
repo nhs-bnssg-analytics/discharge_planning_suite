@@ -123,27 +123,30 @@ pathway_df <- nctr_df %>%
   arrange(Census_Date) %>%
   group_by(nhs_number, Date_Of_Admission) %>%
   mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
+  mutate(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other")) %>%
   # mutate(pathway = ifelse(any(!der_ctr), pathway[!der_ctr][1], "Other")) %>%
+  slice(1) %>%
   ungroup() %>%
-  group_by(nhs_number) %>%
-  reframe(Census_Date = Census_Date[1],
-          date_nctr = der_date_nctr[1],
-          site = site[1],
-          pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other"),
-          sex = sex[1],
-          age = Person_Age[1],
-          spec = Specialty_Code[1],
-          bed_type = Bed_Type[1]) %>%
+  # ungroup() %>%
+  # group_by(nhs_number) %>%
+  # reframe(Census_Date = Census_Date[1],
+  #         date_nctr = der_date_nctr[1],
+  #         site = site[1],
+  #         pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other"),
+  #         sex = sex[1],
+  #         age = Person_Age[1],
+  #         spec = Specialty_Code[1],
+  #         bed_type = Bed_Type[1]) %>%
   dplyr::select(
     Census_Date,
-    date_nctr,
+    date_nctr = der_date_nctr,
     site,
     nhs_number,
     sex,
-    age,
+    age = Person_Age,
     pathway,
     #spec, # spec is too multinomial
-    bed_type) %>%
+    bed_type = Bed_Type) %>%
   na.omit()
 
 
