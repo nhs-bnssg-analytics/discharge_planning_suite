@@ -356,3 +356,54 @@ saveRDS(dplyr::select(fits, site, fit), "data/rf_fit_props_site.RDS")
 # 
 # %>%
 #   saveRDS("data/pathway_prop.RDS")
+
+predict(extract_workflow(fits$fit[[2]]$fit), fits$data[[2]], type = "prob") %>% View()
+
+n_samp <- 50
+samp_size <- 1000
+n_rep = 1e3
+
+
+fits %>%
+  mutate(wf = map(fit, "fit")) %>%
+  mutate(wf = map(wf, extract_workflow)) %>%
+  mutate(samp = map(data, \(x) map(seq_len(n_samp), ~sample_n(x, 1000)))) %>%
+  mutate(preds = map2(samp, wf, \(x, y) map(x, ~predict(y, .x, type = "prob"))))  %>%
+  dplyr::select(site, samp, preds) %>%
+  unnest(cols = c(samp, preds)) %>%
+  reframe(bind = map2(samp, preds, bind_cols), .by = site) %>%
+  mutate(out = map(bind, \(x) 
+                   {x %>% 
+  mutate(pathwaysamp = pmap(list(.pred_Other,
+                                  .pred_P1,
+                                  .pred_P2,
+                                  .pred_P3),
+                             ~factor(sample(c("Other", "P1", "P2", "P3"),
+                                            n_rep,
+                                            prob = c(..1, ..2, ..3, ..4),
+                                            replace = TRUE)),
+                             levels = c("Other", "P1", "P2", "P3"))) %>%
+  dplyr::select(pathway, pathwaysamp) %>%
+  mutate(pathwaysamp = map(pathwaysamp, table)) %>%
+  unnest_wider(col = pathwaysamp, names_sep = "_rf_") %>%
+  mutate(across(-pathway, as.numeric)) %>%
+  mutate(across(-pathway, \(x) coalesce(x, 0))) %>%
+  summarise(pathway = list(table(pathway)/samp_size), across(-pathway, \(x) sum(x)/(n_rep*samp_size))) %>%
+  unnest_wider(col = pathway, names_sep = "_emp_") %>%
+  mutate(across(matches("pathway_emp"), as.numeric)) %>%
+  pivot_longer(cols = everything(), names_sep = "_", names_to = c("bla", "source", "pathway")) %>%
+  dplyr::select(source, pathway, value)})) %>%
+  dplyr::select(site, out) %>%
+  mutate(id = seq_len(n_samp), .by = site) %>%
+  unnest(cols = out) %>%
+  pivot_wider(names_from = source, values_from = value) %>%
+  mutate(residual = emp - rf) %>%
+  summarise(mean_residual = mean(residual),
+            u95 = quantile(residual, 0.975),
+            l95 = quantile(residual, 0.025), .by = c(site, pathway)) %>%
+  ggplot(aes(x = pathway)) +
+  geom_errorbar(aes(ymin = l95, ymax = u95)) +
+  geom_point(aes(y = mean_residual)) +
+  facet_wrap(vars(site), ncol = 1)
+
+         

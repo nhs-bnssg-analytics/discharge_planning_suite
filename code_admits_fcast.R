@@ -6,7 +6,7 @@ require(fable)
 require(fabletools)
 
 df_admit_fcast <- local({
-  
+
   if(seed) set.seed(123)
   
 # arima training ends at the start of the reporting

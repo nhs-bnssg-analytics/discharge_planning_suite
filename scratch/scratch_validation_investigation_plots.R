@@ -1,6 +1,6 @@
 library(tidyverse)
 
-out <- readRDS("data/final_validation_full_out_1e1_newpwmodel_hackednewadmits.RDS")
+out <- readRDS("data/final_validation_full_out_1e1_newpwmodel_hackednewadmits_newvalidlogic.RDS")
 
 discharge_plots <- local({
   out_df <- bind_rows(
@@ -37,6 +37,7 @@ discharge_plots <- local({
     filter(site != "system") %>%
     ggplot(aes(x = day, y = mean_diff)) +
     annotate(geom = "rect", xmin = -Inf, xmax = Inf, ymin = -2.5, ymax = 2.5, alpha = 0.25) + 
+    geom_hline(yintercept = 0, linetype = 2) +
     geom_point() +
     geom_errorbar(aes(ymin = l95, ymax = u95)) +
     facet_grid(site~.) +
@@ -55,6 +56,7 @@ discharge_plots <- local({
     filter(site != "system") %>%
     ggplot(aes(x = day, y = mean_diff)) +
     annotate(geom = "rect", xmin = -Inf, xmax = Inf, ymin = -2.5, ymax = 2.5, alpha = 0.25) +
+    geom_hline(yintercept = 0, linetype = 2) +
     geom_point() +
     geom_errorbar(aes(ymin = l95, ymax = u95)) +
     ggh4x::facet_grid2(site~pathway, independent = "y", scales = "free") +
@@ -72,6 +74,8 @@ discharge_plots <- local({
               l95 = quantile(diff, 0.025), .by = c(site, metric, day)) %>%
     filter(site != "system") %>%
     ggplot(aes(x = day, y = mean_diff)) +
+    annotate(geom = "rect", xmin = -Inf, xmax = Inf, ymin = -2.5, ymax = 2.5, alpha = 0.25) +
+    geom_hline(yintercept = 0, linetype = 2) +
     geom_point() +
     geom_errorbar(aes(ymin = l95, ymax = u95)) +
     facet_grid(site~metric) +
@@ -91,6 +95,8 @@ discharge_plots <- local({
     nest(.by = metric) %>%
     mutate(plot = map2(data, metric, ~{ .x %>%
       ggplot(aes(x = day, y = mean_diff)) +
+      annotate(geom = "rect", xmin = -Inf, xmax = Inf, ymin = -2.5, ymax = 2.5, alpha = 0.25) +
+      geom_hline(yintercept = 0, linetype = 2) +
       geom_point() +
       geom_errorbar(aes(ymin = l95, ymax = u95)) +
       ggh4x::facet_grid2(site~pathway, scales = "free_y", independent = "y") +
@@ -169,6 +175,7 @@ pathway_plots <- local({
       .by = c(site, pathway)
     ) %>%
     ggplot(aes(x = pathway, y = mean_diff)) +
+    annotate(geom = "rect", xmin = -Inf, xmax = Inf, ymin = -2.5, ymax = 2.5, alpha = 0.25) +
     geom_point() +
     geom_hline(aes(yintercept = 0), linetype = 2) +
     geom_errorbar(aes(ymin = l95, ymax = u95)) +
@@ -213,6 +220,7 @@ pathway_plots <- local({
     nest(.by = metric) %>%
     mutate(plot = map2(data, metric, ~{.x %>%
         ggplot(aes(x = pathway, y = mean_diff)) +
+        annotate(geom = "rect", xmin = -Inf, xmax = Inf, ymin = -2.5, ymax = 2.5, alpha = 0.25) +
         geom_point() +
         geom_hline(aes(yintercept = 0), linetype = 2) +
         geom_errorbar(aes(ymin = l95, ymax = u95)) +

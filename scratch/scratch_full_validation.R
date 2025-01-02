@@ -264,7 +264,8 @@ discharges_ts <- nctr_df_full %>%
   ) %>%
   ungroup() %>%
   distinct()  %>%
-  group_by(site, pathway, date = date + ddays(1)) %>%
+  # group_by(site, pathway, date = date + ddays(1)) %>%
+  group_by(site, pathway, date = date) %>%
   count() %>%
   ungroup() %>%
   complete(nesting(site, date), pathway, fill = list(n = 0))
@@ -291,21 +292,21 @@ output_valid_full_fn <- function(d) {
   
   # # use actual admits, not fcast"
   # 
-  df_admit_fcast <- nctr_df_full %>%
-    filter(Census_Date >= d, Date_Of_Admission >=d) %>%
-    group_by(CDS_Unique_Identifier, Date_Of_Admission, Site_Name) %>%
-    count() %>%
-    group_by(date = as_date(Date_Of_Admission), Site_Name) %>%
-    count() %>%
-    filter(Site_Name %in% c("SOUTHMEAD HOSPITAL", "WESTON GENERAL HOSPITAL", "BRISTOL ROYAL INFIRMARY")) %>%
-    mutate(site = recode(Site_Name,
-                         "SOUTHMEAD HOSPITAL" = "nbt",
-                         "WESTON GENERAL HOSPITAL" = "weston",
-                         "BRISTOL ROYAL INFIRMARY" = "bri")) %>%
-    mutate(ctr = "N", report_date = today(), source = "admit_fcast") %>%
-    dplyr::select(site, date = date, value = n, source, report_date) %>%
-    mutate(day = 1 + (date - d)/ddays(1)) %>%
-    expand_grid(metric = c("fcast", "u_85", "l_85"))
+  # df_admit_fcast <- nctr_df_full %>%
+  #   filter(Census_Date >= d, Date_Of_Admission >=d) %>%
+  #   group_by(CDS_Unique_Identifier, Date_Of_Admission, Site_Name) %>%
+  #   count() %>%
+  #   group_by(date = as_date(Date_Of_Admission), Site_Name) %>%
+  #   count() %>%
+  #   filter(Site_Name %in% c("SOUTHMEAD HOSPITAL", "WESTON GENERAL HOSPITAL", "BRISTOL ROYAL INFIRMARY")) %>%
+  #   mutate(site = recode(Site_Name,
+  #                        "SOUTHMEAD HOSPITAL" = "nbt",
+  #                        "WESTON GENERAL HOSPITAL" = "weston",
+  #                        "BRISTOL ROYAL INFIRMARY" = "bri")) %>%
+  #   mutate(ctr = "N", report_date = today(), source = "admit_fcast") %>%
+  #   dplyr::select(site, date = date, value = n, source, report_date) %>%
+  #   mutate(day = 1 + (date - d)/ddays(1)) %>%
+  #   expand_grid(metric = c("fcast", "u_85", "l_85"))
 
   source("code_new_admits.R", local = TRUE)
   
@@ -535,7 +536,7 @@ out <- furrr::future_map(dates, output_valid_full_fn_safe,
                            )))
 
 
-saveRDS(out, "data/final_validation_full_out_1e1_newpwmodel_hackednewadmits_newvalidlogic.RDS")
+saveRDS(out, "data/final_validation_full_out_1e1_newpwmodel_newvalidlogic.RDS")
 saveRDS(out, "S:/Finance/Shared Area/BNSSG - BI/8 Modelling and Analytics/working/nh/projects/discharge_pathway_projections/data/final_validation_full_1e2.RDS")
 
 out <- readRDS("data/final_validation_full_out.RDS")
