@@ -218,7 +218,7 @@ dates_spells <- nctr_sum_full %>%
 discharges_ts <- nctr_df_full %>%
   filter(Person_Stated_Gender_Code %in% 1:2) %>%
   mutate(nhs_number = as.character(NHS_Number),
-         nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
+         nhs_number = if_else(is.na(nhs_number), CDS_Unique_Identifier, nhs_number),
          sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   mutate(
@@ -372,7 +372,7 @@ output_valid_full_fn <- function(d) {
   nctr_sum <- nctr_df %>%
     filter(Person_Stated_Gender_Code %in% 1:2) %>%
     mutate(nhs_number = as.character(NHS_Number),
-           nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
+           nhs_number = if_else(is.na(nhs_number), CDS_Unique_Identifier, nhs_number),
            sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
     filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
     mutate(
@@ -443,7 +443,7 @@ output_valid_full_fn <- function(d) {
     arrange(Census_Date) %>%
     group_by(spell_id) %>%
     mutate(los = min(los), # los on index date is the minimum LOS
-           der_date_nctr = keep_date,as.Date(if_else(any(!ctr),min(Census_Date[!ctr]) - ddays(1),max(Census_Date)))) %>%
+           der_date_nctr = as.Date(if_else(any(!ctr),min(Census_Date[!ctr]) - ddays(1),max(Census_Date)))) %>%
            # der_date_nctr = as.Date(if_else(any(!ctr),min(Census_Date[!ctr]) - ddays(1),max(Census_Date)))) %>%
     ungroup() %>%
     mutate(der_date_nctr = pmin(der_date_nctr, Date_NCTR, na.rm = TRUE)) %>% 
@@ -542,7 +542,7 @@ out <- furrr::future_map(dates, output_valid_full_fn_safe,
                            )))
 
 
-saveRDS(out, "data/final_validation_full_out_1e1_newpwmodel_newvalidlogic.RDS")
+saveRDS(out, "data/final_validation_full_out_1e1_newpwmodel_newvalidlogic2.RDS")
 saveRDS(out, "S:/Finance/Shared Area/BNSSG - BI/8 Modelling and Analytics/working/nh/projects/discharge_pathway_projections/data/final_validation_full_1e2.RDS")
 
 out <- readRDS("data/final_validation_full_out.RDS")
