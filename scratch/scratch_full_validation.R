@@ -143,7 +143,8 @@ dates <- nctr_df_full  %>%
 nctr_sum_full <- nctr_df_full %>%
   filter(Person_Stated_Gender_Code %in% 1:2) %>%
   mutate(nhs_number = as.character(NHS_Number),
-         nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
+         # nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
+         nhs_number = if_else(is.na(nhs_number), CDS_Unique_Identifier, nhs_number),
          sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   mutate(
@@ -188,6 +189,8 @@ nctr_sum_full <- nctr_df_full %>%
   # mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
   mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
   mutate(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other")) %>%
+  mutate(keep_date = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - ddays(1),max(Census_Date)))) %>%
+  # mutate(keep_date = case_when(any(!der_ctr) ~ Census_Date[!der_ctr][1], .default = tail(Census_Date, 1))) %>%
   dplyr::select(
     report_date,
     nhs_number,
@@ -195,7 +198,8 @@ nctr_sum_full <- nctr_df_full %>%
     Census_Date,
     Date_Of_Admission,
     Date_NCTR,
-    Days_NCTR, 
+    Days_NCTR,
+    keep_date,
     sex,
     age = Person_Age,
     ctr = der_ctr,
@@ -254,7 +258,9 @@ discharges_ts <- nctr_df_full %>%
   # mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
   mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
   mutate(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other")) %>%
-  mutate(keep_date = case_when(any(!der_ctr) ~ Census_Date[!der_ctr][1], .default = tail(Census_Date, 1))) %>%
+  # mutate(keep_date = case_when(any(!der_ctr) ~ Census_Date[!der_ctr][1], .default = tail(Census_Date, 1))) %>%
+  # mutate(keep_date = case_when(any(!der_ctr) ~ Census_Date[!der_ctr][1], .default = max(Census_Date))) %>%
+  mutate(keep_date = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - ddays(1),max(Census_Date)))) %>%
   filter(Census_Date < max(Census_Date)) %>%
   dplyr::select(
     date = keep_date,
@@ -334,7 +340,6 @@ output_valid_full_fn <- function(d) {
     bind_rows(summarise(mutate(., site = "system"),n = sum(n), .by = -n))
   
   # new admits observed output
-  
   na_out_df <-  nctr_sum_full %>%
     ungroup() %>%
     filter(Date_Of_Admission >= d, !(Date_Of_Admission == d & !ctr)) %>%
@@ -438,7 +443,8 @@ output_valid_full_fn <- function(d) {
     arrange(Census_Date) %>%
     group_by(spell_id) %>%
     mutate(los = min(los), # los on index date is the minimum LOS
-           der_date_nctr = as.Date(if_else(any(!ctr),min(Census_Date[!ctr]) - ddays(1),max(Census_Date)))) %>%
+           der_date_nctr = keep_date,as.Date(if_else(any(!ctr),min(Census_Date[!ctr]) - ddays(1),max(Census_Date)))) %>%
+           # der_date_nctr = as.Date(if_else(any(!ctr),min(Census_Date[!ctr]) - ddays(1),max(Census_Date)))) %>%
     ungroup() %>%
     mutate(der_date_nctr = pmin(der_date_nctr, Date_NCTR, na.rm = TRUE)) %>% 
     group_by(spell_id) %>%
