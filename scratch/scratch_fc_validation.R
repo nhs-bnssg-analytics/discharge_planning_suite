@@ -5,7 +5,7 @@ library(fabletools)
 library(fable.prophet)
 
 
-  fc_train_length <- 26 # (train length in weeks)
+  fc_train_length <- 4 # (train length in weeks)
   
   fcast_days <- 10
   
@@ -40,12 +40,18 @@ library(fable.prophet)
     # pull(data_tr) %>% pluck(1) %>% as_tibble() %>% pull(".id") %>% table()
     mutate(
       # model = map(data, ~model(.x, mdl = prophet(n))),
-      model = map(data_tr, ~model(.x, mdl = ARIMA(n))),
+      model = map(data_tr, ~model(.x, mdl = ARIMA((n)))),
       fc = map(model, forecast, h = fcast_days))  %>%
-    mutate(acc = map2(fc, data, ~accuracy(.x, data = .y, by = c(".id", ".model")))) %>%
+    # mutate(acc = map2(fc, data, ~accuracy(.x, data = .y, by = c(".id", ".model")))) %>%
+    mutate(acc = map2(fc, data, \(x, y) fabletools::accuracy(x, y, by = c(".id", ".model")))) %>%
     mutate(mape = map_dbl(acc, ~.x %>% pull(MAPE) %>% mean)) %>%
-    mutate(mae = map_dbl(acc, ~.x %>% pull(MAE) %>% mean))
+    mutate(mae = map_dbl(acc, ~.x %>% pull(MAE) %>% mean)) %>%
+    mutate(me = map_dbl(acc, ~.x %>% pull(ME) %>% mean))
   
+  models
+  
+
+    
   
   fc <- models$fc[[1]] %>%
     nest(.by = .id)

@@ -187,7 +187,7 @@ nctr_sum_full <- nctr_df_full %>%
   )) %>%
   group_by(NHS_Number, Date_Of_Admission) %>%
   # mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
-  mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
+  # mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
   mutate(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other")) %>%
   mutate(keep_date = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - ddays(1),max(Census_Date)))) %>%
   # mutate(keep_date = case_when(any(!der_ctr) ~ Census_Date[!der_ctr][1], .default = tail(Census_Date, 1))) %>%
@@ -256,7 +256,7 @@ discharges_ts <- nctr_df_full %>%
   )) %>%
   group_by(NHS_Number, Date_Of_Admission) %>%
   # mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
-  mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
+  # mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
   mutate(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other")) %>%
   # mutate(keep_date = case_when(any(!der_ctr) ~ Census_Date[!der_ctr][1], .default = tail(Census_Date, 1))) %>%
   # mutate(keep_date = case_when(any(!der_ctr) ~ Census_Date[!der_ctr][1], .default = max(Census_Date))) %>%
@@ -274,8 +274,8 @@ discharges_ts <- nctr_df_full %>%
   group_by(site, pathway, date = date) %>%
   count() %>%
   ungroup() %>%
-  complete(nesting(site, date), pathway, fill = list(n = 0))
-
+  complete(nesting(site, date), pathway, fill = list(n = 0)) %>%
+  filter(date != max(date), date != min(date))
 
 
 set.seed(123)

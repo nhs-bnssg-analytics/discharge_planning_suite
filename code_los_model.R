@@ -170,14 +170,23 @@ ggsave(last_plot(),
 
 saveRDS(los_df, "data/los_df.RDS")
 
+#(DEPRECATED) This was the old test/train split 
+# los_testing <- los_df %>%
+#   filter(Census_Date > validation_end - dweeks(weeks_test)) %>%
+#   select(-Census_Date)
+# 
+# los_train <- los_df %>%
+#   filter(Census_Date <= validation_end - dweeks(weeks_test)) %>%
+#   select(-Census_Date)
+
+# Now use all data for training and test
 los_testing <- los_df %>%
-  filter(Census_Date > validation_end - dweeks(weeks_test)) %>%
+  filter(between(Census_Date, validation_start, validation_end)) %>%
   select(-Census_Date)
 
 los_train <- los_df %>%
-  filter(Census_Date <= validation_end - dweeks(weeks_test)) %>%
+  filter(between(Census_Date, validation_start, validation_end)) %>%
   select(-Census_Date)
-
 
 # attributes to join
 
@@ -250,10 +259,10 @@ tree_spec <- decision_tree(
   set_mode("regression")
 
 
-tree_grid <- grid_regular(cost_complexity(range = c(-5, -1), trans = log10_trans()),
+tree_grid <- grid_regular(cost_complexity(range = c(-6, -1), trans = log10_trans()),
                           tree_depth(range = c(2, 7)),
-                          min_n(range = c(1500, 3000)),
-                          levels = 10)
+                          min_n(range = c(1000, 3000)),
+                          levels = 15)
 
 
 tree_rec <- recipe(los ~ ., data = model_df_train)  %>%
@@ -324,7 +333,7 @@ ggsave(last_plot(),
 
 # collect_metrics(tree_rs) %>% View()
 
-tuned_wf<- finalize_workflow(tree_wf, select_best(tree_rs, metric = "rmse"))
+tuned_wf<- finalize_workflow(tree_wf, select_by_pct_loss(tree_rs, metric = "rmse", limit = 0.1, tree_depth))
 
 tuned_wf
 

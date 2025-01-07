@@ -83,7 +83,7 @@ nctr_df <-
 
 validation_end <- ymd("2024-09-01")
 validation_start <- ymd("2023-07-01")
-weeks_test <- 13
+# weeks_test <- 13
 nctr_df <- nctr_df %>% filter(between(Census_Date, validation_start, validation_end-ddays(1)))
 
 pathway_df <- nctr_df %>%
@@ -122,21 +122,11 @@ pathway_df <- nctr_df %>%
   group_by(nhs_number) %>%
   arrange(Census_Date) %>%
   group_by(nhs_number, Date_Of_Admission) %>%
-  mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
+  # mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
   mutate(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other")) %>%
   # mutate(pathway = ifelse(any(!der_ctr), pathway[!der_ctr][1], "Other")) %>%
   slice(1) %>%
   ungroup() %>%
-  # ungroup() %>%
-  # group_by(nhs_number) %>%
-  # reframe(Census_Date = Census_Date[1],
-  #         date_nctr = der_date_nctr[1],
-  #         site = site[1],
-  #         pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other"),
-  #         sex = sex[1],
-  #         age = Person_Age[1],
-  #         spec = Specialty_Code[1],
-  #         bed_type = Bed_Type[1]) %>%
   dplyr::select(
     Census_Date,
     date_nctr = der_date_nctr,
@@ -147,7 +137,9 @@ pathway_df <- nctr_df %>%
     pathway,
     #spec, # spec is too multinomial
     bed_type = Bed_Type) %>%
-  na.omit()
+  na.omit() %>% 
+  # remove the last 10 days to avoid any boundary effects from the derivation of pathways
+  filter(Census_Date < max(Census_Date) - ddays(10))
 
 
 mortality_df <- local({
@@ -228,6 +220,8 @@ model_df <- model_df %>% dplyr::select(-Census_Date)
 model_df_train <- training(model_df_split)
 model_df_test <- testing(model_df_split)
 
+model_df_folds <- vfold_cv(model_df_train, strata = pathway)
+
 
 # model_df_train %>%
 #   pull(pathway) %>%
@@ -268,6 +262,57 @@ rf_spec <- rand_forest(
 rf_wf <- workflow() %>%
   add_recipe(mod_rec) %>%
   add_model(rf_spec)
+
+# fit folds
+
+rf_fit_rs <- rf_wf %>%
+  fit_resamples(model_df_folds, control = control_grid(save_pred = TRUE)) %>%
+  mutate(roc_df = map( .predictions, \(x) { x %>%
+      dplyr::select(starts_with(".pred"), truth = pathway, -.pred_class) %>%
+      pivot_longer(
+        cols = starts_with(".pred"),
+        names_to = "class",
+        values_to = "prob",
+        names_prefix = ".pred_"
+      ) %>%
+      mutate(truth = factor(truth), class = factor(class)) %>%
+      group_by(class) %>%
+      nest() %>%
+      mutate(data = map2(data,
+                         class,
+                         ~ mutate(.x, truth = factor(
+                           if_else(truth == .y, truth, "X")
+                         )))) %>%
+      mutate(roc = map(data, ~roc_curve(.x, truth = truth, prob))) %>%
+      mutate(auc = map(data, ~roc_auc(.x, truth = truth, prob))) %>%
+      dplyr::select(class, roc, auc) %>%
+      unnest(cols = c(roc, auc))
+    })) 
+
+
+# roc_df <- rf_fit$.predictions[[1]] %>%
+  #   dplyr::select(starts_with(".pred"), truth = pathway, -.pred_class) %>%
+  #   pivot_longer(
+  #     cols = starts_with(".pred"),
+  #     names_to = "class",
+  #     values_to = "prob",
+  #     names_prefix = ".pred_"
+  #   ) %>%
+  #   mutate(truth = factor(truth), class = factor(class)) %>%
+  #   group_by(class) %>%
+  #   nest() %>%
+  #   mutate(data = map2(data,
+  #                      class,
+  #                      ~ mutate(.x, truth = factor(
+  #                        if_else(truth == .y, truth, "X")
+  #                      )))) %>%
+  #   mutate(roc = map(data, ~roc_curve(.x, truth = truth, prob))) %>%
+  #   mutate(auc = map(data, ~roc_auc(.x, truth = truth, prob))) %>%
+  #   dplyr::select(class, roc, auc) %>%
+  #   unnest(cols = c(roc, auc))
+
+
+
 
 rf_fit <- last_fit(rf_wf, model_df_split)
 
@@ -340,7 +385,7 @@ rf_fit <- last_fit(rf_wf, model_df_split)
 
 # save workflow
 final_wf <- rf_fit %>% extract_workflow()
-list(props = props, fit = rf_fit)
+list(props = props, fit = rf_fit, fit_rs = rf_fit_rs)
 }
 
 
@@ -356,6 +401,22 @@ saveRDS(dplyr::select(fits, site, fit), "data/rf_fit_props_site.RDS")
 # 
 # %>%
 #   saveRDS("data/pathway_prop.RDS")
+
+
+
+# %>%
+#   ggplot(aes(
+#     x = 1 - specificity,
+#     y = sensitivity,
+#     group = id, glue::glue("{class}\nAUC: {round(.estimate, 2)}")
+#   )) +
+#   geom_line() +
+#   ggplot2::geom_abline(lty = 3) +
+#   ggplot2::coord_equal() +
+#   ggplot2::theme_minimal() +
+#   theme(legend.position = "bottom") +
+#   labs(colour = "") +
+#   facet_wrap(vars(class), nrow = 1)
 
 predict(extract_workflow(fits$fit[[2]]$fit), fits$data[[2]], type = "prob") %>% View()
 
