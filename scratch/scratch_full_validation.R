@@ -542,7 +542,7 @@ out <- furrr::future_map(dates, output_valid_full_fn_safe,
                            )))
 
 
-saveRDS(out, "data/final_validation_full_out_1e1_newpwmodel_newvalidlogic2.RDS")
+saveRDS(out, "data/final_validation_full_out_1e1_trainalldata.RDS")
 saveRDS(out, "S:/Finance/Shared Area/BNSSG - BI/8 Modelling and Analytics/working/nh/projects/discharge_pathway_projections/data/final_validation_full_1e2.RDS")
 
 out <- readRDS("data/final_validation_full_out.RDS")
