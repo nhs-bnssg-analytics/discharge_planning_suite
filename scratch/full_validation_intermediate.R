@@ -539,7 +539,7 @@ out %>%
 
 bind_rows(
   out %>%
-    #map("result") %>%
+    map("result") %>%
     map("na_out_df") %>%
     bind_rows(.id = "id") %>%
     filter(site != "nbt") %>%
@@ -548,7 +548,7 @@ bind_rows(
     pivot_wider(values_from = n, names_from = source) %>%
     mutate(diff = observed - simulated, metric = "new_admits"),
   out %>%
-    #map("result") %>%
+    map("result") %>%
     map("ca_out_df") %>%
     bind_rows(.id = "id") %>%
     filter(site != "NBT") %>%
@@ -564,7 +564,7 @@ bind_rows(
   ) %>%
   left_join(
     out %>%
-     # map("result") %>%
+     map("result") %>%
       map("bl_out_df") %>%
       bind_rows(.id = "id") %>%
       mutate(day = factor(day, levels = 1:10)) %>%
@@ -599,7 +599,7 @@ bind_rows(
 
 bind_rows(
   out %>%
-    # map("result") %>%
+    map("result") %>%
     map("na_out_df") %>%
     bind_rows(.id = "id") %>%
     filter(site != "nbt") %>%
@@ -608,7 +608,7 @@ bind_rows(
     pivot_wider(values_from = n, names_from = source) %>%
     mutate(diff = observed - simulated, metric = "new_admits"),
   out %>%
-    # map("result") %>%
+    map("result") %>%
     map("ca_out_df") %>%
     bind_rows(.id = "id") %>%
     filter(site != "NBT") %>%

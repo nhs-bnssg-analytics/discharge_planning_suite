@@ -26,7 +26,7 @@ df_curr_admits <- local({
   rf_wf_site <- readRDS("data/rf_fit_props_site.RDS") %>% 
     mutate(fit = map(fit, "fit")) %>%
     mutate(wf = map(fit, extract_workflow)) %>%
-    dplyr::select(site, wf)
+    select(site, wf)
   
   # %>%
   #   mutate(wf = set_names(wf, site)) %>%

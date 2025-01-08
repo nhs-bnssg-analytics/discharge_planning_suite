@@ -6,14 +6,14 @@ preds <- rf_fit %>%
 
 preds %>%
   mutate(pathways = pmap(list(.pred_Other,
-                              .pred_P1,
-                              .pred_P2,
-                              .pred_P3),
-                         ~factor(sample(c("Other", "P1", "P2", "P3"),
-                                        n_rep,
-                                        prob = c(..1, ..2, ..3, ..4),
-                                        replace = TRUE)),
-                         levels = c("Other", "P1", "P2", "P3")),
+                            .pred_P1,
+                            .pred_P2,
+                            .pred_P3),
+                       ~factor(sample(c("Other", "P1", "P2", "P3"),
+                                      n_rep,
+                                      prob = c(..1, ..2, ..3, ..4),
+                                      replace = TRUE)),
+                       levels = c("Other", "P1", "P2", "P3")),
          rep = list(1:n_rep))%>%
   select(pathway = pathways, rep) %>%
   unnest(cols = c(pathway, rep)) %>%
