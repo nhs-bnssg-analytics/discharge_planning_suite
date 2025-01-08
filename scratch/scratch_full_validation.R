@@ -524,7 +524,8 @@ output_valid_full_fn <- function(d) {
 output_valid_full_fn_safe <- safely(output_valid_full_fn)
 
 options(future.globals.maxSize = 16000 * 1024^2)
-future::plan(future::multisession, workers = parallel::detectCores() - 12)
+# future::plan(future::multisession, workers = parallel::detectCores() - 16)
+future::plan(future::multisession, workers = 16)
 out <- furrr::future_map(dates, output_valid_full_fn_safe,
                          .options = furrr::furrr_options(
                            seed = TRUE,
@@ -546,7 +547,7 @@ out <- furrr::future_map(dates, output_valid_full_fn_safe,
                            )))
 
 
-saveRDS(out, "data/final_validation_full_out_1e1_trainalldata.RDS")
+saveRDS(out, "data/final_validation_full_out_1e1_fullvalidperiod.RDS")
 saveRDS(out, "S:/Finance/Shared Area/BNSSG - BI/8 Modelling and Analytics/working/nh/projects/discharge_pathway_projections/data/final_validation_full_1e2.RDS")
 
 out <- readRDS("data/final_validation_full_out.RDS")

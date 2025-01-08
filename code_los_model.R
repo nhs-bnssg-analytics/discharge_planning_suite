@@ -300,10 +300,10 @@ autoplot(tree_rs) +
 
 
 
-labeller_tree_depth <- function(string, prefix = "Tree-Depth: ") paste0(prefix, string)
+labeller_tree_depth <- function(string, prefix = "Tree-depth: ") paste0(prefix, string)
 labeller_metric <- c(mae = "Mean Absolute Error",
                      rmse = "Root Mean Squared Error",
-                     rsq = "R Squared")
+                     rsq = "R-squared")
 
 tree_rs %>%
   collect_metrics() %>%
@@ -313,12 +313,15 @@ tree_rs %>%
   facet_grid(.metric ~ tree_depth,
              scales = "free_y",
              labeller = labeller(
-               tree_depth = as_labeller(labeller_tree_depth),
+               # tree_depth = as_labeller(labeller_tree_depth),
                .metric = as_labeller(labeller_metric)
-               )) +
+               )
+             ) +
   theme_minimal() +
-  scale_x_continuous(transform = "log10", labels = trans_format("log10", math_format(10^.x))) +
+  scale_y_continuous(sec.axis = sec_axis(~ ., name = "Accuracy measure", breaks = NULL, labels = NULL)) +
+  scale_x_continuous(transform = "log10", labels = trans_format("log10", math_format(10^.x)), sec.axis = sec_axis(~ ., name = "Tree-depth", breaks = NULL, labels = NULL)) +
   scale_color_viridis_d(begin = 0.1, end = 0.8)  +
+  # theme(legend.position = "bottom") +
   labs(col = "Min n",
        x = "Cost-Complextiy Parameter",
        y = "")
@@ -333,7 +336,7 @@ ggsave(last_plot(),
 
 # collect_metrics(tree_rs) %>% View()
 
-tuned_wf<- finalize_workflow(tree_wf, select_by_pct_loss(tree_rs, metric = "rmse", limit = 0.1, tree_depth))
+tuned_wf<- finalize_workflow(tree_wf, select_by_pct_loss(tree_rs, metric = "rmse", limit = 0.25, tree_depth))
 
 tuned_wf
 
