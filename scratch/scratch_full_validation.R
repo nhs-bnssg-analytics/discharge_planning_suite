@@ -27,7 +27,7 @@ start_date <- validation_start + dweeks(fc_train_length_wks) # use full period s
 seed <- FALSE
 plot_int <- FALSE
 
-n_rep <- 1E1
+n_rep <- 1E3
 
 run_date <- today()
 n_days <- 10
@@ -518,6 +518,7 @@ output_valid_full_fn <- function(d) {
   
   cat("writing file")
   saveRDS(out_ls, glue::glue("data/intermediate/valid_{d}_nrep_{n_rep}.RDS"))
+  saveRDS(out_ls, glue::glue("S:/Finance/Shared Area/BNSSG - BI/8 Modelling and Analytics/working/nh/projects/discharge_pathway_projections/data/intermediate/valid_{d}_nrep_{n_rep}.RDS"))
   out_ls
 }
 
@@ -547,8 +548,8 @@ out <- furrr::future_map(dates, output_valid_full_fn_safe,
                            )))
 
 
-saveRDS(out, "data/final_validation_full_out_1e1_fullvalidperiod.RDS")
-saveRDS(out, "S:/Finance/Shared Area/BNSSG - BI/8 Modelling and Analytics/working/nh/projects/discharge_pathway_projections/data/final_validation_full_1e2.RDS")
+saveRDS(out, "data/final_validation_full_out_1e3_fullvalidperiod.RDS")
+saveRDS(out, "S:/Finance/Shared Area/BNSSG - BI/8 Modelling and Analytics/working/nh/projects/discharge_pathway_projections/data/final_validation_full_out_1e3_fullvalidperiod.RDS")
 
 out <- readRDS("data/final_validation_full_out.RDS")
 
