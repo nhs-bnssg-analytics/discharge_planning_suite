@@ -44,7 +44,7 @@ nctr_df <-
 
 validation_end <- ymd("2024-09-01")
 validation_start <- ymd("2023-07-01")
-weeks_test <- 13
+# weeks_test <- 13
 nctr_df <- nctr_df %>% filter(between(Census_Date, validation_start, validation_end-ddays(1)))
 
 date_co <- validation_start #as.Date(max_census - lubridate::dmonths(6))
@@ -261,7 +261,7 @@ tree_spec <- decision_tree(
 
 tree_grid <- grid_regular(cost_complexity(range = c(-6, -1), trans = log10_trans()),
                           tree_depth(range = c(2, 7)),
-                          min_n(range = c(1000, 3000)),
+                          min_n(range = c(1500, 3000)),
                           levels = 15)
 
 
@@ -278,17 +278,19 @@ tree_wf <- workflow() %>%
 
 doParallel::registerDoParallel()
 
+tree_metrics <-  metric_set(
+  rmse,
+  rsq,
+  mae#,
+  #mape
+)
+
 set.seed(345)
 tree_rs <- tune_grid(
   tree_wf,
   resamples = los_folds,
   grid = tree_grid,
-  metrics = metric_set(
-    rmse,
-    rsq,
-    mae#,
-    #mape
-    )
+  metrics = tree_metrics
 )
 
 autoplot(tree_rs) +
@@ -340,8 +342,51 @@ tuned_wf<- finalize_workflow(tree_wf, select_by_pct_loss(tree_rs, metric = "rmse
 
 tuned_wf
 
+# cv fit
+tree_fit_cv <- 
+  fit_resamples(tuned_wf, los_folds, metrics = tree_metrics,  control = control_grid(save_pred = TRUE))
+
+tree_fit_cv %>%
+  pull(.metrics) %>%
+  bind_rows() %>%
+  summarise(
+    mean = mean(.estimate),
+    u95 = quantile(.estimate, 0.975),
+    l95 = quantile(.estimate, 0.025),
+    .by = .metric
+  ) %>%
+  
+  ggplot(aes(
+    y = mean,
+    ymin = l95,
+    ymax = u95,
+    x = NA
+  )) +
+  geom_point() +
+  geom_errorbar() +
+  ggh4x::facet_grid2(
+    . ~ .metric,
+    scales = "free",
+    independent = "y",
+    labeller = labeller(# tree_depth = as_labeller(labeller_tree_depth),
+      .metric = as_labeller(labeller_metric))
+  ) +
+  labs(y = "", x = "") +
+  theme_minimal() +
+  theme(axis.text.x = element_blank(),
+        panel.grid.major.x = element_blank())
+
+ggsave(last_plot(),
+       filename = "./validation/dec_tree_cv_metrics.png",
+       bg = "white",
+       width = 10,
+       height = 5,
+       scale = 0.6)
+
+
+
 # final fit
-tree_fit <- fit(tuned_wf, model_df_train)
+tree_fit <- fit(tuned_wf, model_df_train) 
 
 tree <- extract_fit_engine(tree_fit)
 # 
