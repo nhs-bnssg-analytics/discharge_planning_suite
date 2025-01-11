@@ -395,12 +395,134 @@ fits <- model_df %>%
 
 saveRDS(dplyr::select(fits, site, fit), "data/rf_fit_props_site.RDS") 
 
-# 
-# saveRDS(final_wf, "data/rf_wf.RDS")
-# 
-# 
-# %>%
-#   saveRDS("data/pathway_prop.RDS")
+# ROC 
+
+library(patchwork)
+
+roc_plot <- function(fit, site) {
+  labels <- fit$fit_rs$roc_df %>%
+    bind_rows(.id = "fold") %>%
+    ungroup() %>%
+    select(fold, class, .estimate) %>%
+    distinct() %>%
+    summarise(roc = mean(.estimate),
+              u95 = quantile(.estimate, 0.975), 
+              l95 = quantile(.estimate, 0.025), 
+              .by = class) %>%
+    mutate(label = str_c(class, "\n", "ROC: ", round(roc, 2), " [", round(l95, 2), ", ", round(u95, 2), "]")) %>%
+    mutate(label = set_names(label, class)) %>%
+    pull(label)
+  
+  fit$fit_rs$roc_df %>%
+    bind_rows(.id = "fold") %>%
+    ungroup() %>%
+    mutate(class = recode(class, !!!labels))%>%
+    ggplot(aes(
+      x = 1 - specificity,
+      y = sensitivity,
+      group = fold
+    )) +
+    geom_path(alpha = 0.5) +
+    ggplot2::geom_abline(lty = 3) +
+    ggplot2::coord_equal() +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(panel.spacing.x = unit(x = 0.75, units = "cm"))+
+    labs(title = site,
+         colour = "",
+         y = "Sensitivity",
+         x = "1 - Specificity") +
+    facet_grid(.~class)
+  }
+
+fits %>%
+  filter(site != "nbt") %>%
+  mutate(site = recode(site, !!!c("bri" = "Bristol Royal Infirmary", "weston" = "Weston General Hospital"))) %>%
+  mutate(plot = map2(fit, site, \(fit, site) roc_plot(fit, site))
+    ) %>%
+  pull(plot) %>%
+ wrap_plots(ncol = 1) +
+ plot_layout(axes = "collect")
+
+
+ggsave(last_plot(),
+       filename = "validation/rf_roc_folds.png",
+       bg = "white",
+       width = 12,
+       height = 7.5,
+       scale = 0.8)
+
+fits %>%
+  filter(site != "nbt") %>%
+  mutate(site = recode(site, !!!c("bri" = "Bristol Royal Infirmary", "weston" = "Weston General Hospital"))) %>%
+  mutate(vip = map2(fit, site, \(fit, site) {
+    fit$fit %>%
+      extract_fit_parsnip() %>%
+      vip::vi() %>%
+      mutate(Variable = recode(Variable
+                               ,age = "Age"
+                               ,bed_type = "Bed type"
+                               ,cambridge_score = "Cambridge Score"
+                               ,bed_type_Neuro.MSK = "Bed Type: Neuro-MSK"
+                               ,bed_type_Medicine = "Bed Type: Medicine"
+                               ,bed_type_Surgery = "Bed Type: Surgery"
+                               ,bed_type_other  = "Bed Type: Other"
+                               ,sex = "Sex"
+                               ,sex_Male = "Sex"
+      )) %>%
+      mutate(Variable = factor(Variable)) %>%
+      mutate(Variable = fct_reorder(Variable, Importance)) %>%
+      ggplot(aes(x = Importance, y = Variable)) +
+      geom_col() +
+      theme_minimal() +
+      labs(title = site)
+  })) %>%
+  pull(vip) %>%
+  patchwork::wrap_plots(axes = "collect")
+
+
+ggsave(last_plot(),
+       filename = "validation/rf_vip.png",
+       bg = "white",
+       width = 10,
+       height = 5,
+       scale = 0.7)
+
+
+fits %>%
+
+filter(site != "nbt") %>%
+  mutate(site = recode(site, !!!c("bri" = "Bristol Royal Infirmary", "weston" = "Weston General Hospital"))) %>%
+  hoist(fit, "props") %>%
+  select(site, props) %>%
+  unnest_wider(props) %>%
+  pivot_longer(cols = -site) %>%
+  pivot_wider(names_from = site, values_from = value) %>%
+  rename("IC pathway" = name) %>%
+  show_in_excel()
+  
+# filter(site != "nbt") %>%
+map2(.$fit$fit, .$site, \(fit, site) {
+  fit %>%
+  extract_fit_parsnip() %>%
+    vip::vi() %>%
+    mutate(Variable = recode(Variable
+                             ,age = "Age"
+                             ,bed_type = "Bed type"
+                             ,cambridge_score = "Cambridge Score"
+                             ,bed_type_Neuro.MSK = "Bed Type: Neuro-MSK"
+                             ,bed_type_Medicine = "Bed Type: Medicine"
+                             ,bed_type_Surgery = "Bed Type: Surgery"
+                             ,bed_type_other  = "Bed Type: Other"
+                             ,sex = "Sex"
+                             ,sex_Male = "Sex"
+    )) %>%
+    mutate(Variable = factor(Variable)) %>%
+    mutate(Variable = fct_reorder(Variable, Importance)) %>%
+    ggplot(aes(x = Importance, y = Variable)) +
+    geom_col() +
+    theme_minimal()})
+
+
 
 
 

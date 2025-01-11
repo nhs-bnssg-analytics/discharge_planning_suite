@@ -154,7 +154,8 @@ los_df %>%
   scale_x_log10(guide = "axis_logticks") +
   scale_y_continuous(breaks = seq(0, 1, 0.1)) +
   theme_minimal() +
-  theme(axis.ticks = element_line()) +
+  theme(axis.ticks = element_line(),
+        panel.spacing.x = unit(0.75, units = "cm")) +
   labs(y = "Empirical Cumulative Distribution Function",
        x = "mLOS (Midnights Crossed)") +
   facet_wrap(vars(site), nrow = 1)
@@ -164,8 +165,8 @@ ggsave(last_plot(),
        filename = "./validation/los_ecdf.png",
        bg = "white",
        width = 10,
-       height = 7.5,
-       scale = 0.6)
+       height = 5,
+       scale = 0.65)
 
 
 saveRDS(los_df, "data/los_df.RDS")
@@ -417,6 +418,34 @@ dev.off()
 los_model_df <- model_df_train %>%
   bake(extract_recipe(tree_fit), .) %>%
   mutate(leaf = treeClust::rpart.predict.leaves(tree, .))
+
+
+
+labeller_leaf_id<- function(string, prefix = "Leaf ID: ") paste0(prefix, string)
+
+los_model_df %>%
+  mutate(site = recode(site,
+                       "bri" = "Bristol Royal Infirmary",
+                       "weston" = "Weston General Hospital"
+  )) %>%
+  ggplot() +
+  stat_ecdf(aes(x = los+1), geom = "step") +
+  scale_x_log10(guide = "axis_logticks") +
+  scale_y_continuous(breaks = seq(0, 1, 0.25)) +
+  theme_minimal() +
+  theme(axis.ticks = element_line()) +
+  labs(y = "Empirical Cumulative Distribution Function",
+       x = "mLOS (Midnights Crossed)") +
+  facet_wrap(vars(leaf),
+             labeller = as_labeller(labeller_leaf_id))
+
+
+ggsave(last_plot(),
+       filename = "./validation/dec_tree_los_ecdf.png",
+       bg = "white",
+       width = 10,
+       height = 7.5,
+       scale = 0.7)
 
 ggplot(los_model_df, aes(x = los)) +
   geom_histogram() +
