@@ -135,7 +135,7 @@ pathway_df <- nctr_df %>%
     sex,
     age = Person_Age,
     pathway,
-    #spec, # spec is too multinomial
+    # spec = Specialty_Code, # spec is too multinomial
     bed_type = Bed_Type) %>%
   na.omit() %>% 
   # remove the last 10 days to avoid any boundary effects from the derivation of pathways
@@ -197,7 +197,7 @@ model_df <- pathway_df %>%
                 cambridge_score,
                 age,
                 sex,
-                #spec,
+                # spec,
                 bed_type
                 # smoking,
                 # ethnicity,
@@ -248,8 +248,8 @@ mod_rec <- recipe(pathway ~ ., data = model_df_split) %>%
   # step_nzv(all_predictors()) %>%
   step_impute_mean(all_numeric_predictors()) %>%
   step_normalize(all_numeric_predictors()) %>%
-  step_novel(all_nominal_predictors(), -sex, new_level = "other") %>%
-  step_other(all_nominal_predictors(), -sex, threshold = 0.1) 
+  step_novel(all_nominal_predictors(), -sex, new_level = "other") #%>%
+  # step_other(all_nominal_predictors(), -sex, spec, threshold = 0.1) 
 
 
 rf_spec <- rand_forest(

@@ -153,6 +153,7 @@ nctr_sum <- nctr_df %>%
     age = Person_Age,
     ctr = der_ctr,
     site,
+    spec = Specialty_Code,
     bed_type = Bed_Type,
     los = der_los,
     pathway

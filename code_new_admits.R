@@ -1,5 +1,4 @@
-df_new_admit <- local({  
-  
+df_new_admit <- local({ 
   if(seed) set.seed(123)
   # report_date <- report_start -ddays(1) # (DEPRECATED)
   report_date <- report_start
@@ -8,7 +7,7 @@ df_new_admit <- local({
     filter(leaf == -1) %>%
     pull(los) %>% 
     pluck(1) %>%
-    c(., set_names(., "nbt")) %>% # bind all rows together to make global dist for nbt
+    c(., set_names(., rep("nbt", times = length(.)))) %>% # bind all rows together to make global dist for nbt
     split(names(.)) %>%
     map(~partial(EnvStats::remp, obs = .x)) %>%
     enframe(name = "site", value = "rdist")
@@ -43,7 +42,7 @@ df_new_admit <- local({
     rowwise() %>%
     mutate(#fcast_samp = rnorm(1, mean = fcast, sd = get_sd_from_ci(ci = c(l_85, u_85))),
            # arrivals = pmax(extraDistr::rdnorm(1, mean = (1.16*fcast)+0.5),0)
-           arrivals = pmax(extraDistr::rdnorm(1, mean = (fcast)+0.5),0)
+           arrivals = pmax(extraDistr::rdnorm(1, mean = (fcast)+0.5, sd = get_sd_from_ci(ci = c(l_85, u_85))))
            ) %>%
     ungroup() %>%
     mutate(

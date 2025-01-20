@@ -1,5 +1,4 @@
 df_curr_admits <- local({
-  
   if(seed) set.seed(123)
   require(tidyverse)
   # LOS predictions
@@ -16,7 +15,7 @@ df_curr_admits <- local({
         mutate(nhs_number = as.character(nhs_number)),
       by = join_by(nhs_number == nhs_number)
     ) %>%
-    dplyr::select(age, sex, cambridge_score, bed_type, site, los) #%>%
+    dplyr::select(age, sex, cambridge_score, bed_type, site, spec, los) #%>%
   #na.omit()
   
   # pathway model
