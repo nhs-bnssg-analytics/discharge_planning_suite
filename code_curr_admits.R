@@ -1,5 +1,4 @@
 df_curr_admits <- local({
-  browser()
   if(seed) set.seed(123)
   require(tidyverse)
   # LOS predictions
@@ -58,8 +57,7 @@ df_curr_admits <- local({
     rename(los_hist = los)
   
   
-  # df_pred <- 
-    
+  df_pred <- 
     los_df %>%
     mutate(id = 1:n()) %>%
     # Join historic LOS for each patient type (i.e. leaf)
@@ -83,30 +81,28 @@ df_curr_admits <- local({
     )),
     rep = list(seq_len(n_rep))) %>%
     # Use the now predictoed total length of stay to predict pathway requirement
-    select(site, cambridge_score, age, sex, bed_type, los, rep) %>%
-    unnest(cols = c(rep, los)) %>%
+    select(site, cambridge_score, age, sex, bed_type, los, los_remaining, rep) %>%
+    unnest(cols = c(rep, los, los_remaining)) %>%
     nest(.by = site) %>%
     left_join(rf_wf_site) %>%
-    mutate(pred = map2(data, wf, ~predict(.y, .x, type = "prob")))
-    
-    %>%
-    mutate( pathways = pmap(list(.pred_Other,
+    mutate(pred = map2(data, wf, ~predict(.y, .x, type = "prob"))) %>%
+    select(-wf) %>%
+    unnest(cols = c(data, pred)) %>%
+    mutate(pathway = pmap_chr(list(.pred_Other,
                          .pred_P1,
                          .pred_P2,
                          .pred_P3), 
-                    ~factor(sample(c("Other", "P1", "P2", "P3"),
-                            n_rep,
+                    ~sample(c("Other", "P1", "P2", "P3"),
+                            1,
                             prob = c(..1, ..2, ..3, ..4),
-                            replace = TRUE)),
-                    levels = c("Other", "P1", "P2", "P3"))) %>%
-    dplyr::select(id, site, los_remaining, pathways) %>%
-    unnest(cols = c(los_remaining, pathways)) %>%
+                            replace = TRUE)
+                    )) %>%
+    mutate(pathway = factor(pathway,levels = c("Other", "P1", "P2", "P3"))) %>%
+    dplyr::select(rep, site, los_remaining, pathway) %>%
     mutate(los_remaining = ifelse(los_remaining < 0, 0, los_remaining)) %>%
     mutate(los_remaining = los_remaining %/% 1) %>%
-    group_by(site, id) %>%
-    mutate(rep = 1:n()) %>%
     # group_by(rep, site, day = los_remaining + 1, pathway = pathways) %>% # (DEPRECATED - this was when I considered sim to start on 'day zero')
-    group_by(rep, site, day = los_remaining + 1, pathway = pathways) %>% # day is los_remaining + 1 as we start sim on 'day one' so zero day los on first day should be day = 1
+    group_by(rep, site, day = los_remaining + 1, pathway) %>% # day is los_remaining + 1 as we start sim on 'day one' so zero day los on first day should be day = 1
     count(name = "count") %>%
     ungroup() %>%
     complete(rep, site, day, pathway, fill =list(count = 0)) %>%

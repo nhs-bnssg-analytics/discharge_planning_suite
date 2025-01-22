@@ -1,5 +1,4 @@
 df_new_admit <- local({ 
-  browser()
   if(seed) set.seed(123)
   # report_date <- report_start -ddays(1) # (DEPRECATED)
   report_date <- report_start
