@@ -154,7 +154,8 @@ los_df %>%
   scale_x_log10(guide = "axis_logticks") +
   scale_y_continuous(breaks = seq(0, 1, 0.1)) +
   theme_minimal() +
-  theme(axis.ticks = element_line()) +
+  theme(axis.ticks = element_line(),
+        panel.spacing.x = unit(0.75, units = "cm")) +
   labs(y = "Empirical Cumulative Distribution Function",
        x = "mLOS (Midnights Crossed)") +
   facet_wrap(vars(site), nrow = 1)
@@ -164,8 +165,8 @@ ggsave(last_plot(),
        filename = "./validation/los_ecdf.png",
        bg = "white",
        width = 10,
-       height = 7.5,
-       scale = 0.6)
+       height = 5,
+       scale = 0.65)
 
 
 saveRDS(los_df, "data/los_df.RDS")
@@ -214,7 +215,7 @@ model_df_train <- los_train %>%
          cambridge_score,
          age,
          sex,
-         #spec, # spec has too many levels, some of which don't get seen enough to reliably create a model pipeline
+         spec, # spec has too many levels, some of which don't get seen enough to reliably create a model pipeline
          bed_type
          # smoking,
          # ethnicity,
@@ -236,7 +237,7 @@ model_df_test <- los_testing %>%
                 cambridge_score,
                 age,
                 sex,
-                #spec, # spec has too many levels, some of which don't get seen enough to reliably create a model pipeline
+               spec, # spec has too many levels, some of which don't get seen enough to reliably create a model pipeline
                 bed_type
                 # smoking,
                 # ethnicity,
@@ -268,7 +269,7 @@ tree_grid <- grid_regular(cost_complexity(range = c(-6, -1), trans = log10_trans
 tree_rec <- recipe(los ~ ., data = model_df_train)  %>%
   update_role(site, new_role = "site id") %>%  
   step_novel(all_nominal_predictors(), new_level = "other") %>%
-  step_other(all_nominal_predictors(), threshold = 0.1)
+  step_other(all_nominal_predictors(), -spec, threshold = 0.1)
 
 
 tree_wf <- workflow() %>%
@@ -278,17 +279,19 @@ tree_wf <- workflow() %>%
 
 doParallel::registerDoParallel()
 
+tree_metrics <-  metric_set(
+  rmse,
+  rsq,
+  mae#,
+  #mape
+)
+
 set.seed(345)
 tree_rs <- tune_grid(
   tree_wf,
   resamples = los_folds,
   grid = tree_grid,
-  metrics = metric_set(
-    rmse,
-    rsq,
-    mae#,
-    #mape
-    )
+  metrics = tree_metrics
 )
 
 autoplot(tree_rs) +
@@ -340,8 +343,51 @@ tuned_wf<- finalize_workflow(tree_wf, select_by_pct_loss(tree_rs, metric = "rmse
 
 tuned_wf
 
+# cv fit
+tree_fit_cv <- 
+  fit_resamples(tuned_wf, los_folds, metrics = tree_metrics,  control = control_grid(save_pred = TRUE))
+
+tree_fit_cv %>%
+  pull(.metrics) %>%
+  bind_rows() %>%
+  summarise(
+    mean = mean(.estimate),
+    u95 = quantile(.estimate, 0.975),
+    l95 = quantile(.estimate, 0.025),
+    .by = .metric
+  ) %>%
+  
+  ggplot(aes(
+    y = mean,
+    ymin = l95,
+    ymax = u95,
+    x = NA
+  )) +
+  geom_point() +
+  geom_errorbar() +
+  ggh4x::facet_grid2(
+    . ~ .metric,
+    scales = "free",
+    independent = "y",
+    labeller = labeller(# tree_depth = as_labeller(labeller_tree_depth),
+      .metric = as_labeller(labeller_metric))
+  ) +
+  labs(y = "", x = "") +
+  theme_minimal() +
+  theme(axis.text.x = element_blank(),
+        panel.grid.major.x = element_blank())
+
+ggsave(last_plot(),
+       filename = "./validation/dec_tree_cv_metrics.png",
+       bg = "white",
+       width = 10,
+       height = 5,
+       scale = 0.6)
+
+
+
 # final fit
-tree_fit <- fit(tuned_wf, model_df_train)
+tree_fit <- fit(tuned_wf, model_df_train) 
 
 tree <- extract_fit_engine(tree_fit)
 # 
@@ -372,6 +418,34 @@ dev.off()
 los_model_df <- model_df_train %>%
   bake(extract_recipe(tree_fit), .) %>%
   mutate(leaf = treeClust::rpart.predict.leaves(tree, .))
+
+
+
+labeller_leaf_id<- function(string, prefix = "Leaf ID: ") paste0(prefix, string)
+
+los_model_df %>%
+  mutate(site = recode(site,
+                       "bri" = "Bristol Royal Infirmary",
+                       "weston" = "Weston General Hospital"
+  )) %>%
+  ggplot() +
+  stat_ecdf(aes(x = los+1), geom = "step") +
+  scale_x_log10(guide = "axis_logticks") +
+  scale_y_continuous(breaks = seq(0, 1, 0.25)) +
+  theme_minimal() +
+  theme(axis.ticks = element_line()) +
+  labs(y = "Empirical Cumulative Distribution Function",
+       x = "mLOS (Midnights Crossed)") +
+  facet_wrap(vars(leaf),
+             labeller = as_labeller(labeller_leaf_id))
+
+
+ggsave(last_plot(),
+       filename = "./validation/dec_tree_los_ecdf.png",
+       bg = "white",
+       width = 10,
+       height = 7.5,
+       scale = 0.7)
 
 ggplot(los_model_df, aes(x = los)) +
   geom_histogram() +
