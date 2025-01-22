@@ -256,11 +256,28 @@ model_df_folds <- vfold_cv(model_df_train, strata = pathway)
 
 
 props <- model_df_train %>%
-  pull(pathway) %>%
-  table() %>%
-  proportions() %>%
-  as.list() %>%
-  unlist() 
+  arrange(los) %>%
+  mutate(los_cut = cut(
+    los,
+    breaks = c(0, 3, 4, 5, 6, 7, 8, 9, 10, Inf),
+    include.lowest = TRUE
+  )) %>%
+  mutate(los_cut = fct_reorder(los_cut, los)) %>%
+  mutate(los = los_cut) %>%
+  nest(.by = los) %>%
+  mutate(props = map(data, \(data) {
+    data %>%
+      pull(pathway) %>%
+      table() %>%
+      proportions() %>%
+      as.list() %>%
+      unlist()
+  })) %>%
+  mutate(props = set_names(props, los)) %>%
+  arrange(los) %>%
+  pull(props) #%>%
+
+
 
 mod_rec <- recipe(pathway ~ ., data = model_df_split) %>%
   # step_zv() %>%
