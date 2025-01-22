@@ -86,15 +86,19 @@ validation_start <- ymd("2023-07-01")
 # weeks_test <- 13
 nctr_df <- nctr_df %>% filter(between(Census_Date, validation_start, validation_end-ddays(1)))
 
+
 pathway_df <- nctr_df %>%
-  mutate(pathway = recode(Current_Delay_Code_Standard,
-                          !!!pathway_recodes),
-         pathway = coalesce(pathway, "Other")) %>%
+  mutate(
+    pathway = recode(Current_Delay_Code_Standard, !!!pathway_recodes),
+    pathway = coalesce(pathway, "Other")
+  ) %>%
   mutate(pathway = if_else(pathway %in% c("Other", "P1", "P2", "P3"), pathway, "Other")) %>%
   filter(Person_Stated_Gender_Code %in% 1:2) %>%
-  mutate(nhs_number = as.character(NHS_Number),
-         nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
-         sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
+  mutate(
+    nhs_number = as.character(NHS_Number),
+    nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
+    sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")
+  ) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   mutate(
     site = case_when(
@@ -102,12 +106,13 @@ pathway_df <- nctr_df %>%
       Organisation_Site_Code == 'RA701' ~ 'bri',
       Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
       TRUE ~ 'other'
-    )) %>%
+    )
+  ) %>%
   group_by(nhs_number, Date_Of_Admission) %>%
   mutate(spell_id = cur_group_id()) %>%
   group_by(spell_id) %>%
   mutate(
-    der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/lubridate::ddays(1),
+    der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission)) / lubridate::ddays(1),
     der_ctr = case_when(
       Criteria_To_Reside == "Y" | is.na(Criteria_To_Reside) ~ TRUE,
       !is.na(Days_NCTR) ~ FALSE,
@@ -115,15 +120,27 @@ pathway_df <- nctr_df %>%
       Criteria_To_Reside == "N" ~ FALSE
     ),
     # der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - lubridate::ddays(1),max(Census_Date)))) %>%
-    der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) ,max(Census_Date)))) %>%
+    der_date_nctr = as.Date(if_else(
+      any(!der_ctr), min(Census_Date[!der_ctr]) , max(Census_Date)
+    ))
+  ) %>%
   ungroup() %>%
-  mutate(der_date_nctr = pmax(Date_Of_Admission, pmin(der_date_nctr, Date_NCTR, na.rm = TRUE), na.rm = TRUE)) %>%
+  mutate(der_date_nctr = pmax(
+    Date_Of_Admission,
+    pmin(der_date_nctr, Date_NCTR, na.rm = TRUE),
+    na.rm = TRUE
+  )) %>%
   mutate(der_date_nctr = as.Date(der_date_nctr)) %>%
+  mutate(discharge_rdy_los = (der_date_nctr - as.Date(Date_Of_Admission)) /
+           lubridate::ddays(1)) %>%
+  mutate(discharge_rdy_los = pmax(discharge_rdy_los, 0)) %>%
   group_by(nhs_number) %>%
   arrange(Census_Date) %>%
   group_by(nhs_number, Date_Of_Admission) %>%
   # mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
   mutate(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other")) %>%
+  mutate(discharge_rdy_los = min(discharge_rdy_los)) %>%
+  mutate(los = cut(discharge_rdy_los, breaks = c(0, 3, 4, 5, 6, 7, 8, 9, 10, Inf), include.lowest = TRUE)) %>%
   # mutate(pathway = ifelse(any(!der_ctr), pathway[!der_ctr][1], "Other")) %>%
   slice(1) %>%
   ungroup() %>%
@@ -134,30 +151,33 @@ pathway_df <- nctr_df %>%
     nhs_number,
     sex,
     age = Person_Age,
+    los,
     pathway,
-    spec = Specialty_Code, # spec is too multinomial
-    bed_type = Bed_Type) %>%
-  na.omit() %>% 
+    # spec = Specialty_Code, # spec is too multinomial
+    bed_type = Bed_Type
+  ) %>%
+  na.omit() %>%
   # remove the last 10 days to avoid any boundary effects from the derivation of pathways
   filter(Census_Date < max(Census_Date) - ddays(10))
+
+# remove patients who died
 
 
 mortality_df <- local({
   string_mortality <-"SELECT
-      [Derived_Pseudo_NHS]
-      ,[Dec_Age_At_Death]
-      ,[DEC_SEX]
-      ,[DEC_SEX_DESC]
-      ,[DEC_MARITAL_STATUS]
-      ,[DEC_MARITAL_STATUS_DESC]
-      ,[DEC_AGEC]
-      ,[DEC_AGECUNIT]
-      ,[DEC_AGECUNIT_DESC]
-      ,[REG_DATE_OF_DEATH]
-      ,[REG_DATE]
-  FROM [ABI].[Civil_Registration].[Mortality]"
+[Derived_Pseudo_NHS]
+,[Dec_Age_At_Death]
+,[DEC_SEX]
+,[DEC_SEX_DESC]
+,[DEC_MARITAL_STATUS]
+,[DEC_MARITAL_STATUS_DESC]
+,[DEC_AGEC]
+,[DEC_AGECUNIT]
+,[DEC_AGECUNIT_DESC]
+,[REG_DATE_OF_DEATH]
+,[REG_DATE]
+FROM [ABI].[Civil_Registration].[Mortality]"
   con<-RODBC::odbcDriverConnect("driver={SQL Server};\n  server=Xsw-00-ash01;\n  trusted_connection=true")
-  
   RODBC::sqlQuery(con, string_mortality) %>%
     na.omit() %>%
     # filter(REG_DATE < ymd("2024-09-04")) %>%
@@ -167,8 +187,6 @@ mortality_df <- local({
     mutate(Derived_Pseudo_NHS = as.character(Derived_Pseudo_NHS)) %>%
     dplyr::select(nhs_number = Derived_Pseudo_NHS, date_death = REG_DATE_OF_DEATH)
 })
-
-# remove patients who died
 
 pathway_df <- pathway_df %>%
   left_join(mortality_df) %>% 

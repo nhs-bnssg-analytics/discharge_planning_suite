@@ -1,4 +1,5 @@
 df_curr_admits <- local({
+  browser()
   if(seed) set.seed(123)
   require(tidyverse)
   # LOS predictions
@@ -39,13 +40,15 @@ df_curr_admits <- local({
   
   los_df <- los_df %>%
     recipes::bake(workflows::extract_recipe(los_wf), .) %>%
-    mutate(leaf = as.character(treeClust::rpart.predict.leaves(workflows::extract_fit_engine(los_wf), .))) %>%
-    nest(.by = site) %>%
-    left_join(rf_wf_site) %>%
-    mutate(pred = map2(data, wf, ~predict(.y, .x, type = "prob"))) %>%
-    unnest(cols = c(data, pred)) %>%
-    mutate(site = fct_drop(site)) %>%
-    dplyr::select(-wf)
+    mutate(leaf = as.character(treeClust::rpart.predict.leaves(workflows::extract_fit_engine(los_wf), .))) 
+  
+  # %>%
+  #   nest(.by = site) %>%
+  #   left_join(rf_wf_site) %>%
+  #   mutate(pred = map2(data, wf, ~predict(.y, .x, type = "prob"))) %>%
+  #   unnest(cols = c(data, pred)) %>%
+  #   mutate(site = fct_drop(site)) %>%
+  #   dplyr::select(-wf)
   
   
   # los distributions
@@ -55,18 +58,38 @@ df_curr_admits <- local({
     rename(los_hist = los)
   
   
-  df_pred <- los_df %>%
+  # df_pred <- 
+    
+    los_df %>%
     mutate(id = 1:n()) %>%
+    # Join historic LOS for each patient type (i.e. leaf)
     left_join(los_dist, by = join_by(leaf == leaf)) %>%
-    # filter out any LOS less than current stay
+    # filter out any LOS less than current stay for that patient (i.e. truncate
+    # the ECDF)
     mutate(los_hist = map2(los_hist, los, \(x, y) x[x >= y])) %>%
-    # If los history is now zero we add Inf
+    # If los history is now zero we add Inf - i.e. if this patient has a longer
+    # LOS than ever seen previously assume they won't leave in the 10-day
+    # horizon
     mutate(los_hist = map(los_hist, \(x) ifelse(length(x) < 10, list(Inf), list(x)))) %>%
     mutate(los_hist = map(los_hist, pluck, 1)) %>%
     # mutate(los_dist = map(los_hist, ~partial(EnvStats::remp, obs = .x))) %>%
     # mutate(los_tot = map(los_dist,  ~.x(n_rep)))
     mutate(los_tot = map(los_hist,  \(x) sample(x, size = n_rep, replace = TRUE))) %>%
     mutate(los_remaining = map2(los_tot, los, \(x, y) x - y)) %>%
+    mutate(los = map(los_tot, \(x) cut(
+      x,
+      breaks = c(0, 3, 4, 5, 6, 7, 8, 9, 10, Inf),
+      include.lowest = TRUE
+    )),
+    rep = list(seq_len(n_rep))) %>%
+    # Use the now predictoed total length of stay to predict pathway requirement
+    select(site, cambridge_score, age, sex, bed_type, los, rep) %>%
+    unnest(cols = c(rep, los)) %>%
+    nest(.by = site) %>%
+    left_join(rf_wf_site) %>%
+    mutate(pred = map2(data, wf, ~predict(.y, .x, type = "prob")))
+    
+    %>%
     mutate( pathways = pmap(list(.pred_Other,
                          .pred_P1,
                          .pred_P2,
