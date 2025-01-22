@@ -136,9 +136,9 @@ dates <- nctr_df_full  %>%
          Census_Date > ymd("2023-07-01"), # data before this are spurious
          Census_Date < max(Census_Date) - ddays(n_days),
          # Data not submitted for UHBW on this day
-         Census_Date != ymd("2024-07-17"),
+         Census_Date != ymd("2024-07-17")#,
          # remove dates near Christmas
-         abs(lubridate::interval(Census_Date, ymd("2023-12-25"))/ddays(1)) > 15
+         # abs(lubridate::interval(Census_Date, ymd("2023-12-25"))/ddays(1)) > 15
   ) %>%
   pull(Census_Date) %>%
   unique()
@@ -526,7 +526,7 @@ output_valid_full_fn_safe <- safely(output_valid_full_fn)
 
 options(future.globals.maxSize = 16000 * 1024^2)
 # future::plan(future::multisession, workers = parallel::detectCores() - 16)
-future::plan(future::multisession, workers = 16)
+future::plan(future::multisession, workers = 3)
 out <- furrr::future_map(dates, output_valid_full_fn_safe,
                          .options = furrr::furrr_options(
                            seed = TRUE,

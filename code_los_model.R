@@ -44,7 +44,7 @@ nctr_df <-
 
 validation_end <- ymd("2024-09-01")
 validation_start <- ymd("2023-07-01")
-weeks_test <- 13
+# weeks_test <- 13
 nctr_df <- nctr_df %>% filter(between(Census_Date, validation_start, validation_end-ddays(1)))
 
 date_co <- validation_start #as.Date(max_census - lubridate::dmonths(6))
@@ -261,7 +261,7 @@ tree_spec <- decision_tree(
 
 tree_grid <- grid_regular(cost_complexity(range = c(-6, -1), trans = log10_trans()),
                           tree_depth(range = c(2, 7)),
-                          min_n(range = c(1000, 3000)),
+                          min_n(range = c(1500, 3000)),
                           levels = 15)
 
 
