@@ -215,7 +215,8 @@ model_df <- pathway_df %>%
                 cambridge_score,
                 age,
                 sex,
-                spec,
+                # spec,
+                los,
                 bed_type
                 # smoking,
                 # ethnicity,
@@ -267,7 +268,7 @@ mod_rec <- recipe(pathway ~ ., data = model_df_split) %>%
   step_impute_mean(all_numeric_predictors()) %>%
   step_normalize(all_numeric_predictors()) %>%
   step_novel(all_nominal_predictors(), -sex, new_level = "other") %>%
-  step_other(all_nominal_predictors(), -sex, spec, threshold = 0.1) 
+  step_other(all_nominal_predictors(), -sex, threshold = 0.1) 
 
 
 rf_spec <- rand_forest(
