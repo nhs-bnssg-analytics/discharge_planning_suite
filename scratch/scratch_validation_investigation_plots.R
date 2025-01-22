@@ -5,7 +5,7 @@ out <- readRDS("data/final_validation_full_out_1e3_fullvalidperiod.RDS")
 discharge_plots <- local({
   out_df <- bind_rows(
     out %>%
-      map("result") %>%
+      # map("result") %>%
       map("na_out_df") %>%
       bind_rows(.id = "id") %>%
       filter(site != "nbt") %>%
@@ -14,7 +14,7 @@ discharge_plots <- local({
       pivot_wider(values_from = n, names_from = source) %>%
       mutate(diff = observed - simulated, metric = "new_admits"),
     out %>%
-      map("result") %>%
+      # map("result") %>%
       map("ca_out_df") %>%
       bind_rows(.id = "id") %>%
       filter(site != "NBT") %>%
@@ -170,7 +170,7 @@ discharge_plots
 pathway_plots <- local({
   out_df <- bind_rows(
     out %>%
-      map("result") %>%
+      # map("result") %>%
       map("na_out_df") %>%
       bind_rows(.id = "id") %>%
       filter(site != "nbt") %>%
@@ -179,7 +179,7 @@ pathway_plots <- local({
       pivot_wider(values_from = n, names_from = source) %>%
       mutate(diff = observed - simulated, metric = "new_admits"),
     out %>%
-      map("result") %>%
+      # map("result") %>%
       map("ca_out_df") %>%
       bind_rows(.id = "id") %>%
       filter(site != "NBT") %>%

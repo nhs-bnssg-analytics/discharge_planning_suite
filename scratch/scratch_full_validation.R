@@ -520,6 +520,8 @@ output_valid_full_fn <- function(d) {
   
   cat("writing file")
   saveRDS(out_ls, glue::glue("data/intermediate/valid_{d}_nrep_{n_rep}.RDS"))
+  # hoping to clear the memory
+  gc()
   out_ls
 }
 
@@ -548,7 +550,7 @@ out <- furrr::future_map(dates[1:100], output_valid_full_fn_safe,
                            )))
 
 
-saveRDS(out, "data/final_validation_full_out_1e1_newempcuradmits.RDS")
+saveRDS(out, "data/final_validation_full_out_1e1_losprops.RDS")
 saveRDS(out, "S:/Finance/Shared Area/BNSSG - BI/8 Modelling and Analytics/working/nh/projects/discharge_pathway_projections/data/final_validation_full_1e2.RDS")
 
 out <- readRDS("data/final_validation_full_out.RDS")
