@@ -1,5 +1,5 @@
 df_new_admit <- local({ 
-  
+  browser()
   if(seed) set.seed(123)
   # report_date <- report_start -ddays(1) # (DEPRECATED)
   report_date <- report_start
@@ -13,22 +13,22 @@ df_new_admit <- local({
     map(~partial(EnvStats::remp, obs = .x)) %>%
     enframe(name = "site", value = "rdist")
     
+
   
-  # props <- readRDS("data/pathway_prop.RDS") %>%
-  #   set_names(c("Other", "P1", "P2", "P3"))
+  props_site <- readRDS("data/rf_fit_props_site.RDS") %>%
+    mutate(props = map(fit, "props")) %>%
+    mutate(props = map(props, \(prop) map(prop, ~ set_names(
+      .x, c("Other", "P1", "P2", "P3")
+    )))) %>%
+    dplyr::select(site, props)  %>%
+    unnest_wider(props) %>%
+    pivot_longer(-site, names_to = "los") %>%
+    unnest_wider(value) %>%
+    pivot_longer(-c(site, los), names_to = "pathway") %>%
+    nest(.by = c(site, los), .key = "props") %>%
+    mutate(props = map(props, \(data) mutate(data, value = set_names(value, pathway)) %>% pull(value)))
+
   
-   props_site <- readRDS("data/rf_fit_props_site.RDS") %>% 
-     mutate(props = map(fit, "props")) %>%
-     mutate(props = map(props, \(prop) map(prop, ~set_names(.x, c("Other", "P1", "P2", "P3"))))) %>%
-     dplyr::select(site, props)  %>%
-     unnest_wider(props) %>%
-     pivot_longer(-site, names_to = "los") %>%
-     unnest_wider(value) %>%
-     pivot_longer(-c(site, los), names_to = "pathway") %>%
-     nest(.by = c(site, los), .key = "props") %>%
-     mutate(props = map(props, \(data) mutate(data, value = set_names(value, pathway)) %>% pull(value)))
-   
-   
   # daily A&E forecasts to be used later
   df_admit_fcast_flt <- df_admit_fcast %>%
     pivot_wider(names_from = metric, values_from = value) %>%
@@ -63,8 +63,6 @@ df_new_admit <- local({
     # mutate(los = map(arrivals, function(arr) rdist(arr)) %>% map(\(x) map_dbl(x, ~sample(seq(.x, .x + 2), 1)))) %>%
     unnest(los) %>%
     mutate(date_end = date + ddays(los)) %>%
-    mutate(los = cut(los, breaks = c(0, 3, 4, 5, 6, 7,  8, 9, 10, Inf), include.lowest = TRUE)) %>%
-    left_join(props_site) %>%
     # DEPRECATED CHUNK #
     # # mutate(date_end = date + ddays(pmax(los-1, 0))) %>%
     # #(DEPRECATED) day is + 1 to shift all predicted discharges to the next snapshot
@@ -75,19 +73,23 @@ df_new_admit <- local({
     # pmax here to keep the (small) numbers discharged on day zero in the sim
     # and we add one because interval of zero corresponds to day 'one' of the
     # simulation
-    group_by(site, day = pmax(1, lubridate::interval(report_date, date_end)/ddays(1) + 1), rep, los, props) %>%
+    group_by(site, day = pmax(1, lubridate::interval(report_date, date_end)/ddays(1) + 1), rep) %>%
     count() %>%
     ungroup() %>%
+    left_join(props_site) %>%
     mutate(pathways = map2(n, props, ~ factor(sample(names(.y),
                                                      size = .x,
                                                      prob = .y,
                                                      replace = TRUE),
-                                              levels = names(.y)))) %>%
-    unnest(pathways) %>%
-    group_by(site, day, rep, pathway = pathways) %>%
-    count(name = "count") %>%
-    ungroup() %>%
-    complete(site, day, rep, pathway, fill = list(count = 0)) %>%
-    mutate(source = "new_admits")
+                                              levels = names(.y))))  %>%
+    mutate(pathways = map(pathways, table)) %>%
+    unnest_wider(pathways) %>%
+    dplyr::select(-n, -props) %>%
+    pivot_longer(
+      cols = -c(site, day, rep),
+      names_to = "pathway",
+      values_to = "count"
+    ) %>%
+    mutate(count = as.numeric(count), source = "new_admits")
   sim
 })

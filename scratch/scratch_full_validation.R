@@ -36,7 +36,7 @@ n_days <- 10
 nctr_df_full <-
   RODBC::sqlQuery(
     con,
-    glue::glue("select
+    glue::glue("SELECT
        [RN]
       ,[Organisation_Code_Provider]
       ,[Organisation_Code_Commissioner]
@@ -520,8 +520,6 @@ output_valid_full_fn <- function(d) {
   
   cat("writing file")
   saveRDS(out_ls, glue::glue("data/intermediate/valid_{d}_nrep_{n_rep}.RDS"))
-  # hoping to clear the memory
-  gc()
   out_ls
 }
 
@@ -550,7 +548,7 @@ out <- furrr::future_map(dates[1:100], output_valid_full_fn_safe,
                            )))
 
 
-saveRDS(out, "data/final_validation_full_out_1e1_losprops.RDS")
+saveRDS(out, "data/final_validation_full_out_1e1_newempcuradmits.RDS")
 saveRDS(out, "S:/Finance/Shared Area/BNSSG - BI/8 Modelling and Analytics/working/nh/projects/discharge_pathway_projections/data/final_validation_full_1e2.RDS")
 
 out <- readRDS("data/final_validation_full_out.RDS")
@@ -682,7 +680,7 @@ bind_rows(
     bind_rows(.id = "id") %>%
     filter(site != "nbt") %>%
     complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
-    dplyr::select(id, site, day, pathway, source, n) %>%
+    select(id, site, day, pathway, source, n) %>%
     pivot_wider(values_from = n, names_from = source) %>%
     mutate(diff = observed - simulated, metric = "new_admits"),
   out %>%
@@ -691,7 +689,7 @@ bind_rows(
     bind_rows(.id = "id") %>%
     filter(site != "NBT") %>%
     complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
-    dplyr::select(id, site, day, pathway, source, n) %>%
+    select(id, site, day, pathway, source, n) %>%
     pivot_wider(values_from = n, names_from = source) %>%
     mutate(diff = observed - simulated, metric = "curr_admits")
 ) %>%
@@ -740,7 +738,7 @@ bind_rows(
     bind_rows(.id = "id") %>%
     filter(site != "nbt") %>%
     complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
-    dplyr::select(id, site, day, pathway, source, n) %>%
+    select(id, site, day, pathway, source, n) %>%
     pivot_wider(values_from = n, names_from = source) %>%
     mutate(diff = observed - simulated, metric = "new_admits"),
   out %>%
@@ -749,7 +747,7 @@ bind_rows(
     bind_rows(.id = "id") %>%
     filter(site != "NBT") %>%
     complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
-    dplyr::select(id, site, day, pathway, source, n) %>%
+    select(id, site, day, pathway, source, n) %>%
     pivot_wider(values_from = n, names_from = source) %>%
     mutate(diff = observed - simulated, metric = "curr_admits")
 ) %>%
@@ -816,7 +814,7 @@ ggplot(discharges_ts,
   #             bind_rows(.id = "id") %>% 
   #             filter(site != "nbt") %>%
   #             complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
-  #             dplyr::select(id, site, day, pathway, source, n ) %>%
+  #             select(id, site, day, pathway, source, n ) %>%
   #             pivot_wider(values_from = n, names_from = source) %>%
   #             mutate(smpe = smpe_custom(observed, simulated),
   #                    metric = "new_admits", .by = c(id, site, day, pathway)),
@@ -826,7 +824,7 @@ ggplot(discharges_ts,
   #             bind_rows(.id = "id") %>% 
   #             filter(site != "NBT") %>%
   #             complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
-  #             dplyr::select(id, site, day, pathway, source, n) %>%
+  #             select(id, site, day, pathway, source, n) %>%
   #             pivot_wider(values_from = n, names_from = source) %>%
   #             mutate(smpe = smpe_custom(observed, simulated),
   #                    metric = "curr_admits", .by = c(id, site, day, pathway))
@@ -847,7 +845,7 @@ ggplot(discharges_ts,
 #   bind_rows(.id = "id") %>% 
 #   filter(site != "nbt") %>%
 #   complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
-#   dplyr::select(id, site, day, pathway, source, n ) %>%
+#   select(id, site, day, pathway, source, n ) %>%
 #   pivot_wider(values_from = n, names_from = source) %>%
 #   mutate(diff = observed - simulated,
 #          metric = "new_admits"),
@@ -857,7 +855,7 @@ ggplot(discharges_ts,
 #     bind_rows(.id = "id") %>% 
 #     filter(site != "NBT") %>%
 #     complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
-#     dplyr::select(id, site, day, pathway, source, n) %>%
+#     select(id, site, day, pathway, source, n) %>%
 #     pivot_wider(values_from = n, names_from = source) %>%
 #     mutate(diff = observed - simulated,
 #            metric = "curr_admits")
@@ -876,7 +874,7 @@ ggplot(discharges_ts,
 #             bind_rows(.id = "id") %>% 
 #             filter(site != "nbt") %>%
 #             complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
-#             dplyr::select(id, site, day, pathway, source, n ) %>%
+#             select(id, site, day, pathway, source, n ) %>%
 #             pivot_wider(values_from = n, names_from = source) %>%
 #             mutate(diff = observed - simulated,
 #                    metric = "new_admits"),
@@ -886,7 +884,7 @@ ggplot(discharges_ts,
 #             bind_rows(.id = "id") %>% 
 #             filter(site != "NBT") %>%
 #             complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
-#             dplyr::select(id, site, day, pathway, source, n) %>%
+#             select(id, site, day, pathway, source, n) %>%
 #             pivot_wider(values_from = n, names_from = source) %>%
 #             mutate(diff = observed - simulated,
 #                    metric = "curr_admits")
@@ -902,7 +900,7 @@ ggplot(discharges_ts,
 #               filter(site != "nbt") %>%
 #             complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0))) %>%
 #   mutate(diff_bl = observed - n) %>%
-#   dplyr::select(id, site, day, pathway, diff, diff_bl) %>%
+#   select(id, site, day, pathway, diff, diff_bl) %>%
 #   pivot_longer(cols = c(diff, diff_bl)) %>%
 #   filter(pathway != "Other", site != "system") %>%
 #   ggplot(aes(x = day, y = value, col = name)) + 

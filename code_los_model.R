@@ -102,7 +102,7 @@ los_df <- nctr_df %>%
     day_of_admission,
     sex,
     age = Person_Age,
-    # spec = Specialty_Code,
+    spec = Specialty_Code,
     bed_type = Bed_Type,
     los = discharge_rdy_los
   )  #%>%
@@ -215,7 +215,7 @@ model_df_train <- los_train %>%
          cambridge_score,
          age,
          sex,
-         # spec, # spec has too many levels, some of which don't get seen enough to reliably create a model pipeline
+         spec, # spec has too many levels, some of which don't get seen enough to reliably create a model pipeline
          bed_type
          # smoking,
          # ethnicity,
@@ -237,7 +237,7 @@ model_df_test <- los_testing %>%
                 cambridge_score,
                 age,
                 sex,
-               # spec, # spec has too many levels, some of which don't get seen enough to reliably create a model pipeline
+               spec, # spec has too many levels, some of which don't get seen enough to reliably create a model pipeline
                 bed_type
                 # smoking,
                 # ethnicity,
@@ -268,8 +268,8 @@ tree_grid <- grid_regular(cost_complexity(range = c(-6, -1), trans = log10_trans
 
 tree_rec <- recipe(los ~ ., data = model_df_train)  %>%
   update_role(site, new_role = "site id") %>%  
-  step_novel(all_nominal_predictors(), new_level = "other") #%>%
-  # step_other(all_nominal_predictors(), -spec, threshold = 0.1)
+  step_novel(all_nominal_predictors(), new_level = "other") %>%
+  step_other(all_nominal_predictors(), -spec, threshold = 0.1)
 
 
 tree_wf <- workflow() %>%

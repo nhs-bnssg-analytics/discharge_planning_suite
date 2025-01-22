@@ -119,14 +119,11 @@ pathway_df <- nctr_df %>%
   ungroup() %>%
   mutate(der_date_nctr = pmax(Date_Of_Admission, pmin(der_date_nctr, Date_NCTR, na.rm = TRUE), na.rm = TRUE)) %>%
   mutate(der_date_nctr = as.Date(der_date_nctr)) %>%
-  mutate(discharge_rdy_los = (der_date_nctr - as.Date(Date_Of_Admission))/lubridate::ddays(1)) %>%
-  mutate(discharge_rdy_los = pmax(discharge_rdy_los, 0)) %>%
   group_by(nhs_number) %>%
   arrange(Census_Date) %>%
   group_by(nhs_number, Date_Of_Admission) %>%
   # mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
   mutate(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other")) %>%
-  mutate(discharge_rdy_los = min(discharge_rdy_los)) %>%
   # mutate(pathway = ifelse(any(!der_ctr), pathway[!der_ctr][1], "Other")) %>%
   slice(1) %>%
   ungroup() %>%
@@ -138,8 +135,7 @@ pathway_df <- nctr_df %>%
     sex,
     age = Person_Age,
     pathway,
-    los = discharge_rdy_los,
-    # spec = Specialty_Code, # spec is too multinomial
+    spec = Specialty_Code, # spec is too multinomial
     bed_type = Bed_Type) %>%
   na.omit() %>% 
   # remove the last 10 days to avoid any boundary effects from the derivation of pathways
@@ -201,8 +197,7 @@ model_df <- pathway_df %>%
                 cambridge_score,
                 age,
                 sex,
-                # spec,
-                los,
+                spec,
                 bed_type
                 # smoking,
                 # ethnicity,
@@ -240,43 +235,21 @@ model_df_folds <- vfold_cv(model_df_train, strata = pathway)
 #   mutate(Proportion = percent(Proportion)) %>%
 #   show_in_excel()
 
-# props <- model_df_train %>%
-#   pull(pathway) %>%
-#   table() %>%
-#   proportions() %>%
-#   as.list() %>%
-#   unlist()
 
 props <- model_df_train %>%
-  arrange(los) %>%
-  mutate(los_cut = cut(los, breaks = c(0, 3, 4, 5, 6, 7,  8, 9, 10, Inf), include.lowest = TRUE)) %>%
-  mutate(los_cut = fct_reorder(los_cut, los))%>%
-  mutate(los = los_cut) %>%
-  nest(.by = los) %>%
-  mutate(props = map(data, \(data) {
-    data %>%
   pull(pathway) %>%
   table() %>%
   proportions() %>%
   as.list() %>%
-  unlist()})) %>%
-  mutate(props = set_names(props, los)) %>%
-  arrange(los) %>%
-  pull(props) #%>%
-  # enframe() %>%
-  # unnest_wider(value) %>%
-  # pivot_longer(-name, names_to = "pathway") %>%
-  # ggplot(aes(x = name, y = value, fill = pathway)) +
-  # geom_col(position = "stack")
+  unlist() 
 
 mod_rec <- recipe(pathway ~ ., data = model_df_split) %>%
   # step_zv() %>%
   # step_nzv(all_predictors()) %>%
-  add_role(los, new_role = "not for prediction") %>%
   step_impute_mean(all_numeric_predictors()) %>%
   step_normalize(all_numeric_predictors()) %>%
-  step_novel(all_nominal_predictors(), -sex, new_level = "other") #%>%
-  # step_other(all_nominal_predictors(), -sex, spec, threshold = 0.1) 
+  step_novel(all_nominal_predictors(), -sex, new_level = "other") %>%
+  step_other(all_nominal_predictors(), -sex, spec, threshold = 0.1) 
 
 
 rf_spec <- rand_forest(
