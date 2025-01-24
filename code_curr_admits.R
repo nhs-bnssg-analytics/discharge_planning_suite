@@ -81,12 +81,12 @@ df_curr_admits <- local({
     )),
     rep = list(seq_len(n_rep))) %>%
     # Use the now predictoed total length of stay to predict pathway requirement
-    select(site, cambridge_score, age, sex, bed_type, los, los_remaining, rep) %>%
+    dplyr::select(site, cambridge_score, age, sex, bed_type, los, los_remaining, rep) %>%
     unnest(cols = c(rep, los, los_remaining)) %>%
     nest(.by = site) %>%
     left_join(rf_wf_site) %>%
     mutate(pred = map2(data, wf, ~predict(.y, .x, type = "prob"))) %>%
-    select(-wf) %>%
+    dplyr::select(-wf) %>%
     unnest(cols = c(data, pred)) %>%
     mutate(pathway = pmap_chr(list(.pred_Other,
                          .pred_P1,

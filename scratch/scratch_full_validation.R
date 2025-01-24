@@ -136,9 +136,9 @@ dates <- nctr_df_full  %>%
          Census_Date > ymd("2023-07-01"), # data before this are spurious
          Census_Date < max(Census_Date) - ddays(n_days),
          # Data not submitted for UHBW on this day
-         Census_Date != ymd("2024-07-17")#,
+         Census_Date != ymd("2024-07-17"),
          # remove dates near Christmas
-         # abs(lubridate::interval(Census_Date, ymd("2023-12-25"))/ddays(1)) > 15
+         abs(lubridate::interval(Census_Date, ymd("2023-12-25"))/ddays(1)) > 15
   ) %>%
   pull(Census_Date) %>%
   unique()
@@ -520,17 +520,18 @@ output_valid_full_fn <- function(d) {
   
   cat("writing file")
   saveRDS(out_ls, glue::glue("data/intermediate/valid_{d}_nrep_{n_rep}.RDS"))
-  
+  # cleanup
+  rm(list = setdiff(ls(), "out_ls"))
   gc()
   out_ls
 }
 
 output_valid_full_fn_safe <- safely(output_valid_full_fn)
 
+library(future.callr)
 options(future.globals.maxSize = 16000 * 1024^2)
-# future::plan(future::multisession, workers = parallel::detectCores() - 16)
-future::plan(future::multisession, workers = 3)
-out <- furrr::future_map(dates, output_valid_full_fn_safe,
+future::plan(callr, workers = parallel::detectCores() - 13)
+out <- furrr::future_map(dates[1:150], output_valid_full_fn_safe,
                          .options = furrr::furrr_options(
                            seed = TRUE,
                            globals = c(
@@ -551,7 +552,7 @@ out <- furrr::future_map(dates, output_valid_full_fn_safe,
                            )))
 
 
-saveRDS(out, "data/final_validation_full_out_1e1_newempcuradmits.RDS")
+saveRDS(out, "data/final_validation_full_out_1e1_newpropsloslogic.RDS")
 saveRDS(out, "S:/Finance/Shared Area/BNSSG - BI/8 Modelling and Analytics/working/nh/projects/discharge_pathway_projections/data/final_validation_full_1e2.RDS")
 
 out <- readRDS("data/final_validation_full_out.RDS")
