@@ -352,6 +352,7 @@ bind_rows(
 
 
 
+
 bind_rows(
   out %>%
     map("result") %>%

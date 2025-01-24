@@ -2,6 +2,8 @@ library(fitdistrplus)
 library(tidyverse)
 library(tidymodels)
 library(lubridate)
+library(future)
+library(future.callr)
 
 con <- switch(.Platform$OS.type,
               windows = RODBC::odbcConnect(dsn = "xsw"),
@@ -27,7 +29,7 @@ start_date <- validation_start + dweeks(fc_train_length_wks) # use full period s
 seed <- FALSE
 plot_int <- FALSE
 
-n_rep <- 1E1
+n_rep <- 1E3
 
 run_date <- today()
 n_days <- 10
@@ -532,10 +534,11 @@ output_valid_full_fn <- function(d) {
 
 output_valid_full_fn_safe <- safely(output_valid_full_fn)
 
-library(future.callr)
-options(future.globals.maxSize = 16000 * 1024^2)
+
+options(future.globals.maxSize = 63000 * 1024^2) # desktop
+# options(future.globals.maxSize = 16000 * 1024^2) # laptop
 future::plan(callr, workers = 6)
-out <- furrr::future_map(dates[1:150], output_valid_full_fn_safe,
+out <- furrr::future_map(dates, output_valid_full_fn_safe,
                          .options = furrr::furrr_options(
                            seed = TRUE,
                            globals = c(
@@ -557,8 +560,8 @@ out <- furrr::future_map(dates[1:150], output_valid_full_fn_safe,
 
 
 
-saveRDS(out, "data/final_validation_full_out_1e1_newpropsloslogic.RDS")
-saveRDS(out, "S:/Finance/Shared Area/BNSSG - BI/8 Modelling and Analytics/working/nh/projects/discharge_pathway_projections/data/final_validation_full_1e2.RDS")
+saveRDS(out, "data/final_validation_full_out_1e3_newpropsloslogic.RDS")
+saveRDS(out, "S:/Finance/Shared Area/BNSSG - BI/8 Modelling and Analytics/working/nh/projects/discharge_pathway_projections/data/final_validation_full_out_1e3_newpropsloslogic.RDS")
 
 
 out <- readRDS("data/final_validation_full_out.RDS")
