@@ -18,11 +18,7 @@ source("utils/colour_functions.R")
 
 validation_end <- ymd("2024-09-01")
 validation_start <- ymd("2023-07-01")
-# start_date <- validation_end - dweeks(13
-
-fc_train_length_wks <- 10
-
-start_date <- validation_start + dweeks(fc_train_length_wks) # use full period save ARIMA training period
+start_date <- validation_end - dweeks(13) 
 
 seed <- FALSE
 plot_int <- FALSE
@@ -110,6 +106,7 @@ pathway_recodes <- c(
 
 
 # max census date
+
 max_date <- nctr_df_full %>%
   filter(!is.na(NHS_Number)) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
@@ -129,6 +126,7 @@ attr_df <- readRDS("data/attr_df.RDS")
 
 # validation testing dates
 
+
 dates <- nctr_df_full  %>%
   filter(between(Census_Date, validation_start, validation_end-ddays(1)))%>%
   filter(Census_Date >= start_date,
@@ -136,9 +134,9 @@ dates <- nctr_df_full  %>%
          Census_Date > ymd("2023-07-01"), # data before this are spurious
          Census_Date < max(Census_Date) - ddays(n_days),
          # Data not submitted for UHBW on this day
-         Census_Date != ymd("2024-07-17")#,
+         Census_Date != ymd("2024-07-17"),
          # remove dates near Christmas
-         # abs(lubridate::interval(Census_Date, ymd("2023-12-25"))/ddays(1)) > 15
+         abs(lubridate::interval(Census_Date, ymd("2023-12-25"))/ddays(1)) > 15
   ) %>%
   pull(Census_Date) %>%
   unique()
@@ -147,8 +145,7 @@ dates <- nctr_df_full  %>%
 nctr_sum_full <- nctr_df_full %>%
   filter(Person_Stated_Gender_Code %in% 1:2) %>%
   mutate(nhs_number = as.character(NHS_Number),
-         # nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
-         nhs_number = if_else(is.na(nhs_number), CDS_Unique_Identifier, nhs_number),
+         nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
          sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   mutate(
@@ -189,12 +186,6 @@ nctr_sum_full <- nctr_df_full %>%
     "Other",
     pathway
   )) %>%
-  group_by(NHS_Number, Date_Of_Admission) %>%
-  # mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
-  # mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
-  mutate(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other")) %>%
-  mutate(keep_date = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - ddays(1),max(Census_Date)))) %>%
-  # mutate(keep_date = case_when(any(!der_ctr) ~ Census_Date[!der_ctr][1], .default = tail(Census_Date, 1))) %>%
   dplyr::select(
     report_date,
     nhs_number,
@@ -202,8 +193,7 @@ nctr_sum_full <- nctr_df_full %>%
     Census_Date,
     Date_Of_Admission,
     Date_NCTR,
-    Days_NCTR,
-    keep_date,
+    Days_NCTR, 
     sex,
     age = Person_Age,
     ctr = der_ctr,
@@ -217,69 +207,6 @@ nctr_sum_full <- nctr_df_full %>%
 dates_spells <- nctr_sum_full %>%
   group_by(Census_Date, ctr, Days_NCTR, spell_id) %>%
   distinct() 
-
-
-discharges_ts <- nctr_df_full %>%
-  filter(Person_Stated_Gender_Code %in% 1:2) %>%
-  mutate(nhs_number = as.character(NHS_Number),
-         nhs_number = if_else(is.na(nhs_number), CDS_Unique_Identifier, nhs_number),
-         sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
-  filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
-  mutate(
-    site = case_when(
-      Organisation_Site_Code == 'RVJ01' ~ 'nbt',
-      Organisation_Site_Code == 'RA701' ~ 'bri',
-      Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
-      TRUE ~ 'other'
-    ),
-    Date_Of_Admission = as.Date(Date_Of_Admission)
-  ) %>%
-  filter(site != "nbt") %>%
-  ungroup() %>%
-  mutate(
-    der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/ddays(1),
-    der_ctr = case_when(
-      Criteria_To_Reside == "Y" | is.na(Criteria_To_Reside) ~ TRUE,
-      !is.na(Days_NCTR) ~ FALSE,
-      !is.na(Date_NCTR) ~ FALSE,
-      Criteria_To_Reside == "N" ~ FALSE
-    )) %>%
-  mutate(report_date = max(Census_Date)) %>%
-  mutate(los = (report_date - Date_Of_Admission) / ddays(1)) %>%
-  mutate(
-    pathway = recode(
-      Current_Delay_Code_Standard,
-      !!!pathway_recodes
-    ),
-    pathway = coalesce(pathway, "Other")
-  ) %>%
-  mutate(pathway = if_else(
-    !pathway %in% c("P1", "P2", "P3", "P3" , "Other"),
-    "Other",
-    pathway
-  )) %>%
-  group_by(NHS_Number, Date_Of_Admission) %>%
-  # mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
-  # mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
-  mutate(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other")) %>%
-  # mutate(keep_date = case_when(any(!der_ctr) ~ Census_Date[!der_ctr][1], .default = tail(Census_Date, 1))) %>%
-  # mutate(keep_date = case_when(any(!der_ctr) ~ Census_Date[!der_ctr][1], .default = max(Census_Date))) %>%
-  mutate(keep_date = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - ddays(1),max(Census_Date)))) %>%
-  filter(Census_Date < max(Census_Date)) %>%
-  dplyr::select(
-    date = keep_date,
-    nhs_number,
-    site,
-    pathway
-  ) %>%
-  ungroup() %>%
-  distinct()  %>%
-  # group_by(site, pathway, date = date + ddays(1)) %>%
-  group_by(site, pathway, date = date) %>%
-  count() %>%
-  ungroup() %>%
-  complete(nesting(site, date), pathway, fill = list(n = 0)) %>%
-  filter(date != max(date), date != min(date))
 
 
 set.seed(123)
@@ -296,28 +223,9 @@ output_valid_full_fn <- function(d) {
   # run the separate codes
   
   # NEW ADMITS
+  
   nctr_df <- nctr_df %>% filter(Census_Date <= d)
-  
   source("code_admits_fcast.R", local = TRUE)
-  
-  # # use actual admits, not fcast"
-  # 
-  # df_admit_fcast <- nctr_df_full %>%
-  #   filter(Census_Date >= d, Date_Of_Admission >=d) %>%
-  #   group_by(CDS_Unique_Identifier, Date_Of_Admission, Site_Name) %>%
-  #   count() %>%
-  #   group_by(date = as_date(Date_Of_Admission), Site_Name) %>%
-  #   count() %>%
-  #   filter(Site_Name %in% c("SOUTHMEAD HOSPITAL", "WESTON GENERAL HOSPITAL", "BRISTOL ROYAL INFIRMARY")) %>%
-  #   mutate(site = recode(Site_Name,
-  #                        "SOUTHMEAD HOSPITAL" = "nbt",
-  #                        "WESTON GENERAL HOSPITAL" = "weston",
-  #                        "BRISTOL ROYAL INFIRMARY" = "bri")) %>%
-  #   mutate(ctr = "N", report_date = today(), source = "admit_fcast") %>%
-  #   dplyr::select(site, date = date, value = n, source, report_date) %>%
-  #   mutate(day = 1 + (date - d)/ddays(1)) %>%
-  #   expand_grid(metric = c("fcast", "u_85", "l_85"))
-  
   source("code_new_admits.R", local = TRUE)
   
   
@@ -344,9 +252,10 @@ output_valid_full_fn <- function(d) {
     bind_rows(summarise(mutate(., site = "system"),n = sum(n), .by = -n))
   
   # new admits observed output
+  
   na_out_df <-  nctr_sum_full %>%
     ungroup() %>%
-    filter(Date_Of_Admission >= d, !(Date_Of_Admission == d & !ctr)) %>%
+    filter(Date_Of_Admission >= d) %>%
     group_by(nhs_number, Date_Of_Admission) %>%
     mutate(spell_id = cur_group_id(),
            der_date_nctr = as.Date(if_else(any(!ctr),min(Census_Date[!ctr]) - ddays(1),max(Census_Date)))) %>%
@@ -376,7 +285,7 @@ output_valid_full_fn <- function(d) {
   nctr_sum <- nctr_df %>%
     filter(Person_Stated_Gender_Code %in% 1:2) %>%
     mutate(nhs_number = as.character(NHS_Number),
-           nhs_number = if_else(is.na(nhs_number), CDS_Unique_Identifier, nhs_number),
+           nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
            sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
     filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
     mutate(
@@ -448,13 +357,12 @@ output_valid_full_fn <- function(d) {
     group_by(spell_id) %>%
     mutate(los = min(los), # los on index date is the minimum LOS
            der_date_nctr = as.Date(if_else(any(!ctr),min(Census_Date[!ctr]) - ddays(1),max(Census_Date)))) %>%
-    # der_date_nctr = as.Date(if_else(any(!ctr),min(Census_Date[!ctr]) - ddays(1),max(Census_Date)))) %>%
     ungroup() %>%
     mutate(der_date_nctr = pmin(der_date_nctr, Date_NCTR, na.rm = TRUE)) %>% 
     group_by(spell_id) %>%
     mutate(discharge_rdy_los = (der_date_nctr - as.Date(Date_Of_Admission))/ddays(1)) %>% 
-    # mutate(pathway = ifelse(!ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
-    # mutate(pathway = coalesce(pathway[which(!ctr)[1]], "Other")) %>%
+    mutate(pathway = ifelse(!ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
+    mutate(pathway = coalesce(pathway[which(!ctr)[1]], "Other")) %>%
     dplyr::select(nhs_number,
                   site,
                   spell_id,
@@ -496,13 +404,75 @@ output_valid_full_fn <- function(d) {
     complete(nesting(site, day, date), pathway, fill = list(n = 0)) %>%
     bind_rows(mutate(emp_drain, source = "observed", metric = "curr_admits")) 
   
+  
   # baseline model
+  nctr_df <- nctr_df_full
+  nctr_df <- nctr_df_full %>% filter(Census_Date <= report_start,
+                                     Organisation_Site_Code != 'RVJ01') # remove NBT for validation
+  
+  
+  discharges_ts <- nctr_df_full %>%
+    filter(Person_Stated_Gender_Code %in% 1:2) %>%
+    mutate(nhs_number = as.character(NHS_Number),
+           nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
+           sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
+    filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
+    mutate(
+      site = case_when(
+        Organisation_Site_Code == 'RVJ01' ~ 'nbt',
+        Organisation_Site_Code == 'RA701' ~ 'bri',
+        Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
+        TRUE ~ 'other'
+      ),
+      Date_Of_Admission = as.Date(Date_Of_Admission)
+    ) %>%
+    filter(site != "nbt") %>%
+    ungroup() %>%
+    mutate(
+      der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/ddays(1),
+      der_ctr = case_when(
+        Criteria_To_Reside == "Y" | is.na(Criteria_To_Reside) ~ TRUE,
+        !is.na(Days_NCTR) ~ FALSE,
+        !is.na(Date_NCTR) ~ FALSE,
+        Criteria_To_Reside == "N" ~ FALSE
+      )) %>%
+    mutate(report_date = max(Census_Date)) %>%
+    mutate(los = (report_date - Date_Of_Admission) / ddays(1)) %>%
+    mutate(
+      pathway = recode(
+        Current_Delay_Code_Standard,
+        !!!pathway_recodes
+      ),
+      pathway = coalesce(pathway, "Other")
+    ) %>%
+    mutate(pathway = if_else(
+      !pathway %in% c("P1", "P2", "P3", "P3" , "Other"),
+      "Other",
+      pathway
+    )) %>%
+    group_by(NHS_Number, Date_Of_Admission) %>%
+    mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
+    mutate(keep_date = case_when(any(!der_ctr) ~ Census_Date[!der_ctr][1], .default = tail(Census_Date, 1))) %>%
+    filter(Census_Date < max(Census_Date)) %>%
+    dplyr::select(
+      date = keep_date,
+      nhs_number,
+      site,
+      pathway
+    ) %>%
+    ungroup() %>%
+    distinct()  %>%
+    group_by(site, pathway, date = date + ddays(1)) %>%
+    count() %>%
+    ungroup() %>%
+    complete(nesting(site, date), pathway, fill = list(n = 0))  %>%
+    filter(date != max(date),
+           date != min(date)) %>%
+    filter(date > max(date) - dweeks(4)) 
+  
   
   # mean number of discharges per day/site
   bl_out_df <- discharges_ts %>%
-    filter(date != max(date),
-           date != min(date),
-           between(date, d-dweeks(4), d)) %>%
     ungroup() %>%
     # filter(date >= (max(date) - dweeks(4))) %>%
     summarise(n = mean(n, na.rm = TRUE), .by = c(site, pathway)) %>%
@@ -518,7 +488,6 @@ output_valid_full_fn <- function(d) {
   
   cat("writing file")
   saveRDS(out_ls, glue::glue("data/intermediate/valid_{d}_nrep_{n_rep}.RDS"))
-  saveRDS(out_ls, glue::glue("S:/Finance/Shared Area/BNSSG - BI/8 Modelling and Analytics/working/nh/projects/discharge_pathway_projections/data/intermediate/valid_{d}_nrep_{n_rep}.RDS"))
   out_ls
 }
 
@@ -529,43 +498,15 @@ output_valid_full_fn_safe <- safely(output_valid_full_fn)
 int_files <- list.files(path = "data/intermediate/", full.names = TRUE)
 
 int_dates <- str_split(int_files, "_") %>%
-  map(2) %>%
-  reduce(c) %>%
+  map_chr(2) %>%
   ymd()
 
 dates_left <- setdiff(dates, int_dates) %>% as_date()
 
-options(future.globals.maxSize = 16000 * 1024^2)
-# future::plan(future::multisession, workers = parallel::detectCores() - 16)
-future::plan(future::multisession, workers = 3)
-out <- furrr::future_map(dates_left, output_valid_full_fn_safe,
-                         .options = furrr::furrr_options(
-                           seed = TRUE,
-                           globals = c(
-                             "run_date",
-                             "n_days",
-                             "dates_spells",
-                             "nctr_df",
-                             "nctr_df_full",
-                             "nctr_sum_full",
-                             "discharges_ts",
-                             "pathway_recodes",
-                             "plot_int",
-                             "n_rep",
-                             "get_sd_from_ci",
-                             "attr_df",
-                             "max_date",
-                             "seed"
-                           )))
-
-
-saveRDS(out, "data/final_validation_full_out_1e3_fullvalidperiod_int.RDS")
-saveRDS(out, "S:/Finance/Shared Area/BNSSG - BI/8 Modelling and Analytics/working/nh/projects/discharge_pathway_projections/data/final_validation_full_out_1e3_fullvalidperiod_int.RDS")
-
-
-
-
 out_int <- map(int_files, readRDS)
+
+# map the result to the same depth as a successful run
+out <- map_depth(out_int, 1, \(x) list(result = x))
 
 # options(future.globals.maxSize = 16000 * 1024^2)
 # future::plan(future::multisession, workers = parallel::detectCores() - 10)
