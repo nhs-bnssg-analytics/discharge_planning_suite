@@ -431,6 +431,8 @@ fits <- model_df %>%
 
 saveRDS(dplyr::select(fits, site, fit), "data/rf_fit_props_site.RDS") 
 
+fits <- readRDS("data/rf_fit_props_site.RDS")
+
 # ROC 
 
 library(patchwork)
@@ -502,6 +504,7 @@ fits %>%
                                ,bed_type_Medicine = "Bed Type: Medicine"
                                ,bed_type_Surgery = "Bed Type: Surgery"
                                ,bed_type_other  = "Bed Type: Other"
+                               ,los = "mLOS"
                                ,sex = "Sex"
                                ,sex_Male = "Sex"
       )) %>%

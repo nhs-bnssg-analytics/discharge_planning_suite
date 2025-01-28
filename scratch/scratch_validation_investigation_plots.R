@@ -1,6 +1,6 @@
 library(tidyverse)
 
-out <- readRDS("data/final_validation_full_out_1e3_fullvalidperiod.RDS")
+out <- readRDS("data/final_validation_full_out_1e3_newpropsloslogic.RDS")
 
 discharge_plots <- local({
   out_df <- bind_rows(
@@ -53,14 +53,19 @@ discharge_plots <- local({
     summarise(mean_diff = mean(diff),
               u95 = quantile(diff, 0.975),
               l95 = quantile(diff, 0.025), .by = c(site, pathway, day)) %>%
+    mutate(site = recode(site,
+                  "bri" = "Bristol Royal Infirmary",
+                  "weston" = "Weston General Hospital"
+    )) %>%
     filter(site != "system") %>%
     ggplot(aes(x = day, y = mean_diff)) +
-    annotate(geom = "rect", xmin = -Inf, xmax = Inf, ymin = -2.5, ymax = 2.5, alpha = 0.25) +
+    # annotate(geom = "rect", xmin = -Inf, xmax = Inf, ymin = -2.5, ymax = 2.5, alpha = 0.25) +
     geom_hline(yintercept = 0, linetype = 2) +
-    geom_point() +
-    geom_errorbar(aes(ymin = l95, ymax = u95)) +
-    ggh4x::facet_grid2(site~pathway, independent = "y", scales = "free") +
-    labs(title = "Discharges per site/pathway", y = "Observed minus simulated discharges")
+    # geom_point() +
+    geom_pointrange(aes(ymin = l95, ymax = u95), size = 0.33) +
+    theme_minimal() +
+    ggh4x::facet_grid2(pathway~site, independent = "y", scales = "free") +
+    labs(title = "Validation 1", y = "Residual numbers becoming ready for discharge between observed and simulated")
   
   p3 <- out_df %>%
   summarise(
@@ -134,7 +139,53 @@ discharge_plots <- local({
     pull(plot) %>%
     patchwork::wrap_plots(ncol = 2, axes = "collect", guides = "collect")
 
+  
   p6 <- out_df %>%
+    filter(site != "system") %>%
+    nest(.by = metric) %>%
+    mutate(plot = map(data, \(x) x %>%
+                        summarise(
+                          simulated = sum(simulated),
+                          observed = sum(observed),
+                          .by = c(id, site, day)
+                        ) %>%
+                        summarise(
+                          sim_mean = mean(simulated),
+                          sim_u95 = quantile(simulated, 0.975),
+                          sim_l95 = quantile(simulated, 0.025),
+                          obs_mean = mean(observed),
+                          obs_u95 = quantile(observed, 0.975),
+                          obs_l95 = quantile(observed, 0.025),
+                          .by = c(site, day)) %>%
+                        pivot_longer(-c(site, day), 
+                                     names_to = c("grp", "metric"),
+                                     names_sep = "_") %>%
+                        pivot_wider(names_from = metric, values_from = value) %>%
+                        mutate(grp = recode(grp,
+                                            "sim" = "Simulated",
+                                            "obs" = "Observed"
+                        ),
+                        site = recode(site,
+                                      "bri" = "Bristol Royal Infirmary",
+                                      "weston" = "Weston General Hospital"
+                        )) %>%
+                        ggplot(aes(x = factor(day, levels = 1:10), y = mean, col = grp)) +
+                        geom_pointrange(aes(ymin = l95, ymax = u95),
+                                        linewidth = 0.5,
+                                        position = position_dodge(width = 0.75),
+                                        size = 0.33) +
+                        # geom_point(size = 0.9, position = position_dodge(width = 0.75)) +
+                        scale_colour_manual(values = c("#8c96c6", "#88419d")) +
+                        # scale_x_continuous(breaks = seq(2, 10, 2)) +
+                        theme_minimal() +
+                        labs(colour = "") +
+                        theme(legend.position = "bottom") +
+                        ggh4x::facet_grid2(.~site, scales = "free", independent = "y"))) %>%
+    mutate(plot = map2(plot, metric, \(x, y) x + labs(title = glue::glue("{y}"), y = "Numbers becoming ready for discharge", x = "Day"))) %>%
+    pull(plot)
+  
+  
+  p7 <- out_df %>%
     filter(site != "system") %>%
     nest(.by = metric) %>%
     mutate(plot = map(data, \(x) x %>%
@@ -151,21 +202,83 @@ discharge_plots <- local({
                           obs_u95 = quantile(observed, 0.975),
                           obs_l95 = quantile(observed, 0.025),
                           .by = c(site, pathway, day)) %>%
-                        ggplot(aes(x = as.numeric(day))) +
-                        geom_errorbar(aes(ymin = obs_l95, ymax = obs_u95, col = "observed")) +
-                        geom_point(aes(y = obs_mean, col = "observed")) +
-                        geom_errorbar(aes(ymin = sim_l95, ymax = sim_u95, col = "simulated")) +
-                        geom_point(aes(y = sim_mean, col = "simulated")) +
+                        pivot_longer(-c(site, pathway, day), 
+                                     names_to = c("grp", "metric"),
+                                     names_sep = "_") %>%
+                        pivot_wider(names_from = metric, values_from = value) %>%
+                        mutate(grp = recode(grp,
+                                            "sim" = "Simulated",
+                                            "obs" = "Observed"
+                        ),
+                        site = recode(site,
+                                      "bri" = "Bristol Royal Infirmary",
+                                      "weston" = "Weston General Hospital"
+                        )) %>%
+                        ggplot(aes(x = factor(day, levels = 1:10), y = mean, col = grp)) +
+                        geom_pointrange(aes(ymin = l95, ymax = u95),
+                                        linewidth = 0.5,
+                                        position = position_dodge(width = 0.75),
+                                        size = 0.33) +
+                        # geom_point(size = 0.9, position = position_dodge(width = 0.75)) +
+                        scale_colour_manual(values = c("#8c96c6", "#88419d")) +
+                        # scale_x_continuous(breaks = seq(2, 10, 2)) +
                         theme_minimal() +
-                        facet_wrap(site~pathway, nrow = 2, scales = "free"))) %>%
-    mutate(plot = map2(plot, metric, \(x, y) x + labs(title = glue::glue("{y}"), y = "Discharges", x = "Day"))) %>%
-    pull(plot) %>%
-    patchwork::wrap_plots(ncol = 2, axes = "collect", guides = "collect")
+                        labs(colour = "") +
+                        theme(legend.position = "bottom") +
+                        ggh4x::facet_grid2(pathway~site, scales = "free", independent = "y"))) %>%
+    mutate(plot = map2(plot, metric, \(x, y) x + labs(title = glue::glue("{y}"), y = "Numbers becoming ready for discharge", x = "Day"))) %>%
+    pull(plot)
   
-  list(p1, p2, p3, p4, p5, p6)
+  list(p1, p2, p3, p4, p5, p6, p7)
   })
 
 discharge_plots
+
+
+discharge_plots[[2]]
+ggsave(last_plot(),
+       filename = "./validation/validation_1_dischargeresiduals.png",
+       bg = "white",
+       width = 10,
+       height = 10,
+       scale = 0.75)
+
+
+discharge_plots[[6]][[1]] + labs(title = "Validation 4a")
+ggsave(last_plot(),
+       filename = "./validation/validation_4a.png",
+       bg = "white",
+       width = 10,
+       height = 7.5,
+       scale = 0.6)
+
+discharge_plots[[6]][[2]] + labs(title = "Validation 3a")
+ggsave(last_plot(),
+       filename = "./validation/validation_3a.png",
+       bg = "white",
+       width = 10,
+       height = 7.5,
+       scale = 0.6)
+
+# patchwork::wrap_plots(ncol = 2, axes = "collect", guides = "collect")
+
+discharge_plots[[7]][[1]] + labs(title = "Validation 4a")
+ggsave(last_plot(),
+       filename = "./validation/validation_4a_newadmits.png",
+       bg = "white",
+       width = 10,
+       height = 10,
+       scale = 0.75)
+
+discharge_plots[[7]][[2]] + labs(title = "Validation 3a")
+ggsave(last_plot(),
+       filename = "./validation/validation_3a_curradmits.png",
+       bg = "white",
+       width = 10,
+       height = 10,
+       scale = 0.75)
+
+
 
 pathway_plots <- local({
   out_df <- bind_rows(
@@ -646,16 +759,15 @@ bind_rows(
   # facet_wrap(vars(site)) 
 
   summarise(across(c(simulated, baseline), \(x) yardstick::rmse_vec(observed, x)), .by = c(site, day, pathway)) %>%
-  mutate(ratio = baseline/simulated) %>%
+  mutate(ratio = baseline/simulated)  %>%
   filter(site != "system") %>%
-  ggplot(aes(x = day, y = ratio)) +
+  ggplot(aes(x = as.numeric(day), y = ratio)) +
   geom_hline(yintercept = 1, linetype = 2) +
   # geom_col() +
   facet_wrap(vars(site)) +
   # scale_x_continuous(breaks = 1:10) +
   scale_colour_manual(values = c("green3", "red2")) +
   theme_minimal() +
-  geom_line() +
   ggforce::geom_link2(aes(colour = after_stat(
     ifelse(
       y > 1,
