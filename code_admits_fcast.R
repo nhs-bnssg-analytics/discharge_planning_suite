@@ -32,9 +32,10 @@ admissions <- nctr_df %>%
                                             Organisation_Site_Code == 'RA701' ~ 'bri',
                                             Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
                                             TRUE ~ '')) %>%
-  group_by(nhs_number = NHS_Number) %>%
-  distinct(Date_Of_Admission, .keep_all = TRUE) %>%
-  group_by(site , date = as.Date(Date_Of_Admission)) %>%
+  group_by(CDS_Unique_Identifier) %>%
+  filter(Census_Date == min(Census_Date)) %>%
+  distinct() %>%
+  group_by(site , date = as.Date(Census_Date)) %>%
   count() %>%
   filter(date > ymd("2023-07-01")) # data before this are spurious 
   
