@@ -433,6 +433,28 @@ saveRDS(dplyr::select(fits, site, fit), "data/rf_fit_props_site.RDS")
 
 fits <- readRDS("data/rf_fit_props_site.RDS")
 
+library(gt)
+
+fits %>%
+  filter(site != "nbt") %>%
+  mutate(fit = set_names(fit, site)) %>%
+  pull(fit) %>%
+  map("props") %>%
+  map(enframe) %>%
+  map(\(x) unnest_wider(x, value)) %>%
+  bind_rows(.id = "site") %>%
+  pivot_longer(cols = -c(site, name), names_to = "pathway", values_to = "proportion") %>%
+  pivot_wider(names_from = name, values_from = proportion) %>%
+  gt() %>%
+  tab_spanner(label = "Medical length of stay",
+              columns = -c(site, pathway)) %>%
+  fmt_number(
+    columns = -c(site, pathway),
+    decimals = 3
+  ) %>%
+  gt::gtsave("materials/pathway_props.html")
+  
+
 # ROC 
 
 library(patchwork)

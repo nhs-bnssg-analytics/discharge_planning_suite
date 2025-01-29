@@ -563,7 +563,6 @@ out %>%
   which()
 
 
-
 bind_rows(out %>%
             map("result") %>%
             map("na_out_df") %>%
@@ -602,7 +601,10 @@ summarise(simulated = sum(simulated),
   # filter(pathway != "Other") %>%
   ggplot(aes(x = as.numeric(day), y = value, col = name)) +
   geom_line() +
-  ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y")
+  ggh4x::facet_grid2(site ~ pathway, 
+                     # scales = "free_y", 
+                     # independent = "y"
+                     )
 
 bind_rows(
   out %>%
