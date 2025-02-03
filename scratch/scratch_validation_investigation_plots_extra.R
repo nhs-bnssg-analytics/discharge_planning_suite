@@ -263,7 +263,7 @@ bind_rows(
             u95_ratio = quantile(ratio, 0.75),
             l95_ratio = quantile(ratio, 0.25),
             .by = c(site, day, pathway))%>%
-  filter(site != "system", pathway != "Other") %>%
+  filter(site != "system") %>%
   ggplot(aes(x = as.numeric(day), y = median_ratio)) +
   geom_hline(yintercept = 1, linetype = 2) +
   geom_ribbon(aes(ymin = l95_ratio, ymax = u95_ratio), alpha = 0.15) +
@@ -285,7 +285,6 @@ bind_rows(
        colour = "",
        y = str_wrap("RMSE ratio between baseline and simulation models", 50)) +
   theme(legend.position = "bottom")
-
 
 
 bind_rows(
@@ -343,7 +342,6 @@ bind_rows(
   scale_x_continuous(breaks = 1:10) +
   scale_colour_manual(values = c("green3", "red2")) +
   theme_minimal() +
-  # geom_line() +
   ggforce::geom_link2(aes(colour = after_stat(
     ifelse(
       y > 1,
@@ -357,6 +355,88 @@ bind_rows(
        colour = "",
        y = str_wrap("RMSE ratio between baseline and simulation models", 50)) +
   theme(legend.position = "bottom")
+
+
+bind_rows(
+  out %>%
+    map("result") %>%
+    map("na_out_df") %>%
+    bind_rows(.id = "id") %>%
+    filter(site != "nbt") %>%
+    complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
+    dplyr::select(id, site, day, pathway, source, n) %>%
+    pivot_wider(values_from = n, names_from = source) %>%
+    mutate(source = "new_admits"),
+  out %>%
+    map("result") %>%
+    map("ca_out_df") %>%
+    bind_rows(.id = "id") %>%
+    filter(site != "NBT") %>%
+    complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
+    dplyr::select(id, site, day, pathway, source, n) %>%
+    pivot_wider(values_from = n, names_from = source) %>%
+    mutate(source = "cur_admits")
+) %>%
+  dplyr::select(-observed) %>%
+  left_join(observed) %>%
+  summarise(
+    simulated = sum(simulated),
+    observed = sum(observed),
+    .by = c(id, site, day, pathway)
+  ) %>%
+  left_join(
+    out %>%
+      map("result") %>%
+      map("bl_out_df") %>%
+      bind_rows(.id = "id") %>%
+      mutate(day = factor(day, levels = 1:10)) %>%
+      filter(site != "nbt") %>%
+      complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
+      rename(baseline = n)
+  ) %>%
+  mutate(site = recode(site, !!!c("bri" = "Bristol Royal Infirmary", "weston" = "Weston General Hospital"))) %>%
+  mutate(across(c(simulated, baseline), list(error = \(x) observed - x))) %>%
+  mutate(across(matches("_error"), list(sq = \(x) x^2))) %>%
+  summarise(across(matches("error_sq"), list(mean = \(x) mean(x, na.rm = TRUE)
+                                             )), .by = c(site, id, day, pathway))%>%
+  mutate(across(matches("error_sq_"), list(root = sqrt))) %>%
+  mutate(
+    ratio = baseline_error_sq_mean_root/simulated_error_sq_mean_root,
+    ) %>%
+  summarise(median_ratio = quantile(ratio, 0.5, na.rm = TRUE),
+            uq_ratio = quantile(ratio, 0.75, na.rm = TRUE),
+            lq_ratio = quantile(ratio, 0.25, na.rm = TRUE),
+            .by = c(site, day, pathway)) %>%
+  filter(site != "system") %>%
+  ggplot(aes(x = as.numeric(day), y = median_ratio)) +
+  geom_hline(yintercept = 1, linetype = 2) +
+  scale_x_continuous(breaks = 1:10) +
+  scale_colour_manual(values = c("green3", "red2")) +
+  geom_ribbon(aes(ymax = uq_ratio, ymin = lq_ratio), alpha = 0.15) +
+  ggforce::geom_link2(aes(colour = after_stat(
+    ifelse(
+      y > 1,
+      "Model outperforms baseline",
+      "Model underperforms baseline"
+    )
+  ))) +
+  facet_grid(site ~ pathway) +
+  theme_minimal() +
+  ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") +
+  labs(x = "Day",
+       colour = "",
+       y = str_wrap("RMSE ratio between baseline and simulation models", 50)) +
+  theme(legend.position = "bottom")
+
+
+
+ggsave(last_plot(),
+       filename = "./validation/validation_1_rmse_ratio.png",
+       bg = "white",
+       width = 10,
+       height = 7.5,
+       scale = 0.65)
+
 
 bind_rows(
   out %>%

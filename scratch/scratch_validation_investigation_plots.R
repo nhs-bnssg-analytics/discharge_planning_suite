@@ -244,25 +244,38 @@ ggsave(last_plot(),
        scale = 0.75)
 
 
-discharge_plots[[6]][[1]] + labs(title = "Validation 4a")
+discharge_plots[[6]][[1]] <- discharge_plots[[6]][[1]] + labs(title = "Validation 4b")
 ggsave(last_plot(),
-       filename = "./validation/validation_4a.png",
+       filename = "./validation/validation_4b.png",
        bg = "white",
        width = 10,
        height = 7.5,
        scale = 0.6)
 
-discharge_plots[[6]][[2]] + labs(title = "Validation 3a")
+discharge_plots[[6]][[2]] <- discharge_plots[[6]][[2]] + labs(title = "Validation 3b")
 ggsave(last_plot(),
-       filename = "./validation/validation_3a.png",
+       filename = "./validation/validation_3b.png",
        bg = "white",
        width = 10,
        height = 7.5,
+       scale = 0.6)
+
+
+patchwork::wrap_plots(rev(discharge_plots[[6]]), ncol = 1, axes = "collect", guides = "collect") &
+  theme(legend.position = "bottom")
+
+
+ggsave(last_plot(),
+       filename = "./validation/validation_3b_4b.png",
+       bg = "white",
+       width = 10,
+       height = 10,
        scale = 0.6)
 
 # patchwork::wrap_plots(ncol = 2, axes = "collect", guides = "collect")
 
-discharge_plots[[7]][[1]] + labs(title = "Validation 4a")
+discharge_plots[[7]][[1]] <- discharge_plots[[7]][[1]] + labs(title = "Validation 4a")
+discharge_plots[[7]][[1]]
 ggsave(last_plot(),
        filename = "./validation/validation_4a_newadmits.png",
        bg = "white",
@@ -270,7 +283,7 @@ ggsave(last_plot(),
        height = 10,
        scale = 0.75)
 
-discharge_plots[[7]][[2]] + labs(title = "Validation 3a")
+discharge_plots[[7]][[2]] <- discharge_plots[[7]][[2]] + labs(title = "Validation 3a")
 ggsave(last_plot(),
        filename = "./validation/validation_3a_curradmits.png",
        bg = "white",
@@ -278,7 +291,15 @@ ggsave(last_plot(),
        height = 10,
        scale = 0.75)
 
+patchwork::wrap_plots(rev(discharge_plots[[7]]), ncol = 1, axes = "collect", guides = "collect") &
+  theme(legend.position = "bottom")
 
+ggsave(last_plot(),
+       filename = "./validation/validation_3a_4a.png",
+       bg = "white",
+       width = 10,
+       height = 12.5,
+       scale = 0.6)
 
 pathway_plots <- local({
   out_df <- bind_rows(
