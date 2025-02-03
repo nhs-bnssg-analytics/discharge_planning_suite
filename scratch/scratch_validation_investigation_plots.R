@@ -142,12 +142,19 @@ discharge_plots <- local({
   
   p6 <- out_df %>%
     filter(site != "system") %>%
-    nest(.by = metric) %>%
+    mutate(,
+           site = recode(site,
+                         "bri" = "Bristol Royal Infirmary",
+                         "weston" = "Weston General Hospital"),
+           metric = recode(metric, 
+                           "curr_admits" = "Validation 3b",
+                           "new_admits" = "Validation 4b")) %>%
+    nest(.by = c(metric, site)) %>%
     mutate(plot = map(data, \(x) x %>%
                         summarise(
                           simulated = sum(simulated),
                           observed = sum(observed),
-                          .by = c(id, site, day)
+                          .by = c(id, day)
                         ) %>%
                         summarise(
                           sim_mean = mean(simulated),
@@ -156,20 +163,16 @@ discharge_plots <- local({
                           obs_mean = mean(observed),
                           obs_u95 = quantile(observed, 0.975),
                           obs_l95 = quantile(observed, 0.025),
-                          .by = c(site, day)) %>%
-                        pivot_longer(-c(site, day), 
+                          .by = c(day)) %>%
+                        pivot_longer(-c(day), 
                                      names_to = c("grp", "metric"),
                                      names_sep = "_") %>%
                         pivot_wider(names_from = metric, values_from = value) %>%
                         mutate(grp = recode(grp,
                                             "sim" = "Simulated",
                                             "obs" = "Observed"
-                        ),
-                        site = recode(site,
-                                      "bri" = "Bristol Royal Infirmary",
-                                      "weston" = "Weston General Hospital"
                         )) %>%
-                        ggplot(aes(x = factor(day, levels = 1:10), y = mean, col = grp)) +
+                        ggplot(aes(x = as.numeric(day), y = mean, col = grp)) +
                         geom_pointrange(aes(ymin = l95, ymax = u95),
                                         linewidth = 0.5,
                                         position = position_dodge(width = 0.75),
@@ -179,12 +182,36 @@ discharge_plots <- local({
                         # scale_x_continuous(breaks = seq(2, 10, 2)) +
                         theme_minimal() +
                         labs(colour = "") +
-                        theme(legend.position = "bottom") +
-                        ggh4x::facet_grid2(.~site, scales = "free", independent = "y"))) %>%
-    mutate(plot = map2(plot, metric, \(x, y) x + labs(title = glue::glue("{y}"), y = "Numbers becoming ready for discharge", x = "Day"))) %>%
+                        theme(legend.position = "bottom"))) %>%
+    mutate(plot = pmap(
+      list(
+        plot,
+        site,
+        metric),
+      \(x, y, z) x +
+        scale_x_continuous(
+          breaks = 1:10,
+          sec.axis = sec_axis(
+            ~ .,
+            name = y,
+            breaks = NULL,
+            labels = NULL
+          )
+        ) +
+        scale_y_continuous(
+          sec.axis = sec_axis(
+            ~ .,
+            name = z,
+            breaks = NULL,
+            labels = NULL
+          )
+        ) +
+        labs(# title = glue::glue("{y}"),
+          y = "Numbers becoming ready for discharge", x = "Day")
+    )) %>%
     pull(plot)
   
-  
+  browser()
   p7 <- out_df %>%
     filter(site != "system") %>%
     nest(.by = metric) %>%
@@ -244,32 +271,38 @@ ggsave(last_plot(),
        scale = 0.75)
 
 
+library(patchwork)
+# discharge_plots[[6]][[1]] <- discharge_plots[[6]][[1]] + labs(title = "Validation 4b")
+# ggsave(last_plot(),
+#        filename = "./validation/validation_4b.png",
+#        bg = "white",
+#        width = 10,
+#        height = 7.5,
+#        scale = 0.6)
+# 
+# discharge_plots[[6]][[2]] <- discharge_plots[[6]][[2]] + labs(title = "Validation 3b")
+# ggsave(last_plot(),
+#        filename = "./validation/validation_3b.png",
+#        bg = "white",
+#        width = 10,
+#        height = 7.5,
+#        scale = 0.6)
+
 discharge_plots[[6]][[1]] <- discharge_plots[[6]][[1]] + labs(title = "Validation 4b")
-ggsave(last_plot(),
-       filename = "./validation/validation_4b.png",
-       bg = "white",
-       width = 10,
-       height = 7.5,
-       scale = 0.6)
-
-discharge_plots[[6]][[2]] <- discharge_plots[[6]][[2]] + labs(title = "Validation 3b")
-ggsave(last_plot(),
-       filename = "./validation/validation_3b.png",
-       bg = "white",
-       width = 10,
-       height = 7.5,
-       scale = 0.6)
-
-
-patchwork::wrap_plots(rev(discharge_plots[[6]]), ncol = 1, axes = "collect", guides = "collect") &
+discharge_plots[[6]][[3]] <- discharge_plots[[6]][[3]] + labs(title = "Validation 3b")
+wrap_plots(discharge_plots[[6]][c(3,4,1,2)],
+           ncol = 2,
+           axes = "collect",
+           guides = "collect") &
   theme(legend.position = "bottom")
+
 
 
 ggsave(last_plot(),
        filename = "./validation/validation_3b_4b.png",
        bg = "white",
        width = 10,
-       height = 10,
+       height = 7.5,
        scale = 0.6)
 
 # patchwork::wrap_plots(ncol = 2, axes = "collect", guides = "collect")
