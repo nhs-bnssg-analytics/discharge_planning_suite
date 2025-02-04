@@ -454,7 +454,7 @@ bind_rows(
   ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") +
   labs(x = "Day",
        colour = "",
-       y = str_wrap("Ratio of baseline and simulation model residuals to the observed values", 50)) +
+       y = str_wrap("Performance ratio of baseline and simulation model residuals to the observed values", 50)) +
   theme(legend.position = "bottom")
 
 

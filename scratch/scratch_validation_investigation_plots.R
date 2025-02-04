@@ -173,8 +173,10 @@ discharge_plots <- local({
                                             "obs" = "Observed"
                         )) %>%
                         ggplot(aes(x = as.numeric(day), y = mean, col = grp)) +
+                        # ungeviz::geom_hpline(aes(y = mean), position = position_dodge(width = 0.75), linewidth = 0.33) +
                         geom_pointrange(aes(ymin = l95, ymax = u95),
                                         linewidth = 0.5,
+                                        fatten = 0.1,
                                         position = position_dodge(width = 0.75),
                                         size = 0.33) +
                         # geom_point(size = 0.9, position = position_dodge(width = 0.75)) +
@@ -218,8 +220,8 @@ discharge_plots <- local({
                          "bri" = "Bristol Royal Infirmary",
                          "weston" = "Weston General Hospital"),
            metric = recode(metric, 
-                           "curr_admits" = "Validation 3b",
-                           "new_admits" = "Validation 4b")) %>%
+                           "curr_admits" = "Validation 3a",
+                           "new_admits" = "Validation 4a")) %>%
     nest(.by = c(site, metric, pathway)) %>%
     mutate(plot = map(data, \(x) x %>%
                         summarise(
@@ -246,7 +248,8 @@ discharge_plots <- local({
                         ggplot(aes(x = as.numeric(day), y = mean, col = grp)) +
                         geom_pointrange(aes(ymin = l95, ymax = u95),
                                         linewidth = 0.5,
-                                        position = position_dodge(width = 0.75),
+                                        fatten = 0.1,
+                                        position = position_dodge(width = 0.9),
                                         size = 0.33) +
                         # geom_point(size = 0.9, position = position_dodge(width = 0.75)) +
                         scale_colour_manual(values = c("#8c96c6", "#88419d")) +
@@ -257,14 +260,14 @@ discharge_plots <- local({
     mutate(plot = pmap(
       list(
         plot,
-        site,
+        metric,
         pathway),
       \(x, y, z) x +
         scale_x_continuous(
-          breaks = 1:10,
+          breaks = seq(2, 10, 2),
           sec.axis = sec_axis(
             ~ .,
-            name = y,
+            name = z,
             breaks = NULL,
             labels = NULL
           )
@@ -272,7 +275,7 @@ discharge_plots <- local({
         scale_y_continuous(
           sec.axis = sec_axis(
             ~ .,
-            name = z,
+            name = y,
             breaks = NULL,
             labels = NULL
           )
@@ -335,12 +338,13 @@ library(patchwork)
 # patchwork::wrap_plots(rev(discharge_plots[[7]]), ncol = 1, axes = "collect", guides = "collect") &
 #   theme(legend.position = "bottom")
 
-discharge_plots[[6]][[1]] <- discharge_plots[[6]][[1]] + labs(title = "Validation 4b")
-discharge_plots[[6]][[3]] <- discharge_plots[[6]][[3]] + labs(title = "Validation 3b")
+# discharge_plots[[6]][[1]] <- discharge_plots[[6]][[1]] + labs(title = "Validation 4b")
+# discharge_plots[[6]][[3]] <- discharge_plots[[6]][[3]] + labs(title = "Validation 3b")
 wrap_plots(discharge_plots[[6]][c(3,4,1,2)],
            ncol = 2,
            axes = "collect",
-           guides = "collect") &
+           guides = "collect") +
+  plot_annotation(title = "Validation 3b & 4b") &
   theme(legend.position = "bottom")
 
 
@@ -354,16 +358,29 @@ ggsave(last_plot(),
 
 # patchwork::wrap_plots(ncol = 2, axes = "collect", guides = "collect")
 
-wrap_plots(discharge_plots[[7]][c(1:4, 9:12, 5:8, 13:16)],
-           byrow = FALSE,
-           nrow = 8,
+ptc_3a_4a <- wrap_plots(discharge_plots[[7]][c(9:16, 1:8)],
+           byrow = TRUE,
+           nrow = 2,
            axis_titles = "collect",
            guides = "collect") &
-  theme(legend.position = "bottom")
+  theme(legend.position = "bottom") 
 
+titles_site <- wrap_plots(
+  list( {ggplot() + annotate("text", label = "Bristol Royal Infirmary", size = 4, x = 0, y = 0) + theme_void()},
+        {ggplot() + annotate("text", label = "Weston General Hospital", size = 4, x = 0, y = 0) + theme_void()}
+  )
+)
 
-discharge_plots[[7]][[1]] <- discharge_plots[[7]][[1]] + labs(title = "Validation 4a")
-discharge_plots[[7]][[9]] <- discharge_plots[[7]][[9]] + labs(title = "Validation 3a")
+wrap_plots(list(titles_site, ptc_3a_4a), heights = {\(x) c(x, 1-x)}(0.075)) +
+  plot_annotation(title = "Validation 3a & 4a")
+
+ggsave(last_plot(),
+       filename = "./validation/validation_3a_4a.png",
+       bg = "white",
+       width = 12.5,
+       height = 10,
+       scale = 0.7)
+
 
 ptc_3a_4a <- wrap_plots(discharge_plots[[7]][c(9:16, 1:8)],
            byrow = FALSE,
@@ -373,24 +390,21 @@ ptc_3a_4a <- wrap_plots(discharge_plots[[7]][c(9:16, 1:8)],
   theme(legend.position = "bottom")
 
 
-
-
-
 titles <- wrap_plots(
-  list( {ggplot() + annotate("text", label = "Validation 3a", size = 7, x = 0, y = 0) + theme_void()},
-        {ggplot() + annotate("text", label = "Validation 4a", size = 7, x = 0, y = 0) + theme_void()}
+  list( {ggplot() + annotate("text", label = "Validation 3a", size = 6, x = 0, y = 0) + theme_void()},
+        {ggplot() + annotate("text", label = "Validation 4a", size = 6, x = 0, y = 0) + theme_void()}
       )
   )
 
-wrap_plots(list(text1, ptc_3a_4a), heights = {\(x) c(x, 1-x)}(0.075))
+wrap_plots(list(titles, ptc_3a_4a), heights = {\(x) c(x, 1-x)}(0.075))
 
 
 ggsave(last_plot(),
        filename = "./validation/validation_3a_4a.png",
        bg = "white",
        width = 12.5,
-       height = 10,
-       scale = 0.85)
+       height = 12.5,
+       scale = 0.7)
 
 pathway_plots <- local({
   out_df <- bind_rows(
@@ -485,6 +499,7 @@ pathway_plots <- local({
     pull(plot) %>%
     patchwork::wrap_plots(ncol = 1, axes = "collect")
   
+
  p4 <- out_df %>%
     summarise(
       simulated = sum(simulated),
@@ -503,19 +518,107 @@ pathway_plots <- local({
         geom_point() +
         geom_hline(aes(yintercept = 0), linetype = 2) +
         geom_errorbar(aes(ymin = l95, ymax = u95)) +
-        ggh4x::facet_grid2(site~pathway, scales = "free", independent = "y") +
+        theme_minimal() +
+        facet_grid(site~pathway, scales = "free_x") +
+        # ggh4x::facet_grid2(site~pathway, scales = "free", independent = "y") +
         labs(title = glue::glue("Pathway proportion residuals per site, {.y}"),
              y = "Observed pathway proportion minus simulated pathway proportion")
     })) %>%
     pull(plot) %>%
     patchwork::wrap_plots(ncol = 1, axes = "collect")
+ 
+ 
+p5 <- out_df %>%
+   summarise(
+     simulated = sum(simulated),
+     observed = sum(observed),
+     .by = c(id, site, pathway, metric)
+   ) %>%
+  filter(site != "system") %>%
+   mutate(across(c(simulated, observed), ~ .x/sum(.x)), .by = c(id, site,  metric)) %>%
+   summarise(across(c(simulated, observed), list(mean = mean, 
+                                                 uq = \(x) quantile(x, 0.975),
+                                                 lq = \(x) quantile(x, 0.025))),
+             .by = c(site, pathway, metric)) %>%
+  pivot_longer(-c(site, pathway, metric), 
+               names_to = c("grp", "stat"),
+               names_sep = "_") %>%
+  pivot_wider(names_from = stat, values_from = value) %>%
+  nest(.by = c(site, pathway, metric)) %>%
+  mutate(site = recode(site,
+                       "bri" = "Bristol Royal Infirmary",
+                       "weston" = "Weston General Hospital"
+  )) %>%
+  mutate(plot = pmap(list(data, site, pathway), \(d, s, p) {
+    ggplot(data = d, aes(
+      x = 0,
+      y = mean,
+      ymax = uq,
+      ymin = lq,
+      col = grp
+    )) +
+      geom_pointrange(
+        linewidth = 0.5,
+        fatten = 0.1,
+        position = position_dodge(width = 0.01),
+        size = 0.33
+      ) +
+      scale_colour_manual(values = c("#8c96c6", "#88419d")) +
+      scale_x_continuous(
+        breaks = NULL,
+        sec.axis = sec_axis(
+        ~ .,
+        name = s,
+        breaks = NULL,
+        labels = NULL
+      )) +
+      scale_y_continuous(sec.axis = sec_axis(
+        ~ .,
+        name = p,
+        breaks = NULL,
+        labels = NULL
+      )) +
+      labs(x = "", y = "Proportion", colour = "") +
+      # scale_x_continuous(breaks = seq(2, 10, 2)) +
+      theme_minimal() +
+      theme(panel.grid.major.x = element_blank(),
+            panel.grid.minor = element_blank(),
+            axis.title.x.top = element_text(margin = margin(t = 0, r = 0, b = 10, l = 0))) 
+  })) %>% 
+  pull(plot)
+
+ 
+ 
+ 
   
- list(p1, p2, p3, p4)
+ list(p1, p2, p3, p4, p5)
   })
 
 pathway_plots
 
 
+ptc_3c_4c <- wrap_plots(pathway_plots[[5]][c(9:16, 1:8)],
+                        byrow = FALSE,
+                        nrow = 4,
+                        axis_titles = "collect",
+                        guides = "collect") &
+  theme(legend.position = "bottom")
+
+
+titlesc <- wrap_plots(
+  list( {ggplot() + annotate("text", label = "Validation 3c", size = 6, x = 0, y = 0) + theme_void()},
+        {ggplot() + annotate("text", label = "Validation 4c", size = 6, x = 0, y = 0) + theme_void()}
+  )
+)
+
+wrap_plots(list(titlesc, ptc_3c_4c), heights = {\(x) c(x, 1-x)}(0.075))
+
+ggsave(last_plot(),
+       filename = "./validation/validation_3c_4c.png",
+       bg = "white",
+       width = 10,
+       height = 10,
+       scale = 0.7)
 
 
 bind_rows(

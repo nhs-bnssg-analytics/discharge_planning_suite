@@ -469,14 +469,14 @@ roc_plot <- function(fit, site) {
               u95 = quantile(.estimate, 0.975), 
               l95 = quantile(.estimate, 0.025), 
               .by = class) %>%
-    mutate(label = str_c(class, "\n", "ROC: ", round(roc, 2), " [", round(l95, 2), ", ", round(u95, 2), "]")) %>%
+    mutate(label = str_c(class, "\n", "AUC: ", round(roc, 2), " [", round(l95, 2), ", ", round(u95, 2), "]")) %>%
     mutate(label = set_names(label, class)) %>%
     pull(label)
   
   fit$fit_rs$roc_df %>%
     bind_rows(.id = "fold") %>%
     ungroup() %>%
-    mutate(class = recode(class, !!!labels))%>%
+    mutate(class = recode(class, !!!labels)) %>%
     ggplot(aes(
       x = 1 - specificity,
       y = sensitivity,
@@ -484,14 +484,15 @@ roc_plot <- function(fit, site) {
     )) +
     geom_path(alpha = 0.5) +
     ggplot2::geom_abline(lty = 3) +
-    ggplot2::coord_equal() +
+    # ggplot2::coord_equal() +
     ggplot2::theme_minimal() +
-    ggplot2::theme(panel.spacing.x = unit(x = 0.75, units = "cm"))+
-    labs(title = site,
+    ggplot2::theme(plot.title = element_blank(),
+      panel.spacing.x = unit(x = 0.75, units = "cm"))+
+    labs(#title = site,
          colour = "",
          y = "Sensitivity",
          x = "1 - Specificity") +
-    facet_grid(.~class)
+    facet_grid(str_c(site)~class)
   }
 
 fits %>%
@@ -508,8 +509,8 @@ ggsave(last_plot(),
        filename = "validation/rf_roc_folds.png",
        bg = "white",
        width = 12,
-       height = 7.5,
-       scale = 0.8)
+       height = 6,
+       scale = 0.7)
 
 fits %>%
   filter(site != "nbt") %>%

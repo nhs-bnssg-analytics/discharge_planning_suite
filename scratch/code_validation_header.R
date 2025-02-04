@@ -100,7 +100,11 @@ n_days <- 10
 
 validation_end <- ymd("2024-09-01")
 validation_start <- ymd("2023-07-01")
-start_date <- validation_end - dweeks(13) 
+# start_date <- validation_end - dweeks(13
+
+fc_train_length_wks <- 10
+
+start_date <- validation_start
 nctr_df <- nctr_df %>% filter(between(Census_Date, validation_start, validation_end-ddays(1)))
 
 sites <- nctr_df %>%
