@@ -102,7 +102,7 @@ los_df <- nctr_df %>%
     day_of_admission,
     sex,
     age = Person_Age,
-    spec = Specialty_Code,
+    # spec = Specialty_Code,
     bed_type = Bed_Type,
     los = discharge_rdy_los
   )  #%>%
@@ -132,7 +132,7 @@ mortality_df <- local({
     mutate(Derived_Pseudo_NHS = as.character(Derived_Pseudo_NHS),
            REG_DATE_OF_DEATH = lubridate::ymd(REG_DATE_OF_DEATH)) %>%
     mutate(Derived_Pseudo_NHS = as.character(Derived_Pseudo_NHS)) %>%
-    select(nhs_number = Derived_Pseudo_NHS, date_death = REG_DATE_OF_DEATH)
+    dplyr::select(nhs_number = Derived_Pseudo_NHS, date_death = REG_DATE_OF_DEATH)
 })
 
 # remove patients who died
@@ -140,7 +140,7 @@ mortality_df <- local({
 los_df <- los_df %>%
   left_join(mortality_df) %>% 
   filter(is.na(date_death) | date_death > der_date_nctr) %>%
-  select(-date_death, admission_date)
+  dplyr::select(-date_death, admission_date)
 
 # ECDF
 
@@ -156,16 +156,17 @@ los_df %>%
   theme_minimal() +
   theme(axis.ticks = element_line(),
         panel.spacing.x = unit(0.75, units = "cm")) +
-  labs(y = "Empirical Cumulative Distribution Function",
-       x = "mLOS (Midnights Crossed)") +
+  labs(title = "Calibration 4e",
+       y = "Empirical Cumulative Distribution Function",
+       x = "mLOS (Midnights-crossed)") +
   facet_wrap(vars(site), nrow = 1)
 
 
 ggsave(last_plot(),
-       filename = "./validation/los_ecdf.png",
+       filename = "./validation/calibration_4e_los_ecdf.png",
        bg = "white",
        width = 10,
-       height = 5,
+       height = 6,
        scale = 0.65)
 
 
@@ -183,11 +184,11 @@ saveRDS(los_df, "data/los_df.RDS")
 # Now use all data for training and test
 los_testing <- los_df %>%
   filter(between(Census_Date, validation_start, validation_end)) %>%
-  select(-Census_Date)
+  dplyr::select(-Census_Date)
 
 los_train <- los_df %>%
   filter(between(Census_Date, validation_start, validation_end)) %>%
-  select(-Census_Date)
+  dplyr::select(-Census_Date)
 
 # attributes to join
 
@@ -215,7 +216,7 @@ model_df_train <- los_train %>%
          cambridge_score,
          age,
          sex,
-         spec, # spec has too many levels, some of which don't get seen enough to reliably create a model pipeline
+         # spec, # spec has too many levels, some of which don't get seen enough to reliably create a model pipeline
          bed_type
          # smoking,
          # ethnicity,
@@ -237,7 +238,7 @@ model_df_test <- los_testing %>%
                 cambridge_score,
                 age,
                 sex,
-               spec, # spec has too many levels, some of which don't get seen enough to reliably create a model pipeline
+               # spec, # spec has too many levels, some of which don't get seen enough to reliably create a model pipeline
                 bed_type
                 # smoking,
                 # ethnicity,
@@ -269,7 +270,7 @@ tree_grid <- grid_regular(cost_complexity(range = c(-6, -1), trans = log10_trans
 tree_rec <- recipe(los ~ ., data = model_df_train)  %>%
   update_role(site, new_role = "site id") %>%  
   step_novel(all_nominal_predictors(), new_level = "other") %>%
-  step_other(all_nominal_predictors(), -spec, threshold = 0.1)
+  step_other(all_nominal_predictors(), threshold = 0.1)
 
 
 tree_wf <- workflow() %>%
@@ -294,6 +295,8 @@ tree_rs <- tune_grid(
   metrics = tree_metrics
 )
 
+saveRDS(tree_rs, "data/tree_rs.RDS")
+
 autoplot(tree_rs) +
   theme_minimal(base_family = "IBMPlexSans") +
   # scale_x_continuous(transform = "log10", labels = label_math()) +
@@ -302,10 +305,9 @@ autoplot(tree_rs) +
   labs(col = "Min n")
 
 
-
 labeller_tree_depth <- function(string, prefix = "Tree-depth: ") paste0(prefix, string)
-labeller_metric <- c(mae = "Mean Absolute Error",
-                     rmse = "Root Mean Squared Error",
+labeller_metric <- c(mae = "Mean Absolute Error (MAE)",
+                     rmse = "Root Mean Squared Error (RMSE)",
                      rsq = "R-squared")
 
 tree_rs %>%
@@ -321,12 +323,13 @@ tree_rs %>%
                )
              ) +
   theme_minimal() +
-  scale_y_continuous(sec.axis = sec_axis(~ ., name = "Accuracy measure", breaks = NULL, labels = NULL)) +
+  scale_y_continuous(sec.axis = sec_axis(~ ., name = "Performance metric", breaks = NULL, labels = NULL)) +
   scale_x_continuous(transform = "log10", labels = trans_format("log10", math_format(10^.x)), sec.axis = sec_axis(~ ., name = "Tree-depth", breaks = NULL, labels = NULL)) +
   scale_color_viridis_d(begin = 0.1, end = 0.8)  +
   # theme(legend.position = "bottom") +
-  labs(col = "Min n",
-       x = "Cost-Complextiy Parameter",
+  labs(title = "Calibration 3d",
+       col = "Min n",
+       x = "Cost-complextiy parameter",
        y = "")
 
 
@@ -410,6 +413,7 @@ png(filename = "materials/tree_plot.png",
     bg = "white"
     )
 rpart.plot::rpart.plot(tree, fallen.leaves = FALSE, type = 2, extra = 101, node.fun = node.fun1)
+title("Calibration 3d", adj = 0)
 dev.off()
 
 
@@ -434,17 +438,18 @@ los_model_df %>%
   scale_y_continuous(breaks = seq(0, 1, 0.25)) +
   theme_minimal() +
   theme(axis.ticks = element_line()) +
-  labs(y = "Empirical Cumulative Distribution Function",
-       x = "mLOS (Midnights Crossed)") +
+  labs(title = "Calibration 3d",
+       y = "Empirical Cumulative Distribution Function",
+       x = "mLOS (Midnights-crossed)") +
   facet_wrap(vars(leaf),
              labeller = as_labeller(labeller_leaf_id))
 
 
 ggsave(last_plot(),
-       filename = "./validation/dec_tree_los_ecdf.png",
+       filename = "./validation/calibration_3d_dec_tree_los_ecdf.png",
        bg = "white",
        width = 10,
-       height = 7.5,
+       height = 10,
        scale = 0.7)
 
 ggplot(los_model_df, aes(x = los)) +

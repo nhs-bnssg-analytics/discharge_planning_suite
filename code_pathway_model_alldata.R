@@ -463,7 +463,7 @@ roc_plot <- function(fit, site) {
   labels <- fit$fit_rs$roc_df %>%
     bind_rows(.id = "fold") %>%
     ungroup() %>%
-    select(fold, class, .estimate) %>%
+    dplyr::select(fold, class, .estimate) %>%
     distinct() %>%
     summarise(roc = mean(.estimate),
               u95 = quantile(.estimate, 0.975), 
@@ -487,6 +487,7 @@ roc_plot <- function(fit, site) {
     # ggplot2::coord_equal() +
     ggplot2::theme_minimal() +
     ggplot2::theme(plot.title = element_blank(),
+                   panel.background = element_rect(fill = NA, color = "#DDDDDD", linewidth = 1),
       panel.spacing.x = unit(x = 0.75, units = "cm"))+
     labs(#title = site,
          colour = "",
@@ -502,14 +503,15 @@ fits %>%
     ) %>%
   pull(plot) %>%
  wrap_plots(ncol = 1) +
- plot_layout(axes = "collect")
+ plot_layout(axes = "collect") +
+ plot_annotation("Validation 3e")
 
 
 ggsave(last_plot(),
        filename = "validation/rf_roc_folds.png",
        bg = "white",
        width = 12,
-       height = 6,
+       height = 7.5,
        scale = 0.7)
 
 fits %>%
@@ -539,7 +541,8 @@ fits %>%
       labs(title = site)
   })) %>%
   pull(vip) %>%
-  patchwork::wrap_plots(axes = "collect")
+  patchwork::wrap_plots(axes = "collect") +
+  patchwork::plot_annotation(title = "Calibration 3e")
 
 
 ggsave(last_plot(),

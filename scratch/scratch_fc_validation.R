@@ -97,6 +97,7 @@ library(fable.prophet)
                                scale_x_date(breaks = "15 days", labels=date_format("%d %b\n%Y"),
                                             sec.axis = sec_axis(~ ., name = glue::glue("{site}, MAPE: {round(mape,1)} [{round(mape_lq,1)}, {round(mape_uq,1)}]"), breaks = NULL, labels = NULL)) +
                                theme_minimal() +
+                               theme(panel.background = element_rect(fill = NA, color = "#DDDDDD", linewidth = 1)) +
                                labs(x = "Date", y = glue::glue("Daily admissions"))
                              
        }))

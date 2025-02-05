@@ -451,8 +451,10 @@ bind_rows(
   ))) +
   facet_grid(site ~ pathway) +
   theme_minimal() +
+  theme(panel.background = element_rect(fill = NA, color = "#DDDDDD", linewidth = 1)) +
   ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") +
-  labs(x = "Day",
+  labs(title = "Validation 1",
+       x = "Day",
        colour = "",
        y = str_wrap("Performance ratio of baseline and simulation model residuals to the observed values", 50)) +
   theme(legend.position = "bottom")

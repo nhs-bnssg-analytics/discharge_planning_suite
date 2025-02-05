@@ -1,4 +1,6 @@
 library(tidyverse)
+library(patchwork)
+
 
 out <- readRDS("data/final_validation_full_out_1e3_newpropsloslogic.RDS")
 
@@ -184,7 +186,8 @@ discharge_plots <- local({
                         # scale_x_continuous(breaks = seq(2, 10, 2)) +
                         theme_minimal() +
                         labs(colour = "") +
-                        theme(legend.position = "bottom"))) %>%
+                        theme(panel.background = element_rect(fill = NA, color = "#DDDDDD", linewidth = 1),
+                              legend.position = "bottom"))) %>%
     mutate(plot = pmap(
       list(
         plot,
@@ -256,7 +259,8 @@ discharge_plots <- local({
                         # scale_x_continuous(breaks = seq(2, 10, 2)) +
                         theme_minimal() +
                         labs(colour = "") +
-                        theme(legend.position = "bottom")))%>%
+                        theme(panel.background = element_rect(fill = NA, color = "#DDDDDD", linewidth = 1),
+                              legend.position = "bottom")))%>%
     mutate(plot = pmap(
       list(
         plot,
@@ -300,7 +304,6 @@ ggsave(last_plot(),
        scale = 0.75)
 
 
-library(patchwork)
 # discharge_plots[[6]][[1]] <- discharge_plots[[6]][[1]] + labs(title = "Validation 4b")
 # ggsave(last_plot(),
 #        filename = "./validation/validation_4b.png",
@@ -547,9 +550,10 @@ p5 <- out_df %>%
   nest(.by = c(site, pathway, metric)) %>%
   mutate(site = recode(site,
                        "bri" = "Bristol Royal Infirmary",
-                       "weston" = "Weston General Hospital"
-  )) %>%
-  mutate(plot = pmap(list(data, site, pathway), \(d, s, p) {
+                       "weston" = "Weston General Hospital"),
+         metric = recode(metric, "curr_admits" = "Validation 3c", 
+                         "new_admits" = "Validation 4c")) %>%
+  mutate(plot = pmap(list(data, metric, pathway), \(d, m, p) {
     ggplot(data = d, aes(
       x = 0,
       y = mean,
@@ -568,20 +572,21 @@ p5 <- out_df %>%
         breaks = NULL,
         sec.axis = sec_axis(
         ~ .,
-        name = s,
+        name = p,
         breaks = NULL,
         labels = NULL
       )) +
       scale_y_continuous(sec.axis = sec_axis(
         ~ .,
-        name = p,
+        name = m,
         breaks = NULL,
         labels = NULL
       )) +
       labs(x = "", y = "Proportion", colour = "") +
       # scale_x_continuous(breaks = seq(2, 10, 2)) +
       theme_minimal() +
-      theme(panel.grid.major.x = element_blank(),
+      theme(panel.background = element_rect(fill = NA, color = "#DDDDDD", linewidth = 1),
+            panel.grid.major.x = element_blank(),
             panel.grid.minor = element_blank(),
             axis.title.x.top = element_text(margin = margin(t = 0, r = 0, b = 10, l = 0))) 
   })) %>% 
@@ -618,6 +623,25 @@ ggsave(last_plot(),
        bg = "white",
        width = 10,
        height = 10,
+       scale = 0.7)
+
+
+ptc_3c_4c <- wrap_plots(pathway_plots[[5]][c(9:16, 1:8)],
+           byrow = TRUE,
+           nrow = 2,
+           axis_titles = "collect",
+           guides = "collect") &
+  theme(legend.position = "bottom")
+
+
+wrap_plots(list(titles_site, ptc_3c_4c), heights = {\(x) c(x, 1-x)}(0.075)) +
+  plot_annotation(title = "Validation 3c & 4c")
+
+ggsave(last_plot(),
+       filename = "./validation/validation_3c_4c.png",
+       bg = "white",
+       width = 10,
+       height = 8.5,
        scale = 0.7)
 
 
