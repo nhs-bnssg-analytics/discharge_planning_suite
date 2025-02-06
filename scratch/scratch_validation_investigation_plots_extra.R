@@ -154,7 +154,7 @@ census_log <- nctr_df_full %>%
   group_by(CDS_Unique_Identifier) %>%
   mutate(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other")) %>%
   mutate(start_date = min(Census_Date)) %>%
-  mutate(end_date = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - ddays(1),max(Census_Date)))) %>%
+  mutate(end_date = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) -ddays(1), max(Census_Date)))) %>%
   dplyr::select(
     nhs_number,
     id = CDS_Unique_Identifier,
@@ -469,6 +469,118 @@ ggsave(last_plot(),
        scale = 0.65)
 
 
+
+bind_rows(
+  # out %>%
+  #   map("result") %>%
+  #   map("na_out_df") %>%
+  #   bind_rows(.id = "id") %>%
+  #   filter(site != "nbt") %>%
+  #   complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
+  #   dplyr::select(id, site, day, pathway, source, n) %>%
+  #   pivot_wider(values_from = n, names_from = source) %>%
+  #   mutate(source = "new_admits"),
+  out %>%
+    map("result") %>%
+    map("ca_out_df") %>%
+    bind_rows(.id = "id") %>%
+    filter(site != "NBT") %>%
+    complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
+    dplyr::select(id, site, day, pathway, source, n) %>%
+    pivot_wider(values_from = n, names_from = source) %>%
+    mutate(source = "cur_admits")
+) %>%
+  dplyr::select(-observed, -source) %>%
+  left_join(dplyr::select(filter(observed, source == "cur_admits"), -source)) %>%
+  summarise(
+    simulated = sum(simulated),
+    observed = sum(observed),
+    .by = c(id, site, day, pathway)
+  ) %>%
+  mutate(site = recode(site, !!!c("bri" = "Bristol Royal Infirmary", "weston" = "Weston General Hospital"))) %>%
+  mutate(diff = observed - simulated) %>%
+  summarise(median_diff = quantile(diff, 0.5, na.rm = TRUE),
+            uq_diff = quantile(diff, 0.75, na.rm = TRUE),
+            lq_diff = quantile(diff, 0.25, na.rm = TRUE),
+            .by = c(site, day, pathway))  %>%
+  filter(site != "system") %>%
+  ggplot(aes(x = as.numeric(day), y = median_diff)) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  scale_x_continuous(breaks = 1:10) +
+  scale_colour_manual(values = c("green3", "red2")) +
+  geom_ribbon(aes(ymax = uq_diff, ymin = lq_diff), alpha = 0.15) +
+  ggforce::geom_link2(aes(colour = after_stat(
+    ifelse(
+      y > 0,
+      "Model outperforms baseline",
+      "Model underperforms baseline"
+    )
+  ))) +
+  facet_grid(site ~ pathway) +
+  theme_minimal() +
+  theme(panel.background = element_rect(fill = NA, color = "#DDDDDD", linewidth = 1)) +
+  ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") +
+  labs(title = "Validation 1",
+       x = "Day",
+       colour = "",
+       y = str_wrap("Performance ratio of baseline and simulation model residuals to the observed values", 50)) +
+  theme(legend.position = "bottom")
+
+bind_rows(
+  out %>%
+    map("result") %>%
+    map("na_out_df") %>%
+    bind_rows(.id = "id") %>%
+    filter(site != "nbt") %>%
+    complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
+    dplyr::select(id, site, day, pathway, source, n) %>%
+    pivot_wider(values_from = n, names_from = source) %>%
+    mutate(source = "new_admits"),
+  # out %>%
+  #   map("result") %>%
+  #   map("ca_out_df") %>%
+  #   bind_rows(.id = "id") %>%
+  #   filter(site != "NBT") %>%
+  #   complete(nesting(id, site, day, date), source, metric, pathway, fill = list(n = 0)) %>%
+  #   dplyr::select(id, site, day, pathway, source, n) %>%
+  #   pivot_wider(values_from = n, names_from = source) %>%
+  #   mutate(source = "cur_admits")
+) %>%
+  dplyr::select(-observed, -source) %>%
+  left_join(dplyr::select(filter(observed, source == "new_admits"), -source)) %>%
+  summarise(
+    simulated = sum(simulated),
+    observed = sum(observed),
+    .by = c(id, site, day, pathway)
+  ) %>%
+  mutate(site = recode(site, !!!c("bri" = "Bristol Royal Infirmary", "weston" = "Weston General Hospital"))) %>%
+  mutate(diff = observed - simulated) %>%
+  summarise(median_diff = quantile(diff, 0.5, na.rm = TRUE),
+            uq_diff = quantile(diff, 0.75, na.rm = TRUE),
+            lq_diff = quantile(diff, 0.25, na.rm = TRUE),
+            .by = c(site, day, pathway))  %>%
+  filter(site != "system") %>%
+  ggplot(aes(x = as.numeric(day), y = median_diff)) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  scale_x_continuous(breaks = 1:10) +
+  scale_colour_manual(values = c("green3", "red2")) +
+  geom_ribbon(aes(ymax = uq_diff, ymin = lq_diff), alpha = 0.15) +
+  ggforce::geom_link2(aes(colour = after_stat(
+    ifelse(
+      y > 0,
+      "Model outperforms baseline",
+      "Model underperforms baseline"
+    )
+  ))) +
+  facet_grid(site ~ pathway) +
+  theme_minimal() +
+  theme(panel.background = element_rect(fill = NA, color = "#DDDDDD", linewidth = 1)) +
+  ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") +
+  labs(title = "Validation 1",
+       x = "Day",
+       colour = "",
+       y = str_wrap("Performance ratio of baseline and simulation model residuals to the observed values", 50)) +
+  theme(legend.position = "bottom")
 
 bind_rows(
   out %>%

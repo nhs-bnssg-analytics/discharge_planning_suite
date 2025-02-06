@@ -278,7 +278,6 @@ tree_wf <- workflow() %>%
   add_recipe(tree_rec)
 
 
-doParallel::registerDoParallel()
 
 tree_metrics <-  metric_set(
   rmse,
@@ -287,6 +286,7 @@ tree_metrics <-  metric_set(
   #mape
 )
 
+doParallel::registerDoParallel()
 set.seed(345)
 tree_rs <- tune_grid(
   tree_wf,
@@ -296,6 +296,7 @@ tree_rs <- tune_grid(
 )
 
 saveRDS(tree_rs, "data/tree_rs.RDS")
+tree_rs <- readRDS("data/tree_rs.RDS")
 
 autoplot(tree_rs) +
   theme_minimal(base_family = "IBMPlexSans") +
@@ -415,6 +416,80 @@ png(filename = "materials/tree_plot.png",
 rpart.plot::rpart.plot(tree, fallen.leaves = FALSE, type = 2, extra = 101, node.fun = node.fun1)
 title("Calibration 3d", adj = 0)
 dev.off()
+
+
+library(ggparty)
+
+label_fun <- function(dat) {
+  return(data.frame(y = 0, x =0, label = mean(dat[["..y"]])))
+}
+
+tree_p <- partykit::as.party(tree)
+
+tree_p[1]$data %>%
+  ggplot(aes()) +
+  stat_ecdf(aes(x = ..y+1), geom = "step") +
+  scale_x_log10(guide = "axis_logticks") +
+  scale_y_continuous(breaks = seq(0, 1, 0.25)) +
+  theme_minimal() +
+  theme(axis.ticks = element_line(),
+        plot.margin = margin(t = 100, unit = "pt")) +
+  labs(y = "Empirical Cumulative Distribution Function",
+       x = "mLOS (Midnights-crossed)") 
+
+
+gg <- ggparty(tree_p, add_vars = list(
+  label =
+    function(data, node) {
+      # mean(node$data$..y)
+      
+      paste("Mean mLOS",
+            round(mean(node$data$..y), 1),
+            "\n",
+            "n = ",
+            scales::number(length(node$data$..y), big.mark = ","))
+    }
+))
+
+p <- ggparty(tree_p, terminal_space = 0.25, add_vars = list(
+  label =
+    function(data, node) {
+      # mean(node$data$..y)
+      
+      paste("Mean mLOS",
+            round(mean(node$data$..y), 1),
+            "\n",
+            "n = ",
+            scales::number(length(node$data$..y), big.mark = ","))
+    }
+)) +
+  geom_edge() +
+  geom_edge_label() +
+  geom_node_label(aes(label = splitvar), ids = "inner", nudge_y = -0.05) +
+  geom_node_label(aes(label = label)) +
+  # identical to  geom_node_splitvar() +
+  geom_node_plot(gglist= list(
+    stat_ecdf(aes(x = ..y+1), geom = "step"),
+      # coord_fixed(),
+      scale_x_log10(guide = "axis_logticks"),
+      scale_y_continuous(breaks = seq(0, 1, 0.25)),
+      theme_minimal(),
+      theme(axis.ticks = element_line(),
+            plot.margin = margin(t = 20, unit = "pt")),
+      labs(y = "ECDF",
+           x = "mLOS") 
+    
+    )) 
+
+# p
+p
+
+ggsave(p,
+       filename = "./validation/calibration_3d_dec_tree_ecdf.png",
+       bg = "white",
+       width = 35,
+       height = 15,
+       scale = 0.8)
 
 
 # append leaf number onto original data:
