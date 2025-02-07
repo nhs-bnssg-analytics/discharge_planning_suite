@@ -171,6 +171,7 @@ ggsave(last_plot(),
 
 
 saveRDS(los_df, "data/los_df.RDS")
+los_df <- readRDS("data/los_df.RDS")
 
 #(DEPRECATED) This was the old test/train split 
 # los_testing <- los_df %>%
@@ -269,8 +270,8 @@ tree_grid <- grid_regular(cost_complexity(range = c(-6, -1), trans = log10_trans
 
 tree_rec <- recipe(los ~ ., data = model_df_train)  %>%
   update_role(site, new_role = "site id") %>%  
-  step_novel(all_nominal_predictors(), new_level = "other") %>%
-  step_other(all_nominal_predictors(), threshold = 0.1)
+  step_novel(all_nominal_predictors(), new_level = "Other") %>%
+  step_other(all_nominal_predictors(), threshold = 0.1, other = "Other")
 
 
 tree_wf <- workflow() %>%
@@ -448,7 +449,8 @@ gg <- ggparty(tree_p, add_vars = list(
             "\n",
             "n = ",
             scales::number(length(node$data$..y), big.mark = ","))
-    }
+    },
+  splitvar = "$node$split"
 ))
 
 p <- ggparty(tree_p, terminal_space = 0.25, add_vars = list(
@@ -464,9 +466,23 @@ p <- ggparty(tree_p, terminal_space = 0.25, add_vars = list(
     }
 )) +
   geom_edge() +
-  geom_edge_label() +
-  geom_node_label(aes(label = splitvar), ids = "inner", nudge_y = -0.05) +
+  geom_node_label(aes(label = recode(splitvar,
+                                     "age" = "Age",
+                                     "cambridge_score" = "Cambridge score",
+                                     "bed_type" = "Bed type")), ids = "inner", nudge_y = -0.05) +
   geom_node_label(aes(label = label)) +
+  geom_edge_label(ids = 8, splitlevels = 1, nudge_y = 0.025) +
+  geom_edge_label(ids = 8, splitlevels = 2) +
+  geom_edge_label(ids = 8, splitlevels = 3, nudge_y = -0.025) +
+  geom_edge_label(ids = 10, splitlevels = 1, nudge_y = -0.025) +
+  geom_edge_label(ids = 10, splitlevels = 2) +
+  geom_edge_label(ids = 14, splitlevels = 1, nudge_y = 0.025) +
+  geom_edge_label(ids = 14, splitlevels = 2) +
+  geom_edge_label(ids = 14, splitlevels = 3, nudge_y = -0.025) +
+  geom_edge_label(ids = 20, splitlevels = 1, nudge_y = -0.025) +
+  geom_edge_label(ids = 20, splitlevels = 2) +
+  geom_edge_label(#mapping = aes(label = paste(breaks_label, "*NA^", id)),
+                  ids = -c(8, 10, 14, 20)) +
   # identical to  geom_node_splitvar() +
   geom_node_plot(gglist= list(
     stat_ecdf(aes(x = ..y+1), geom = "step"),
@@ -479,7 +495,17 @@ p <- ggparty(tree_p, terminal_space = 0.25, add_vars = list(
       labs(y = "ECDF",
            x = "mLOS") 
     
-    )) 
+    )) +
+  labs(title = "Calibration 3d") +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) #+
+  # theme(axis.text = element_blank(),
+  #       axis.title = element_text(size = 10),
+  #       axis.ticks = element_blank(),
+  #       axis.ticks.length = unit(0, "pt"), #length of tick marks
+  #       panel.grid.major=element_blank(),
+  #       panel.grid.minor=element_blank(),
+  #       plot.margin = margin(0, 0, 0, 0, "pt"))
 
 # p
 p
@@ -487,9 +513,9 @@ p
 ggsave(p,
        filename = "./validation/calibration_3d_dec_tree_ecdf.png",
        bg = "white",
-       width = 35,
-       height = 15,
-       scale = 0.8)
+       width = 30,
+       height = 12.5,
+       scale = 0.7)
 
 
 # append leaf number onto original data:
