@@ -5,50 +5,119 @@ plot_df_queue_sim <- local({
 
 # calculate the number of discharges made by observing patients on a queue
 # leaving the census on the following day
-discharges_ts <- nctr_df %>%
-  filter(!is.na(NHS_Number)) %>%
-  filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
-  # filter for CTR, we wont predict the NCTR outcome for those already NCTR/on a queue
-  # filter(Criteria_To_Reside == "N") %>%
-  mutate(
-    site = case_when(
-      Organisation_Site_Code == 'RVJ01' ~ 'nbt',
-      Organisation_Site_Code == 'RA701' ~ 'bri',
-      Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
-      TRUE ~ 'other'
+# discharges_ts <- nctr_df %>%
+#   filter(!is.na(NHS_Number)) %>%
+#   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
+#   # filter for CTR, we wont predict the NCTR outcome for those already NCTR/on a queue
+#   # filter(Criteria_To_Reside == "N") %>%
+#   mutate(
+#     site = case_when(
+#       Organisation_Site_Code == 'RVJ01' ~ 'nbt',
+#       Organisation_Site_Code == 'RA701' ~ 'bri',
+#       Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
+#       TRUE ~ 'other'
+#     )) %>%
+#   mutate(pathway = recode(Current_Delay_Code_Standard,
+#                           !!!pathway_recodes),
+#          pathway = coalesce(pathway, "Other")) %>%
+#   mutate(pathway = if_else(
+#     !pathway %in% c("P1", "P2", "P3", "P3" , "Other"),
+#     "Other",
+#     pathway
+#   )) %>%
+#   dplyr::select(nhs_number = NHS_Number, site, pathway, date = Census_Date, Date_Of_Admission) %>%
+#   distinct() %>%
+#   filter(pathway != "Other") %>%
+#   group_by(nhs_number, Date_Of_Admission) %>%
+#   mutate(id = cur_group_id()) %>%
+#   group_by(id) %>%
+#   # # (DEPRECATED) take the first non-other pathway
+#   # filter(date == min(date)) %>%
+#   # Find the last date for each ID
+#   filter(date == max(date)) %>%
+#   group_by(site, pathway, date = date + ddays(1)) %>%
+#   count() %>%
+#   group_by(site, pathway) %>%
+#   filter(date < max(date)) %>%
+#   arrange(date) %>%
+#   slice(-1)
+# 
+# 
+# # mean number of discharges per day/site
+# discharge_sum <- discharges_ts %>%
+#   filter(date >= (max(date) - dweeks(4))) %>%
+#   group_by(site, pathway) %>% 
+#   summarise(mean = mean(n),
+#             sd = sd(n))
+  
+  discharges_ts <- nctr_df %>%
+    filter(Person_Stated_Gender_Code %in% 1:2) %>%
+    mutate(nhs_number = as.character(NHS_Number),
+           nhs_number = if_else(is.na(nhs_number), CDS_Unique_Identifier, nhs_number),
+           sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
+    filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
+    mutate(
+      site = case_when(
+        Organisation_Site_Code == 'RVJ01' ~ 'nbt',
+        Organisation_Site_Code == 'RA701' ~ 'bri',
+        Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
+        TRUE ~ 'other'
+      ),
+      Date_Of_Admission = as.Date(Date_Of_Admission)
+    ) %>%
+    filter(site != "nbt") %>%
+    ungroup() %>%
+    mutate(
+      der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/ddays(1),
+      der_ctr = case_when(
+        Criteria_To_Reside == "Y" | is.na(Criteria_To_Reside) ~ TRUE,
+        !is.na(Days_NCTR) ~ FALSE,
+        !is.na(Date_NCTR) ~ FALSE,
+        Criteria_To_Reside == "N" ~ FALSE
+      )) %>%
+    mutate(report_date = max(Census_Date)) %>%
+    mutate(los = (report_date - Date_Of_Admission) / ddays(1)) %>%
+    mutate(
+      pathway = recode(
+        Current_Delay_Code_Standard,
+        !!!pathway_recodes
+      ),
+      pathway = coalesce(pathway, "Other")
+    ) %>%
+    mutate(pathway = if_else(
+      !pathway %in% c("P1", "P2", "P3", "P3" , "Other"),
+      "Other",
+      pathway
     )) %>%
-  mutate(pathway = recode(Current_Delay_Code_Standard,
-                          !!!pathway_recodes),
-         pathway = coalesce(pathway, "Other")) %>%
-  mutate(pathway = if_else(
-    !pathway %in% c("P1", "P2", "P3", "P3" , "Other"),
-    "Other",
-    pathway
-  )) %>%
-  dplyr::select(nhs_number = NHS_Number, site, pathway, date = Census_Date, Date_Of_Admission) %>%
-  distinct() %>%
-  filter(pathway != "Other") %>%
-  group_by(nhs_number, Date_Of_Admission) %>%
-  mutate(id = cur_group_id()) %>%
-  group_by(id) %>%
-  # # (DEPRECATED) take the first non-other pathway
-  # filter(date == min(date)) %>%
-  # Find the last date for each ID
-  filter(date == max(date)) %>%
-  group_by(site, pathway, date = date + ddays(1)) %>%
-  count() %>%
-  group_by(site, pathway) %>%
-  filter(date < max(date)) %>%
-  arrange(date) %>%
-  slice(-1)
-
-
-# mean number of discharges per day/site
-discharge_sum <- discharges_ts %>%
-  filter(date >= (max(date) - dweeks(4))) %>%
-  group_by(site, pathway) %>% 
-  summarise(mean = mean(n),
-            sd = sd(n))
+    group_by(NHS_Number, Date_Of_Admission) %>%
+    # mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
+    # mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
+    mutate(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other")) %>%
+    # mutate(keep_date = case_when(any(!der_ctr) ~ Census_Date[!der_ctr][1], .default = tail(Census_Date, 1))) %>%
+    # mutate(keep_date = case_when(any(!der_ctr) ~ Census_Date[!der_ctr][1], .default = max(Census_Date))) %>%
+    mutate(keep_date = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - ddays(1),max(Census_Date)))) %>%
+    filter(Census_Date < max(Census_Date)) %>%
+    dplyr::select(
+      date = keep_date,
+      nhs_number,
+      site,
+      pathway
+    ) %>%
+    ungroup() %>%
+    distinct()  %>%
+    # group_by(site, pathway, date = date + ddays(1)) %>%
+    group_by(site, pathway, date = date) %>%
+    count() %>%
+    ungroup() %>%
+    complete(nesting(site, date), pathway, fill = list(n = 0)) %>%
+    filter(date != max(date), date != min(date))
+  
+  
+  discharge_sum <- discharges_ts_2 %>%
+    filter(date >= (max(date) - dweeks(4))) %>%
+    group_by(site, pathway) %>% 
+    summarise(mean = mean(n),
+              sd = sd(n))
 
 
 discharges_ts %>%
