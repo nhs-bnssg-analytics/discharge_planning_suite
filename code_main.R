@@ -2,6 +2,7 @@ library(fitdistrplus)
 library(tidyverse)
 library(tidymodels)
 library(lubridate)
+library(RMySQL)
 
 con <- switch(.Platform$OS.type,
               windows = RODBC::odbcConnect(dsn = "xsw"),
@@ -280,4 +281,27 @@ RODBC::sqlSave(con,
                tablename = 'discharge_pathway_projections',
                rownames = FALSE,
                append = TRUE)
+
+
+# Write to ICS MySQL db
+
+host <- Sys.getenv("DB_HOST")
+dbname <- Sys.getenv("DB_NAME")
+user <- Sys.getenv("DB_USER")
+password <- Sys.getenv("DB_CRED")
+port <- 3306 # Default MySQL port (change if needed)
+
+# Create the connection
+conn <- DBI::dbConnect(DBI::dbDriver("MySQL"),
+                  dbname = dbname,
+                  host = host,
+                  port = 3306,
+                  user = user,
+                  password=password)
+
+
+# delete old data
+query_delete <- str_c("DELETE FROM discharge_pathway_projections")
+DBI::dbGetQuery(conn, query_delete)
+DBI::dbWriteTable(conn, "discharge_pathway_projections", value = plot_df, overwrite = TRUE)
 
