@@ -65,7 +65,6 @@ plot_df_queue_sim <- local({
       ),
       Date_Of_Admission = as.Date(Date_Of_Admission)
     ) %>%
-    filter(site != "nbt") %>%
     ungroup() %>%
     mutate(
       der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/ddays(1),
@@ -110,15 +109,14 @@ plot_df_queue_sim <- local({
     count() %>%
     ungroup() %>%
     complete(nesting(site, date), pathway, fill = list(n = 0)) %>%
-    filter(date != max(date), date != min(date))
+    filter(date != max(date), date != min(date), pathway != "Other")
   
   
-  discharge_sum <- discharges_ts_2 %>%
+  discharge_sum <- discharges_ts %>%
     filter(date >= (max(date) - dweeks(4))) %>%
     group_by(site, pathway) %>% 
     summarise(mean = mean(n),
               sd = sd(n))
-
 
 discharges_ts %>%
 ggplot(aes(x = date, y = n)) +
