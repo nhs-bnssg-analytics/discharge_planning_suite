@@ -2,7 +2,7 @@ version: '1.0'
 services:
     shiny:
       build: .
-      image: shiny_with_pkg
+      image: shiny_with_pkg:dps
       restart: always
       environment:
         - DB_HOST
