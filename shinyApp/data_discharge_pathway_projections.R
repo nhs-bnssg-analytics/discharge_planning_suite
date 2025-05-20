@@ -1,33 +1,49 @@
 library(RODBC)
+library(RMySQL)
 library(tidyverse)
 
-data_folder_path <- switch(.Platform$OS.type,
-                           windows = 'C:/Users/nick.howlett/repos/discharge_pathway_projections_local/shinyApp/data',#"z:/lho/data",
-                           unix = '/samba/nowcast-data/dpp/data')
-
                             
-if (.Platform$OS.type == "windows") {
-  con_string <- c(
-    "driver={SQL Server};server=Xsw-000-sp09;
-                             database=ABI;
-                    trusted_connection=true"
-  )
-} else if (.Platform$OS.type == "unix") {
-  con_string <-
-    readr::read_lines("/home/rshiny/sql_modelling_connect_string_linux")
-} else {
-  stop("Not on windows or unix?")
-}
+# if (.Platform$OS.type == "windows") {
+#   con_string <- c(
+#     "driver={SQL Server};server=Xsw-000-sp09;
+#                              database=ABI;
+#                     trusted_connection=true"
+#   )
+# } else if (.Platform$OS.type == "unix") {
+#   con_string <-
+#     readr::read_lines("/home/rshiny/sql_modelling_connect_string_linux")
+# } else {
+#   stop("Not on windows or unix?")
+# }
+# 
+# con <-
+#   odbcDriverConnect(con_string)
+# query <- '
+# SELECT *
+# FROM MODELLING_SQL_AREA.dbo.discharge_pathway_projections'
 
-con <-
-  odbcDriverConnect(con_string)
+host <- Sys.getenv("DB_HOST")
+dbname <- Sys.getenv("DB_NAME")
+user <- Sys.getenv("DB_USER")
+password <- Sys.getenv("DB_CRED")
+port <- 3306 # Default MySQL port (change if needed)
+
+# Create the connection
+con <- DBI::dbConnect(DBI::dbDriver("MySQL"),
+                       dbname = dbname,
+                       host = host,
+                       port = 3306,
+                       user = user,
+                       password=password)
+
+
 
 ## Use the lines below to read the predictions made using the server
 query <- '
 SELECT *
-FROM MODELLING_SQL_AREA.dbo.discharge_pathway_projections'
+FROM discharge_pathway_projections'
 
-data_dpp <- sqlQuery(con, query)
+data_dpp <- DBI::dbGetQuery(con, query)
 report_date <- ymd(data_dpp$report_date)[1]
 
 data_dpp <- data_dpp %>%
