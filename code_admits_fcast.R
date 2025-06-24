@@ -16,7 +16,7 @@ fc_end <- report_start - ddays(1) # The fc training period ends the day before t
 fc_start <- fc_end  - dweeks(fc_train_length)
 
 min_adm_date <- nctr_df %>%
-  filter(!is.na(NHS_Number)) %>%
+  # filter(!is.na(NHS_Number)) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   group_by(Organisation_Site_Code) %>%
   summarise(date = as.Date(max(Date_Of_Admission))) %>%
@@ -26,7 +26,7 @@ min_adm_date <- nctr_df %>%
 fcast_days <- ceiling((report_end - min_adm_date)/ddays(1))
 
 admissions <- nctr_df %>%
-  filter(!is.na(NHS_Number)) %>%
+  # filter(!is.na(NHS_Number)) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   mutate(site = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt',
                                             Organisation_Site_Code == 'RA701' ~ 'bri',

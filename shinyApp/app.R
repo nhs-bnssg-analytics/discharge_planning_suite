@@ -21,38 +21,40 @@ source("./theme.R")
 
 ui <- shinyUI(
   # fix the font
-  
+
     dashboardPage(
     tags$head( tags$style(type="text/css", "text {font-family: sans-serif}")),
     header = dashboardHeader(  titleWidth="30vw",
                                title="BNSSG Discharge Planning Suite"),
     sidebar = dashboardSidebar(disable = TRUE),
-    
+
     body = dashboardBody(
       box(width = 12,
           HTML(glue::glue("<h5>This report was last updated with data from <b>{format(report_date, '%a %d %b')}</b>. For comments and suggestions, email Nick Howlett (Modelling and Analytics) by clicking <a href='mailto:nick.howlett5@nhs.net'>here.</a></h5>"))),
       box(width = 12,
           tabsetPanel(id = "tabset",
-                      tabPanel("D2A Demand", girafeOutput("dpp_plot", width = "90%", height = "80%")),
-                      tabPanel("Acute Queueing",
-                               box(width = 2,
-                                   HTML(glue::glue("<h2>Overview</h2><br><h5>Presented here are projections for the P1-3 queue size (i.e. number of patients awaiting D2A at acute hospitals) based on (1) the forecasted discharge demand over the coming days (per D2A Demand tab), and (2) capacity levels for accepting patients onto the D2A pathways in line with the median number of discharges achieved over the last 4 weeks.<br><br> Below are controls to flex the capacity ±10%.</h5>")),
-                                   radioButtons(
-                                     "capacity",
-                                     label = h3("D2A daily discharge capacity"),
-                                     choices = list(
-                                       "+10%" = 1,
-                                       "4-week mean" = 2,
-                                       "-10%" = 3
-                                     ),
-                                     selected = 2
-                                   ),
-                               ), 
-                                box(width = 10, girafeOutput("queue_fc", width = "90%", height = "80%")))
+                      # tabPanel("D2A Demand", girafeOutput("dpp_plot", width = "90%", height = "80%")),
+                      # tabPanel("Acute Queueing",
+                      #          box(width = 2,
+                      #              HTML(glue::glue("<h2>Overview</h2><br><h5>Presented here are projections for the P1-3 queue size (i.e. number of patients awaiting D2A at acute hospitals) based on (1) the forecasted discharge demand over the coming days (per D2A Demand tab), and (2) capacity levels for accepting patients onto the D2A pathways in line with the median number of discharges achieved over the last 4 weeks.<br><br> Below are controls to flex the capacity ±10%.</h5>")),
+                      #              radioButtons(
+                      #                "capacity",
+                      #                label = h3("D2A daily discharge capacity"),
+                      #                choices = list(
+                      #                  "+10%" = 1,
+                      #                  "4-week mean" = 2,
+                      #                  "-10%" = 3
+                      #                ),
+                      #                selected = 2
+                      #              ),
+                      #          ),
+                      #           box(width = 10, girafeOutput("queue_fc", width = "90%", height = "80%")))
                       )
       )
   )
-))
+)
+
+)
 
 
 server <- shinyServer(function(input, output) {
@@ -70,14 +72,14 @@ server <- shinyServer(function(input, output) {
     "..for P3 service" = "#853358",
     "..not for D2A service" = "#999999"
   )
-  
+
   cols_q <- c(
     "P0 queue or other" = "#999999",
     "P3 queue" = "#853358",
     "P2 queue" = "#003087",
     "P1 queue" = "#8d488d"
   )
-  
+
   output$dpp_plot <- renderGirafe({
     p_pred <- data_dpp %>%
       mutate(pathway_add = fct_relevel(pathway_add, "..not for D2A service", after = Inf)) %>%
@@ -90,7 +92,7 @@ server <- shinyServer(function(input, output) {
           filter(source == "queue_sim") %>%
           select(site, pathway_add, slot_avg, tooltip_slot_avg) %>%
           distinct() %>%
-          na.omit()}, aes(yintercept = slot_avg, tooltip = tooltip_slot_avg), linetype = 2, size = 1, col = "#333333") + 
+          na.omit()}, aes(yintercept = slot_avg, tooltip = tooltip_slot_avg), linetype = 2, size = 1, col = "#333333") +
       geom_errorbar_interactive(aes(ymin = l85, ymax = u85, tooltip = tooltip_errorbar), width = 1, size = 0.8, col = "#333333")  +
       ggh4x::facet_grid2(site~pathway_add, independent = "y", scales = "free_y", switch = "y") +
       bnssgtheme() +
@@ -102,9 +104,9 @@ server <- shinyServer(function(input, output) {
       labs(title = "Prediction of new patients becoming ready for discharge on future days**..\n ",
            x = "",
            y = "")
-    
-    
-    
+
+
+
     p_curr <- data_dpp %>%
       mutate(pathway_add = fct_recode(pathway_add,
                                   "P1 queue" = "..for P1 service",
@@ -115,8 +117,8 @@ server <- shinyServer(function(input, output) {
       # remake tooltip as levels changed
       mutate(tooltip_n = glue::glue("{pathway_add} = {round(n, 0)}")) %>%
       filter(source == "current_ctr_data", ctr == "N") %>%
-      ggplot(aes(x = site, y = round(n, 0), 
-                 fill = pathway_add, 
+      ggplot(aes(x = site, y = round(n, 0),
+                 fill = pathway_add,
                  group = pathway_add)) +
       geom_col_interactive(aes(tooltip = tooltip_n))  +
       bnssgtheme() +
@@ -128,40 +130,43 @@ server <- shinyServer(function(input, output) {
            x = "",
            y = ""
       )
-    
-    
+
+
     ptc <- patchwork::wrap_plots(p_curr, p_pred, widths = c(0.2, 0.8)) +
       patchwork::plot_layout(guides = "collect") &
       patchwork::plot_annotation(caption = "*Meant to include all patients with LOS over 24 hrs.\n**Dashed line represents 4-week mean number of patients discharged to D2A pathway") &
       theme(legend.position = 'bottom',
             plot.caption = element_text(hjust = 0, size = rel(1.1), colour = "#777777"))
-    
+
     # hack the first legend off
-    ptc[[1]] <- ptc[[1]] + theme(legend.position = "off", axis.ticks.x =  element_blank(), axis.text.x = element_text(vjust = +15)) 
-    
-    girafe(ggobj = ptc, 
-           width_svg = 16, 
+    ptc[[1]] <- ptc[[1]] + theme(legend.position = "off", axis.ticks.x =  element_blank(), axis.text.x = element_text(vjust = +15))
+
+    girafe(ggobj = ptc,
+           width_svg = 16,
            height_svg = 7.5,
            options = list(
              opts_hover(css = "fill: black;"),
              opts_hover_inv(css = "opacity: 0.1;")
            ))
-  })
-  
+  }
+
+  )
+
+
   output$queue_fc <- renderGirafe({
-    
-    rename_vec <- switch(input$capacity, 
+
+    rename_vec <- switch(input$capacity,
                      "1" = c("n" = "n_u", "n_l85" = "n_u_l85", "n_u85" = "n_u_u85", "tooltip_q" = "tooltip_q_u"),
                      "2" = vector(mode = "character"),
                      "3" = c("n" = "n_l", "n_l85" = "n_l_l85", "n_u85" = "n_l_u85", "tooltip_q" = "tooltip_q_l")
                      )
-    
-    select_vec <- switch(input$capacity, 
+
+    select_vec <- switch(input$capacity,
                          "1" = c("n", "n_l85", "n_u85", "tooltip_q"),
                          "2" = vector(mode = "character"),
                          "3" = c("n", "n_l85", "n_u85", "tooltip_q")
     )
-    
+
     p <- data_dpp %>%
       filter(source == "queue_sim") %>%
       select(-any_of(select_vec)) %>%
@@ -180,10 +185,10 @@ server <- shinyServer(function(input, output) {
             legend.position = "off") +
       labs(title = "D2A queue forecasts, per site/pathway",
            x = "",
-           y = "") 
-    
-    girafe(ggobj = p, 
-           width_svg = 10, 
+           y = "")
+
+    girafe(ggobj = p,
+           width_svg = 10,
            height_svg = 5,
            options = list(
              opts_hover(css = "fill: black;"),
