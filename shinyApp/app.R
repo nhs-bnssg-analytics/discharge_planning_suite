@@ -33,22 +33,22 @@ ui <- shinyUI(
           HTML(glue::glue("<h5>This report was last updated with data from <b>{format(report_date, '%a %d %b')}</b>. For comments and suggestions, email Nick Howlett (Modelling and Analytics) by clicking <a href='mailto:nick.howlett5@nhs.net'>here.</a></h5>"))),
       box(width = 12,
           tabsetPanel(id = "tabset",
-                      # tabPanel("D2A Demand", girafeOutput("dpp_plot", width = "90%", height = "80%")),
-                      # tabPanel("Acute Queueing",
-                      #          box(width = 2,
-                      #              HTML(glue::glue("<h2>Overview</h2><br><h5>Presented here are projections for the P1-3 queue size (i.e. number of patients awaiting D2A at acute hospitals) based on (1) the forecasted discharge demand over the coming days (per D2A Demand tab), and (2) capacity levels for accepting patients onto the D2A pathways in line with the median number of discharges achieved over the last 4 weeks.<br><br> Below are controls to flex the capacity ±10%.</h5>")),
-                      #              radioButtons(
-                      #                "capacity",
-                      #                label = h3("D2A daily discharge capacity"),
-                      #                choices = list(
-                      #                  "+10%" = 1,
-                      #                  "4-week mean" = 2,
-                      #                  "-10%" = 3
-                      #                ),
-                      #                selected = 2
-                      #              ),
-                      #          ),
-                      #           box(width = 10, girafeOutput("queue_fc", width = "90%", height = "80%")))
+                      tabPanel("D2A Demand", girafeOutput("dpp_plot", width = "90%", height = "80%")),
+                      tabPanel("Acute Queueing",
+                               box(width = 2,
+                                   HTML(glue::glue("<h2>Overview</h2><br><h5>Presented here are projections for the P1-3 queue size (i.e. number of patients awaiting D2A at acute hospitals) based on (1) the forecasted discharge demand over the coming days (per D2A Demand tab), and (2) capacity levels for accepting patients onto the D2A pathways in line with the median number of discharges achieved over the last 4 weeks.<br><br> Below are controls to flex the capacity ±10%.</h5>")),
+                                   radioButtons(
+                                     "capacity",
+                                     label = h3("D2A daily discharge capacity"),
+                                     choices = list(
+                                       "+10%" = 1,
+                                       "4-week mean" = 2,
+                                       "-10%" = 3
+                                     ),
+                                     selected = 2
+                                   ),
+                               ),
+                                box(width = 10, girafeOutput("queue_fc", width = "90%", height = "80%")))
                       )
       )
   )
