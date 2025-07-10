@@ -289,7 +289,6 @@ host <- Sys.getenv("DB_HOST")
 dbname <- Sys.getenv("DB_NAME")
 user <- Sys.getenv("DB_USER")
 password <- Sys.getenv("DB_CRED")
-port <- 3306 # Default MySQL port (change if needed)
 
 # Create the connection
 conn <- DBI::dbConnect(DBI::dbDriver("MySQL"),
