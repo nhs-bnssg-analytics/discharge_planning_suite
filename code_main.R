@@ -302,5 +302,5 @@ conn <- DBI::dbConnect(DBI::dbDriver("MySQL"),
 # delete old data
 query_delete <- str_c("DELETE FROM discharge_pathway_projections")
 DBI::dbGetQuery(conn, query_delete)
-DBI::dbWriteTable(conn, "discharge_pathway_projections", value = plot_df, overwrite = TRUE)
+DBI::dbWriteTable(conn, "discharge_pathway_projections", value = plot_df, overwrite = TRUE, row.names = FALSE)
 
