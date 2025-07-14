@@ -1,0 +1,15 @@
+version: '3.7'
+services:
+  forecast:
+    build:
+      context: .           
+      dockerfile: Dockerfile-icb 
+    restart: always
+    environment:
+        - DB_HOST
+        - DB_NAME
+        - DB_USER
+        - DB_CRED
+    volumes:
+      - /samba/nowcast-data/dpp/data:/root/data
+      - /home/rshiny:/root/sql
