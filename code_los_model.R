@@ -68,7 +68,7 @@ los_df <- nctr_df %>%
       Criteria_To_Reside == "N" ~ FALSE
     ),
     # der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - lubridate::ddays(1),max(Census_Date)))) %>%
-    der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) ,max(Census_Date)))) %>%
+    der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) ,max(Census_Date)))) %>% # should it be max(census_date)+1 (if you become NCTR since last census you might have crossed another midnight..?)
   ungroup() %>%
   mutate(der_date_nctr = pmax(Date_Of_Admission, pmin(der_date_nctr, Date_NCTR, na.rm = TRUE), na.rm = TRUE)) %>%
   mutate(der_date_nctr = as.Date(der_date_nctr)) %>%

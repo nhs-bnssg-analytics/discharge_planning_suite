@@ -2,7 +2,7 @@ library(tidyverse)
 library(patchwork)
 
 
-out <- readRDS("data/final_validation_full_out_1e3_newpropsloslogic.RDS")
+out <- readRDS("data/final_validation_full_out_2025_05.RDS")
 
 discharge_plots <- local({
   out_df <- bind_rows(

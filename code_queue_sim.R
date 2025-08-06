@@ -3,6 +3,7 @@
 
 plot_df_queue_sim <- local({
 
+  browser()
 # calculate the number of discharges made by observing patients on a queue
 # leaving the census on the following day
 # discharges_ts <- nctr_df %>%

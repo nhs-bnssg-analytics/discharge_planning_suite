@@ -212,6 +212,7 @@ df_pred <- bind_rows(df_curr_admits, df_new_admit) %>%
 # Now simulate the queue evolution
 source("code_queue_sim.R")
 
+
 # dataset for plotting (and storing on SQL)
 
 plot_df_pred <- df_pred %>%

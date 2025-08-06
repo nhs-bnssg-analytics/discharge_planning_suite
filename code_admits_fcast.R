@@ -38,6 +38,7 @@ admissions <- nctr_df %>%
   count() %>%
   filter(date > ymd("2023-07-01")) # data before this are spurious 
   
+
 models <- admissions %>%
   ungroup() %>%
   complete(date, site, fill = list(count = 0)) %>%
