@@ -374,8 +374,7 @@ titles_site <- wrap_plots(
   )
 )
 
-wrap_plots(list(titles_site, ptc_3a_4a), heights = {\(x) c(x, 1-x)}(0.075)) +
-  plot_annotation(title = "Validation 3a & 4a")
+wrap_plots(list(titles_site, ptc_3a_4a), heights = {\(x) c(x, 1-x)}(0.075)) 
 
 ggsave(last_plot(),
        filename = "./validation/validation_3a_4a.png",
