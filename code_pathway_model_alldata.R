@@ -4,7 +4,7 @@ library(tidymodels)
 
 
 con <- switch(.Platform$OS.type,
-              windows = RODBC::odbcConnect(dsn = "xsw"),
+              windows = RODBC::odbcDriverConnect("driver={SQL Server};\n  server=Xsw-00-ash01;\n  trusted_connection=true"),#RODBC::odbcConnect(dsn = "xsw"),
               unix = xswauth::modelling_sql_area()
 )
 
@@ -227,6 +227,7 @@ model_df <- pathway_df %>%
 
 fit_rf_model <- function(model_df) {
 
+  # browser()
 # Splits are the full data (this is a cheat to see if I can fix pathway props)
 model_df_split <- rsample::make_splits(x = list(
   analysis = 1:nrow(model_df),
@@ -279,7 +280,7 @@ props <- model_df_train %>%
 
 
 
-mod_rec <- recipe(pathway ~ ., data = model_df_split) %>%
+mod_rec <- recipe(pathway ~ ., data = model_df_train) %>%
   # step_zv() %>%
   # step_nzv(all_predictors()) %>%
   step_impute_mean(all_numeric_predictors()) %>%
@@ -486,6 +487,7 @@ roc_plot <- function(fit, site) {
     ggplot2::geom_abline(lty = 3) +
     # ggplot2::coord_equal() +
     ggplot2::theme_minimal() +
+    ggplot2::scale_x_continuous(breaks = c(0, 0.5, 1)) +
     ggplot2::theme(plot.title = element_blank(),
                    panel.background = element_rect(fill = NA, color = "#DDDDDD", linewidth = 1),
       panel.spacing.x = unit(x = 0.75, units = "cm"))+
@@ -498,20 +500,20 @@ roc_plot <- function(fit, site) {
 
 fits %>%
   filter(site != "nbt") %>%
-  mutate(site = recode(site, !!!c("bri" = "Bristol Royal Infirmary", "weston" = "Weston General Hospital"))) %>%
+  mutate(site = recode(site, !!!c("bri" = "Bristol Royal\nInfirmary", "weston" = "Weston General\nHospital"))) %>%
   mutate(plot = map2(fit, site, \(fit, site) roc_plot(fit, site))
     ) %>%
   pull(plot) %>%
  wrap_plots(ncol = 1) +
- plot_layout(axes = "collect") +
- plot_annotation("Validation 3e")
+ plot_layout(axes = "collect") #+
+ #plot_annotation("Validation 3e")
 
 
 ggsave(last_plot(),
        filename = "validation/rf_roc_folds.png",
        bg = "white",
-       width = 12,
-       height = 7.5,
+       width = 10,
+       height = 5.5,
        scale = 0.7)
 
 fits %>%
@@ -536,13 +538,14 @@ fits %>%
       mutate(Variable = factor(Variable)) %>%
       mutate(Variable = fct_reorder(Variable, Importance)) %>%
       ggplot(aes(x = Importance, y = Variable)) +
-      geom_col() +
+      geom_col(fill = "grey40") +
       theme_minimal() +
-      labs(title = site)
+      labs(title = site, x = "Permutation importance", y = "")
   })) %>%
   pull(vip) %>%
-  patchwork::wrap_plots(axes = "collect") +
-  patchwork::plot_annotation(title = "Calibration 3e")
+  patchwork::wrap_plots(axes = "collect") &
+  theme(plot.title = element_text(size = 10), axis.title.y = element_blank())#+
+  #patchwork::plot_annotation(title = "Calibration 3e")
 
 
 ggsave(last_plot(),
@@ -550,7 +553,7 @@ ggsave(last_plot(),
        bg = "white",
        width = 10,
        height = 5,
-       scale = 0.7)
+       scale = 0.55)
 
 
 fits %>%

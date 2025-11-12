@@ -2,12 +2,16 @@ library(forecast)
 library(tsibble)
 library(fable)
 library(fabletools)
+library(feasts)
 library(fable.prophet)
 
 
   fc_train_length <- 10 # (train length in weeks)
   
   fcast_days <- 10
+
+validation_end <- ymd("2024-09-01")
+validation_start <- ymd("2023-07-01")
   
   
   admissions <- nctr_df %>%
@@ -63,6 +67,7 @@ library(fable.prophet)
     nest(.by = .id) %>%
     pull(data) %>%
     `[[`(1)
+
   data <- models$data[[1]] %>%
     rename(n_obs = n) %>%
     ungroup()
@@ -94,11 +99,11 @@ library(fable.prophet)
                                geom_line(aes(y = n_obs), col = "black") +
                                geom_line(data = filter(plot_data, !is.na(.mean)),
                                           aes(x = date, y = .mean), col = "blue") +
-                               scale_x_date(breaks = "15 days", labels=date_format("%d %b\n%Y"),
-                                            sec.axis = sec_axis(~ ., name = glue::glue("{site}, MAPE: {round(mape,1)} [{round(mape_lq,1)}, {round(mape_uq,1)}]"), breaks = NULL, labels = NULL)) +
+                               scale_x_date(breaks = "21 days", labels=date_format("%d %b\n%Y"),
+                                            sec.axis = sec_axis(~ ., name = glue::glue("{site}\nMAPE: {round(mape,1)} [{round(mape_lq,1)}, {round(mape_uq,1)}]"), breaks = NULL, labels = NULL)) +
                                theme_minimal() +
                                theme(panel.background = element_rect(fill = NA, color = "#DDDDDD", linewidth = 1)) +
-                               labs(x = "Date", y = glue::glue("Daily admissions"))
+                               labs(x = "", y = glue::glue("New admits each day"))
                              
        }))
 
@@ -111,16 +116,16 @@ set.seed(234) # set seed to have same sample of plots
      axes = "collect",
      guides = "collect"
    )) %>%
-   patchwork::wrap_plots(nrow = 1, axes = "collect") + 
-     patchwork::plot_annotation(title = "Validation 4d"))
+   patchwork::wrap_plots(nrow = 1, axes = "collect")) &
+   theme(plot.margin = unit(c(5.5, 7.5, 5.5, 5.5), "points"))
  
 
 ggsave(
   validation_plot_fc,
   filename = "./validation/validation_plot_fc.png",
-  scale = 0.5,
-  width = 16,
-  height = 12
+  scale = 0.7,
+  width = 10,
+  height = 8
 )
 
 # 

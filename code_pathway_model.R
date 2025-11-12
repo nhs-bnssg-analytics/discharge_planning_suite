@@ -4,7 +4,7 @@ library(tidymodels)
 
 
 con <- switch(.Platform$OS.type,
-              windows = RODBC::odbcConnect(dsn = "xsw"),
+              windows = RODBC::odbcDriverConnect("driver={SQL Server};\n  server=Xsw-00-ash01;\n  trusted_connection=true"),#RODBC::odbcConnect(dsn = "xsw"),
               unix = xswauth::modelling_sql_area()
 )
 
@@ -79,7 +79,8 @@ nctr_df <-
       ,[DER_File_Name]
       ,[DER_Load_Timestamp]
   FROM Analyst_SQL_Area.dbo.vw_NCTR_Status_Report_Daily_JI"
-  )
+  ) %>%
+  mutate(Census_Date = lubridate::ymd(Census_Date))
 
 validation_end <- ymd("2024-09-01")
 validation_start <- ymd("2023-07-01")

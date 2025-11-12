@@ -149,8 +149,8 @@ discharge_plots <- local({
                          "bri" = "Bristol Royal Infirmary",
                          "weston" = "Weston General Hospital"),
            metric = recode(metric, 
-                           "curr_admits" = "Validation 3b",
-                           "new_admits" = "Validation 4b")) %>%
+                           "curr_admits" = "3b",
+                           "new_admits" = "4b")) %>%
     nest(.by = c(metric, site)) %>%
     mutate(plot = map(data, \(x) x %>%
                         summarise(
@@ -171,8 +171,8 @@ discharge_plots <- local({
                                      names_sep = "_") %>%
                         pivot_wider(names_from = metric, values_from = value) %>%
                         mutate(grp = recode(grp,
-                                            "sim" = "Simulated",
-                                            "obs" = "Observed"
+                                            "sim" = "Modelled",
+                                            "obs" = "Acutal"
                         )) %>%
                         ggplot(aes(x = as.numeric(day), y = mean, col = grp)) +
                         # ungeviz::geom_hpline(aes(y = mean), position = position_dodge(width = 0.75), linewidth = 0.33) +
@@ -212,7 +212,7 @@ discharge_plots <- local({
           )
         ) +
         labs(# title = glue::glue("{y}"),
-          y = "Numbers becoming ready for discharge", x = "Day")
+          y = "Numbers becoming ready for discharge", x = "Days into prediction period")
     )) %>%
     pull(plot)
   
@@ -223,8 +223,8 @@ discharge_plots <- local({
                          "bri" = "Bristol Royal Infirmary",
                          "weston" = "Weston General Hospital"),
            metric = recode(metric, 
-                           "curr_admits" = "Validation 3a",
-                           "new_admits" = "Validation 4a")) %>%
+                           "curr_admits" = "3a",
+                           "new_admits" = "4a")) %>%
     nest(.by = c(site, metric, pathway)) %>%
     mutate(plot = map(data, \(x) x %>%
                         summarise(
@@ -245,18 +245,18 @@ discharge_plots <- local({
                                      names_sep = "_") %>%
                         pivot_wider(names_from = metric, values_from = value) %>%
                         mutate(grp = recode(grp,
-                                            "sim" = "Simulated",
-                                            "obs" = "Observed"
+                                            "sim" = "Modelled",
+                                            "obs" = "Actual"
                         )) %>%
                         ggplot(aes(x = as.numeric(day), y = mean, col = grp)) +
                         geom_pointrange(aes(ymin = l95, ymax = u95),
                                         linewidth = 0.5,
                                         fatten = 0.1,
                                         position = position_dodge(width = 0.9),
-                                        size = 0.33) +
+                                        size = 0.2) +
                         # geom_point(size = 0.9, position = position_dodge(width = 0.75)) +
                         scale_colour_manual(values = c("#8c96c6", "#88419d")) +
-                        # scale_x_continuous(breaks = seq(2, 10, 2)) +
+                        scale_x_continuous(breaks = seq(1, 10, 5)) +
                         theme_minimal() +
                         labs(colour = "") +
                         theme(panel.background = element_rect(fill = NA, color = "#DDDDDD", linewidth = 1),
@@ -268,7 +268,7 @@ discharge_plots <- local({
         pathway),
       \(x, y, z) x +
         scale_x_continuous(
-          breaks = seq(2, 10, 2),
+          breaks = c(5, 10),#seq(0, 10, 5),
           sec.axis = sec_axis(
             ~ .,
             name = z,
@@ -285,7 +285,7 @@ discharge_plots <- local({
           )
         ) +
         labs(# title = glue::glue("{y}"),
-          y = "Numbers becoming ready for discharge", x = "Day")
+          y = "Numbers becoming ready for discharge", x = "Days into prediction period")
     )) %>%
     pull(plot)
   
@@ -346,8 +346,8 @@ ggsave(last_plot(),
 wrap_plots(discharge_plots[[6]][c(3,4,1,2)],
            ncol = 2,
            axes = "collect",
-           guides = "collect") +
-  plot_annotation(title = "Validation 3b & 4b") &
+           guides = "collect") &
+  # plot_annotation(title = "Validation 3b & 4b") &
   theme(legend.position = "bottom")
 
 
@@ -357,7 +357,7 @@ ggsave(last_plot(),
        bg = "white",
        width = 10,
        height = 7.5,
-       scale = 0.6)
+       scale = 0.5)
 
 # patchwork::wrap_plots(ncol = 2, axes = "collect", guides = "collect")
 
@@ -366,7 +366,7 @@ ptc_3a_4a <- wrap_plots(discharge_plots[[7]][c(9:16, 1:8)],
            nrow = 2,
            axis_titles = "collect",
            guides = "collect") &
-  theme(legend.position = "bottom") 
+  theme(legend.position = "bottom", panel.spacing.x=unit(0.5, "lines"),panel.spacing.y=unit(1, "lines")) 
 
 titles_site <- wrap_plots(
   list( {ggplot() + annotate("text", label = "Bristol Royal Infirmary", size = 4, x = 0, y = 0) + theme_void()},
@@ -376,12 +376,13 @@ titles_site <- wrap_plots(
 
 wrap_plots(list(titles_site, ptc_3a_4a), heights = {\(x) c(x, 1-x)}(0.075)) 
 
+
 ggsave(last_plot(),
        filename = "./validation/validation_3a_4a.png",
        bg = "white",
-       width = 12.5,
-       height = 10,
-       scale = 0.7)
+       width = 10,
+       height = 5,
+       scale = 0.775)
 
 
 ptc_3a_4a <- wrap_plots(discharge_plots[[7]][c(9:16, 1:8)],
@@ -398,10 +399,10 @@ titles <- wrap_plots(
       )
   )
 
-wrap_plots(list(titles, ptc_3a_4a), heights = {\(x) c(x, 1-x)}(0.075))
+# wrap_plots(list(titles, ptc_3a_4a), heights = {\(x) c(x, 1-x)}(0.075))
+ptc_3a_4a
 
-
-ggsave(last_plot(),
+ggsave(ptc_3a_4a,
        filename = "./validation/validation_3a_4a.png",
        bg = "white",
        width = 12.5,
@@ -545,13 +546,16 @@ p5 <- out_df %>%
   pivot_longer(-c(site, pathway, metric), 
                names_to = c("grp", "stat"),
                names_sep = "_") %>%
+  mutate(grp = recode(grp, "observed" = "Actual", 
+                         "simulated" = "Modelled")) %>%
   pivot_wider(names_from = stat, values_from = value) %>%
   nest(.by = c(site, pathway, metric)) %>%
   mutate(site = recode(site,
                        "bri" = "Bristol Royal Infirmary",
                        "weston" = "Weston General Hospital"),
-         metric = recode(metric, "curr_admits" = "Validation 3c", 
-                         "new_admits" = "Validation 4c")) %>%
+         metric = recode(metric, "curr_admits" = "3c", 
+                         "new_admits" = "4c")
+                        ) %>%
   mutate(plot = pmap(list(data, metric, pathway), \(d, m, p) {
     ggplot(data = d, aes(
       x = 0,
@@ -564,7 +568,7 @@ p5 <- out_df %>%
         linewidth = 0.5,
         fatten = 0.1,
         position = position_dodge(width = 0.01),
-        size = 0.33
+        size = 0.2
       ) +
       scale_colour_manual(values = c("#8c96c6", "#88419d")) +
       scale_x_continuous(
@@ -581,7 +585,7 @@ p5 <- out_df %>%
         breaks = NULL,
         labels = NULL
       )) +
-      labs(x = "", y = "Proportion", colour = "") +
+      labs(x = "", y = "Site-level proportion to each discharge pathway", colour = "") +
       # scale_x_continuous(breaks = seq(2, 10, 2)) +
       theme_minimal() +
       theme(panel.background = element_rect(fill = NA, color = "#DDDDDD", linewidth = 1),
@@ -610,8 +614,8 @@ ptc_3c_4c <- wrap_plots(pathway_plots[[5]][c(9:16, 1:8)],
 
 
 titlesc <- wrap_plots(
-  list( {ggplot() + annotate("text", label = "Validation 3c", size = 6, x = 0, y = 0) + theme_void()},
-        {ggplot() + annotate("text", label = "Validation 4c", size = 6, x = 0, y = 0) + theme_void()}
+  list( {ggplot() + annotate("text", label = "Bristol Royal Infirmary", size = 4, x = 0, y = 0) + theme_void()},
+        {ggplot() + annotate("text", label = "Weston General Hospital", size = 4, x = 0, y = 0) + theme_void()}
   )
 )
 
@@ -621,7 +625,7 @@ ggsave(last_plot(),
        filename = "./validation/validation_3c_4c.png",
        bg = "white",
        width = 10,
-       height = 10,
+       height = 6,
        scale = 0.7)
 
 
@@ -633,14 +637,14 @@ ptc_3c_4c <- wrap_plots(pathway_plots[[5]][c(9:16, 1:8)],
   theme(legend.position = "bottom")
 
 
-wrap_plots(list(titles_site, ptc_3c_4c), heights = {\(x) c(x, 1-x)}(0.075)) +
-  plot_annotation(title = "Validation 3c & 4c")
-
-ggsave(last_plot(),
+# wrap_plots(list(titles_site, ptc_3c_4c), heights = {\(x) c(x, 1-x)}(0.075)) +
+#   plot_annotation(title = "Validation 3c & 4c")
+ptc_3c_4c
+ggsave(ptc_3c_4c,
        filename = "./validation/validation_3c_4c.png",
        bg = "white",
        width = 10,
-       height = 8.5,
+       height = 5.5,
        scale = 0.7)
 
 
@@ -697,7 +701,7 @@ bind_rows(
   ))) +
   facet_grid(site ~ pathway) +
   # ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") +
-  labs(x = "Day",
+  labs(x = "Days into prediction period",
        colour = "",
        y = str_wrap("RMSE ratio between baseline and simulation models", 50)) +
   theme(legend.position = "bottom")
@@ -756,7 +760,7 @@ bind_rows(
   ))) +
   facet_grid(site ~ pathway) +
   # ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") +
-  labs(x = "Day",
+  labs(x = "Days into prediction period",
        colour = "",
        y = str_wrap("RMSE ratio between baseline and simulation models", 50)) +
   theme(legend.position = "bottom")
@@ -876,7 +880,7 @@ bind_rows(
   ))) +
   facet_grid(site ~ pathway, scales = "free") +
   # ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") +
-  labs(x = "Day",
+  labs(x = "Days into prediction period",
        colour = "",
        y = str_wrap("RMSE ratio between baseline and simulation models", 50)) +
   theme(legend.position = "bottom")
@@ -937,7 +941,7 @@ bind_rows(
   ))) +
   facet_grid(~site) +
   # ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") +
-  labs(x = "Day",
+  labs(x = "Days into prediction period",
        colour = "",
        y = str_wrap("RMSE ratio between baseline and simulation models", 50)) +
   theme(legend.position = "bottom")
@@ -999,7 +1003,7 @@ bind_rows(
   # ))) +
   facet_grid(site ~ pathway) +
   # ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") +
-  labs(x = "Day",
+  labs(x = "Days into prediction period",
        colour = "",
        y = str_wrap("RMSE ratio between baseline and simulation models", 50)) +
   theme(legend.position = "bottom")
@@ -1060,7 +1064,7 @@ bind_rows(
   ))) +
   facet_grid(~site) +
   # ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") +
-  labs(x = "Day",
+  labs(x = "Days into prediction period",
        colour = "",
        y = str_wrap("RMSE ratio between baseline and simulation models", 50)) +
   theme(legend.position = "bottom")
@@ -1256,7 +1260,7 @@ bind_rows(
   ))) +
   facet_grid(site ~ pathway) +
   # ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") +
-  labs(x = "Day",
+  labs(x = "Days into prediction period",
        colour = "",
        y = str_wrap("RMSE ratio between baseline and simulation models", 50)) +
   theme(legend.position = "bottom")
@@ -1443,7 +1447,7 @@ bind_rows(
   ))) +
   facet_grid(site ~ pathway) +
   # ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") +
-  labs(x = "Day",
+  labs(x = "Days into prediction period",
        colour = "",
        y = str_wrap("RMSE ratio between baseline and simulation models", 50)) +
   theme(legend.position = "bottom")
@@ -1504,7 +1508,7 @@ bind_rows(
   ))) +
   facet_grid(site ~ pathway) +
   # ggh4x::facet_grid2(site ~ pathway, scales = "free_y", independent = "y") +
-  labs(x = "Day",
+  labs(x = "Days into prediction period",
        colour = "",
        y = str_wrap("RMSE ratio between baseline and simulation models", 50)) +
   theme(legend.position = "bottom")

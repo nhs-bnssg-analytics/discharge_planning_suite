@@ -4,7 +4,7 @@ library(tidymodels)
 library(lubridate)
 
 con <- switch(.Platform$OS.type,
-              windows = RODBC::odbcConnect(dsn = "xsw"),
+              windows = RODBC::odbcDriverConnect("driver={SQL Server};\n  server=Xsw-00-ash01;\n  trusted_connection=true"),#RODBC::odbcConnect(dsn = "xsw"),
               unix = {"/root/sql/sql_connect_string_linux" |>
                   readr::read_lines() |>
                   RODBC::odbcDriverConnect()}
@@ -113,6 +113,7 @@ out <- readRDS("data/final_validation_full_out_2025_05.RDS")
 
 
 census_log <- nctr_df_full %>%
+  mutate(Census_Date = lubridate::ymd(Census_Date)) %>%
   filter(Person_Stated_Gender_Code %in% 1:2) %>%
   mutate(nhs_number = as.character(NHS_Number),
          nhs_number = if_else(is.na(nhs_number), CDS_Unique_Identifier, nhs_number),
@@ -189,6 +190,7 @@ calc_cur_admit_disch_rdy <- function(d, h = 10, census_log) {
 
 
 dates <- nctr_df_full  %>%
+  mutate(Census_Date = lubridate::ymd(Census_Date)) %>%
   filter(between(Census_Date, validation_start, validation_end-ddays(1)))%>%
   filter(Census_Date >= start_date,
          Census_Date < validation_end,
@@ -913,9 +915,9 @@ bind_rows(
   theme(panel.background = element_rect(fill = NA, color = "#DDDDDD", linewidth = 1)) +
   ggh4x::facet_grid2(site ~ ., scales = "free_y", independent = "y") +
   labs(#title = "Validation 1",
-       x = "Day",
+       x = "Day into forecast period",
        colour = "",
-       y = str_wrap("Fold-difference in relative error of baseline approach to model", 75)) +
+       y = str_wrap("Fold-difference in relative error of baseline approach to model", 40)) +
   theme(legend.position = "bottom")
 
 
@@ -924,5 +926,5 @@ ggsave(last_plot(),
        bg = "white",
        width = 10,
        height = 7.5,
-       scale = 0.65)
+       scale = 0.5)
          

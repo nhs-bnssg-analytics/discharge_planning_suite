@@ -4,7 +4,7 @@ library(tidymodels)
 source("utils/utils.R")
 
 con <- switch(.Platform$OS.type,
-              windows = RODBC::odbcConnect(dsn = "xsw"),
+              windows = RODBC::odbcDriverConnect("driver={SQL Server};\n  server=Xsw-00-ash01;\n  trusted_connection=true"),#RODBC::odbcConnect(dsn = "xsw"),
               unix = xswauth::modelling_sql_area()
 )
 
@@ -40,7 +40,8 @@ nctr_df <-
       ,[DER_File_Name]
       ,[DER_Load_Timestamp]
   FROM Analyst_SQL_Area.dbo.vw_NCTR_Status_Report_Daily_JI"
-  )
+  ) %>%
+  mutate(Census_Date = lubridate::ymd(Census_Date))
 
 validation_end <- ymd("2024-09-01")
 validation_start <- ymd("2023-07-01")
@@ -156,9 +157,9 @@ los_df %>%
   theme_minimal() +
   theme(axis.ticks = element_line(),
         panel.spacing.x = unit(0.75, units = "cm")) +
-  labs(title = "Calibration 4e",
-       y = "Empirical Cumulative Distribution Function",
-       x = "mLOS (Midnights-crossed)") +
+  labs(#title = "Calibration 4e",
+       y = str_wrap("Empirical Cumulative Distribution Function", 40),
+       x = "Medical length of stay (days)") +
   facet_wrap(vars(site), nrow = 1)
 
 
@@ -166,8 +167,8 @@ ggsave(last_plot(),
        filename = "./validation/calibration_4e_los_ecdf.png",
        bg = "white",
        width = 10,
-       height = 6,
-       scale = 0.65)
+       height = 5,
+       scale = 0.5)
 
 
 saveRDS(los_df, "data/los_df.RDS")
@@ -308,9 +309,9 @@ autoplot(tree_rs) +
 
 
 labeller_tree_depth <- function(string, prefix = "Tree-depth: ") paste0(prefix, string)
-labeller_metric <- c(mae = "Mean Absolute Error (MAE)",
-                     rmse = "Root Mean Squared Error (RMSE)",
-                     rsq = "R-squared")
+labeller_metric <- c(mae = str_wrap("Mean Absolute Error (MAE)", 20),
+                     rmse = str_wrap("Root Mean Squared Error (RMSE)", 20),
+                     rsq = str_wrap("R-squared", 20))
 
 tree_rs %>%
   collect_metrics() %>%
@@ -329,7 +330,7 @@ tree_rs %>%
   scale_x_continuous(transform = "log10", labels = trans_format("log10", math_format(10^.x)), sec.axis = sec_axis(~ ., name = "Tree-depth", breaks = NULL, labels = NULL)) +
   scale_color_viridis_d(begin = 0.1, end = 0.8)  +
   # theme(legend.position = "bottom") +
-  labs(title = "Calibration 3d",
+  labs(#title = "Calibration 3d",
        col = "Min n",
        x = "Cost-complextiy parameter",
        y = "")
@@ -338,9 +339,9 @@ tree_rs %>%
 ggsave(last_plot(),
        filename = "./validation/los_calib_hyperparam.png",
        bg = "white",
-       width = 15,
-       height = 10,
-       scale = 0.6)
+       width = 10,
+       height = 7.5,
+       scale = 0.65)
 
 # collect_metrics(tree_rs) %>% View()
 
