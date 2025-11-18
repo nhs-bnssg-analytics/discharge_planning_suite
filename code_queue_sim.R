@@ -3,7 +3,6 @@
 
 plot_df_queue_sim <- local({
 
-  browser()
 # calculate the number of discharges made by observing patients on a queue
 # leaving the census on the following day
 # discharges_ts <- nctr_df %>%
@@ -106,11 +105,12 @@ plot_df_queue_sim <- local({
     ungroup() %>%
     distinct()  %>%
     # group_by(site, pathway, date = date + ddays(1)) %>%
+    filter(!is.na(date)) %>%
     group_by(site, pathway, date = date) %>%
     count() %>%
     ungroup() %>%
     complete(nesting(site, date), pathway, fill = list(n = 0)) %>%
-    filter(date != max(date), date != min(date), pathway != "Other")
+    filter(date != max(date, na.rm = TRUE), date != min(date, na.rm = TRUE), pathway != "Other")
   
   
   discharge_sum <- discharges_ts %>%

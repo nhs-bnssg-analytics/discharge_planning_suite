@@ -886,7 +886,9 @@ bind_rows(
       summarise(n = sum(n), .by = c(id, site, day)) %>%
       rename(baseline = n)
   ) %>%
-  mutate(site = recode(site, !!!c("bri" = "Bristol Royal Infirmary", "weston" = "Weston General Hospital"))) %>%
+  mutate(site = recode(site, !!!c(
+    "bri" = str_wrap("Bristol Royal Infirmary", 20),
+ "weston" = str_wrap("Weston General Hospital", 20)))) %>%
   mutate(across(c(simulated, baseline), list(error = \(x) observed - x))) %>%
   mutate(across(matches("_error"), list(abs = \(x) abs(x)))) %>%
   mutate(
@@ -915,9 +917,9 @@ bind_rows(
   theme(panel.background = element_rect(fill = NA, color = "#DDDDDD", linewidth = 1)) +
   ggh4x::facet_grid2(site ~ ., scales = "free_y", independent = "y") +
   labs(#title = "Validation 1",
-       x = "Day into forecast period",
+       x = "Days into prediction period",
        colour = "",
-       y = str_wrap("Fold-difference in relative error of baseline approach to model", 40)) +
+       y = str_wrap("Fold-difference in relative error of baseline approach to model", 35)) +
   theme(legend.position = "bottom")
 
 
@@ -925,6 +927,6 @@ ggsave(last_plot(),
        filename = "./validation/validation_1_folddiff.png",
        bg = "white",
        width = 10,
-       height = 7.5,
-       scale = 0.5)
-         
+       height = 5.75,
+       scale = 0.45)
+           

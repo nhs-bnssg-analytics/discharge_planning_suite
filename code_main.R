@@ -20,8 +20,6 @@ plot_int <- TRUE
 seed <- FALSE
 
 n_rep <- 1E3
-
-run_date <- today()
 n_days <- 10
 
 # latest nctr data
@@ -123,7 +121,7 @@ nctr_sum <- nctr_df %>%
     Date_Of_Admission = as.Date(Date_Of_Admission)
   ) %>%
   group_by(Organisation_Site_Code) %>%
-  filter(Census_Date == max(Census_Date)) %>%
+  filter(Census_Date == max_date) %>%
   ungroup() %>%
   mutate(
     der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/ddays(1),
@@ -133,7 +131,7 @@ nctr_sum <- nctr_df %>%
       !is.na(Date_NCTR) ~ FALSE,
       Criteria_To_Reside == "N" ~ FALSE
     )) %>%
-  mutate(report_date = max(Census_Date)) %>%
+  mutate(report_date = max_date) %>%
   mutate(los = (report_date - Date_Of_Admission) / ddays(1)) %>%
   mutate(
     pathway = recode(
@@ -176,6 +174,9 @@ select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period
   )
 
 
+nctr_df <- nctr_df %>%
+  filter(Census_Date <= report_start)
+
 source("code_admits_fcast.R")
 source("code_new_admits.R")
 source("code_curr_admits.R")
@@ -211,6 +212,7 @@ df_pred <- bind_rows(df_curr_admits, df_new_admit) %>%
 
 # Now simulate the queue evolution
 source("code_queue_sim.R")
+
 
 
 # dataset for plotting (and storing on SQL)

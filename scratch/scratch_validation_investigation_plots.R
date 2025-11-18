@@ -149,8 +149,8 @@ discharge_plots <- local({
                          "bri" = "Bristol Royal Infirmary",
                          "weston" = "Weston General Hospital"),
            metric = recode(metric, 
-                           "curr_admits" = "3b",
-                           "new_admits" = "4b")) %>%
+                           "curr_admits" = str_wrap("Current patient drain", 15),
+                           "new_admits" = str_wrap("New admisssions", 15))) %>%
     nest(.by = c(metric, site)) %>%
     mutate(plot = map(data, \(x) x %>%
                         summarise(
@@ -223,8 +223,8 @@ discharge_plots <- local({
                          "bri" = "Bristol Royal Infirmary",
                          "weston" = "Weston General Hospital"),
            metric = recode(metric, 
-                           "curr_admits" = "3a",
-                           "new_admits" = "4a")) %>%
+                           "curr_admits" = str_wrap("Current patient drain", 15),
+                           "new_admits" = str_wrap("New admissions", 15))) %>%
     nest(.by = c(site, metric, pathway)) %>%
     mutate(plot = map(data, \(x) x %>%
                         summarise(
@@ -553,8 +553,8 @@ p5 <- out_df %>%
   mutate(site = recode(site,
                        "bri" = "Bristol Royal Infirmary",
                        "weston" = "Weston General Hospital"),
-         metric = recode(metric, "curr_admits" = "3c", 
-                         "new_admits" = "4c")
+         metric = recode(metric, "curr_admits" = str_wrap("Current patient drain", 15), 
+                         "new_admits" = str_wrap("New admissions", 15))
                         ) %>%
   mutate(plot = pmap(list(data, metric, pathway), \(d, m, p) {
     ggplot(data = d, aes(

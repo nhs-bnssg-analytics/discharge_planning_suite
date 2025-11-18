@@ -103,7 +103,7 @@ validation_start <- ymd("2023-07-01")
                                             sec.axis = sec_axis(~ ., name = glue::glue("{site}\nMAPE: {round(mape,1)} [{round(mape_lq,1)}, {round(mape_uq,1)}]"), breaks = NULL, labels = NULL)) +
                                theme_minimal() +
                                theme(panel.background = element_rect(fill = NA, color = "#DDDDDD", linewidth = 1)) +
-                               labs(x = "", y = glue::glue("New admits each day"))
+                               labs(x = "", y = glue::glue("New admissions each day"))
                              
        }))
 

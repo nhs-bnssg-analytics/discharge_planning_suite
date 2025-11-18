@@ -73,7 +73,7 @@ models <- admissions %>%
          date <= report_end) %>%
   # mutate(day = ((date - report_start)/ddays(1))-1, (DEPRECATED - this was when I considered report_date to be 'day 0')
   mutate(day = ((date - report_start)/ddays(1) + 1), # This sets the convention that 'day 1' is the 'today' (i.e. latest census date)
-         report_date = run_date) %>%
+         report_date = report_start) %>%
   mutate(site = recode(site, 'SOUTHMEAD HOSPITAL' = 'nbt', 
                        'BRISTOL ROYAL INFIRMARY' = 'bri', 
                        'WESTON GENERAL HOSPITAL' = 'weston'))

@@ -497,7 +497,7 @@ p <- ggparty(tree_p, terminal_space = 0.25, add_vars = list(
            x = "mLOS") 
     
     )) +
-  labs(title = "Calibration 3d") +
+  # labs(title = "Calibration 3d") +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0)) #+
   # theme(axis.text = element_blank(),
@@ -512,7 +512,7 @@ p <- ggparty(tree_p, terminal_space = 0.25, add_vars = list(
 p
 
 ggsave(p,
-       filename = "./validation/calibration_3d_dec_tree_ecdf.png",
+       filename = "./validation/calibration_3d_dec_tree_ecdf_new.png",
        bg = "white",
        width = 30,
        height = 12.5,
