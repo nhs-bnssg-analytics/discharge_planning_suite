@@ -4,6 +4,8 @@ library(patchwork)
 
 out <- readRDS("data/final_validation_full_out_2025_05.RDS")
 
+pal <- c("#33a02c", "#6a3d9a")
+
 discharge_plots <- local({
   out_df <- bind_rows(
     out %>%
@@ -182,7 +184,7 @@ discharge_plots <- local({
                                         position = position_dodge(width = 0.75),
                                         size = 0.33) +
                         # geom_point(size = 0.9, position = position_dodge(width = 0.75)) +
-                        scale_colour_manual(values = c("#8c96c6", "#88419d")) +
+                        scale_colour_manual(values = pal) +
                         # scale_x_continuous(breaks = seq(2, 10, 2)) +
                         theme_minimal() +
                         labs(colour = "") +
@@ -248,14 +250,14 @@ discharge_plots <- local({
                                             "sim" = "Modelled",
                                             "obs" = "Actual"
                         )) %>%
-                        ggplot(aes(x = as.numeric(day), y = mean, col = grp)) +
+                        ggplot(aes(x = as.numeric(day), y = mean, shape = grp, col = grp)) +
                         geom_pointrange(aes(ymin = l95, ymax = u95),
-                                        linewidth = 0.5,
+                                        linewidth = 0.25,
                                         fatten = 0.1,
                                         position = position_dodge(width = 0.9),
                                         size = 0.2) +
                         # geom_point(size = 0.9, position = position_dodge(width = 0.75)) +
-                        scale_colour_manual(values = c("#8c96c6", "#88419d")) +
+                        scale_colour_manual(values = pal) +
                         scale_x_continuous(breaks = seq(1, 10, 5)) +
                         theme_minimal() +
                         labs(colour = "") +
@@ -268,7 +270,7 @@ discharge_plots <- local({
         pathway),
       \(x, y, z) x +
         scale_x_continuous(
-          breaks = c(5, 10),#seq(0, 10, 5),
+          breaks = c(1, 5, 10),#seq(0, 10, 5),
           sec.axis = sec_axis(
             ~ .,
             name = z,
@@ -366,7 +368,11 @@ ptc_3a_4a <- wrap_plots(discharge_plots[[7]][c(9:16, 1:8)],
            nrow = 2,
            axis_titles = "collect",
            guides = "collect") &
-  theme(legend.position = "bottom", panel.spacing.x=unit(0.5, "lines"),panel.spacing.y=unit(1, "lines")) 
+  theme(legend.position = "bottom",
+ panel.spacing.x=unit(0.5, "lines"),
+ panel.spacing.y=unit(1, "lines")#,
+  # axis.text.x = element_text(hjust = 0)
+) 
 
 titles_site <- wrap_plots(
   list( {ggplot() + annotate("text", label = "Bristol Royal Infirmary", size = 4, x = 0, y = 0) + theme_void()},
@@ -570,7 +576,7 @@ p5 <- out_df %>%
         position = position_dodge(width = 0.01),
         size = 0.2
       ) +
-      scale_colour_manual(values = c("#8c96c6", "#88419d")) +
+      scale_colour_manual(values = pal) +
       scale_x_continuous(
         breaks = NULL,
         sec.axis = sec_axis(
