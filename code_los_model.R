@@ -315,9 +315,9 @@ labeller_metric <- c(mae = str_wrap("Mean Absolute Error (MAE)", 20),
 
 tree_rs %>%
   collect_metrics() %>%
+  # arrange(desc(min_n)) %>%
   ggplot(aes(x = cost_complexity, y = mean, col = factor(min_n))) +
-  geom_line() +
-  geom_point() +
+  ggh4x::geom_pointpath(alpha = 0.7, size = 0.2, linewidth = 0.3) +
   facet_grid(.metric ~ tree_depth,
              scales = "free_y",
              labeller = labeller(

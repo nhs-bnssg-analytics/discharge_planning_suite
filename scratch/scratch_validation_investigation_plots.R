@@ -4,7 +4,7 @@ library(patchwork)
 
 out <- readRDS("data/final_validation_full_out_2025_05.RDS")
 
-pal <- c("#33a02c", "#6a3d9a")
+pal <- c("Actual" = "#33a02c", "Modelled" = "#6a3d9a")
 
 discharge_plots <- local({
   out_df <- bind_rows(
@@ -174,20 +174,19 @@ discharge_plots <- local({
                         pivot_wider(names_from = metric, values_from = value) %>%
                         mutate(grp = recode(grp,
                                             "sim" = "Modelled",
-                                            "obs" = "Acutal"
+                                            "obs" = "Actual"
                         )) %>%
-                        ggplot(aes(x = as.numeric(day), y = mean, col = grp)) +
+                        ggplot(aes(x = as.numeric(day), y = mean, col = grp, shape = grp)) +
                         # ungeviz::geom_hpline(aes(y = mean), position = position_dodge(width = 0.75), linewidth = 0.33) +
                         geom_pointrange(aes(ymin = l95, ymax = u95),
-                                        linewidth = 0.5,
-                                        fatten = 0.1,
-                                        position = position_dodge(width = 0.75),
-                                        size = 0.33) +
+                                        linewidth = 0.25,
+                                        size = 0.15,
+                                        position = position_dodge(width = 0.75)) +
                         # geom_point(size = 0.9, position = position_dodge(width = 0.75)) +
                         scale_colour_manual(values = pal) +
                         # scale_x_continuous(breaks = seq(2, 10, 2)) +
                         theme_minimal() +
-                        labs(colour = "") +
+                        labs(colour = "", shape = "") +
                         theme(panel.background = element_rect(fill = NA, color = "#DDDDDD", linewidth = 1),
                               legend.position = "bottom"))) %>%
     mutate(plot = pmap(
@@ -250,17 +249,19 @@ discharge_plots <- local({
                                             "sim" = "Modelled",
                                             "obs" = "Actual"
                         )) %>%
-                        ggplot(aes(x = as.numeric(day), y = mean, shape = grp, col = grp)) +
+                        mutate(grp = factor(grp, levels = c("Actual", "Modelled"))) %>%
+                        arrange(grp) %>%
+                        ggplot(aes(x = as.numeric(day), y = mean, shape = grp, col = grp, group = grp)) +
                         geom_pointrange(aes(ymin = l95, ymax = u95),
                                         linewidth = 0.25,
-                                        fatten = 0.1,
-                                        position = position_dodge(width = 0.9),
-                                        size = 0.2) +
-                        # geom_point(size = 0.9, position = position_dodge(width = 0.75)) +
+                                        size = 0.15,
+                                        # fatten = 0.1,
+                                        position = position_dodge(width = 0.9)) +
+                        # geom_point(size = 0.2) +
                         scale_colour_manual(values = pal) +
                         scale_x_continuous(breaks = seq(1, 10, 5)) +
                         theme_minimal() +
-                        labs(colour = "") +
+                        labs(colour = "", shape = "") +
                         theme(panel.background = element_rect(fill = NA, color = "#DDDDDD", linewidth = 1),
                               legend.position = "bottom")))%>%
     mutate(plot = pmap(
@@ -306,45 +307,6 @@ ggsave(last_plot(),
        scale = 0.75)
 
 
-# discharge_plots[[6]][[1]] <- discharge_plots[[6]][[1]] + labs(title = "Validation 4b")
-# ggsave(last_plot(),
-#        filename = "./validation/validation_4b.png",
-#        bg = "white",
-#        width = 10,
-#        height = 7.5,
-#        scale = 0.6)
-# 
-# discharge_plots[[6]][[2]] <- discharge_plots[[6]][[2]] + labs(title = "Validation 3b")
-# ggsave(last_plot(),
-#        filename = "./validation/validation_3b.png",
-#        bg = "white",
-#        width = 10,
-#        height = 7.5,
-#        scale = 0.6)
-
-
-# discharge_plots[[7]][[1]] <- discharge_plots[[7]][[1]] + labs(title = "Validation 4a")
-# discharge_plots[[7]][[1]]
-# ggsave(last_plot(),
-#        filename = "./validation/validation_4a_newadmits.png",
-#        bg = "white",
-#        width = 10,
-#        height = 10,
-#        scale = 0.75)
-# 
-# discharge_plots[[7]][[2]] <- discharge_plots[[7]][[2]] + labs(title = "Validation 3a")
-# ggsave(last_plot(),
-#        filename = "./validation/validation_3a_curradmits.png",
-#        bg = "white",
-#        width = 10,
-#        height = 10,
-#        scale = 0.75)
-# 
-# patchwork::wrap_plots(rev(discharge_plots[[7]]), ncol = 1, axes = "collect", guides = "collect") &
-#   theme(legend.position = "bottom")
-
-# discharge_plots[[6]][[1]] <- discharge_plots[[6]][[1]] + labs(title = "Validation 4b")
-# discharge_plots[[6]][[3]] <- discharge_plots[[6]][[3]] + labs(title = "Validation 3b")
 wrap_plots(discharge_plots[[6]][c(3,4,1,2)],
            ncol = 2,
            axes = "collect",
@@ -369,9 +331,10 @@ ptc_3a_4a <- wrap_plots(discharge_plots[[7]][c(9:16, 1:8)],
            axis_titles = "collect",
            guides = "collect") &
   theme(legend.position = "bottom",
- panel.spacing.x=unit(0.5, "lines"),
- panel.spacing.y=unit(1, "lines")#,
-  # axis.text.x = element_text(hjust = 0)
+ panel.spacing.x=unit(0, "lines"),
+ panel.spacing.y=unit(1, "lines"),
+ plot.margin = margin(t = 1, r = 3, b = 1, l = 1, unit = "pt"),
+ axis.text.y = element_text(margin = margin(l = 0, unit = "pt"))
 ) 
 
 titles_site <- wrap_plots(
@@ -396,7 +359,7 @@ ptc_3a_4a <- wrap_plots(discharge_plots[[7]][c(9:16, 1:8)],
            nrow = 4,
            axis_titles = "collect",
            guides = "collect") &
-  theme(legend.position = "bottom")
+  theme(legend.position = "bottom", plot.margin = margin(t = 1, r = 1, b = 1, l = 1, unit = "pt"))
 
 
 titles <- wrap_plots(
@@ -554,6 +517,8 @@ p5 <- out_df %>%
                names_sep = "_") %>%
   mutate(grp = recode(grp, "observed" = "Actual", 
                          "simulated" = "Modelled")) %>%
+  mutate(grp = factor(grp, levels = c("Actual", "Modelled"))) %>%
+  arrange(grp) %>%
   pivot_wider(names_from = stat, values_from = value) %>%
   nest(.by = c(site, pathway, metric)) %>%
   mutate(site = recode(site,
@@ -568,11 +533,12 @@ p5 <- out_df %>%
       y = mean,
       ymax = uq,
       ymin = lq,
-      col = grp
+      col = grp,
+      shape = grp
     )) +
       geom_pointrange(
         linewidth = 0.5,
-        fatten = 0.1,
+        # fatten = 0.1,
         position = position_dodge(width = 0.01),
         size = 0.2
       ) +
@@ -591,7 +557,7 @@ p5 <- out_df %>%
         breaks = NULL,
         labels = NULL
       )) +
-      labs(x = "", y = "Site-level proportion to each discharge pathway", colour = "") +
+      labs(x = "", y = "Site-level proportion to each discharge pathway", colour = "", shape = "") +
       # scale_x_continuous(breaks = seq(2, 10, 2)) +
       theme_minimal() +
       theme(panel.background = element_rect(fill = NA, color = "#DDDDDD", linewidth = 1),
@@ -600,9 +566,6 @@ p5 <- out_df %>%
             axis.title.x.top = element_text(margin = margin(t = 0, r = 0, b = 10, l = 0))) 
   })) %>% 
   pull(plot)
-
- 
- 
  
   
  list(p1, p2, p3, p4, p5)
@@ -616,7 +579,7 @@ ptc_3c_4c <- wrap_plots(pathway_plots[[5]][c(9:16, 1:8)],
                         nrow = 4,
                         axis_titles = "collect",
                         guides = "collect") &
-  theme(legend.position = "bottom")
+  theme(legend.position = "bottom", plot.margin = margin(t = 1, r = 1, b = 1, l = 1, unit = "pt"))
 
 
 titlesc <- wrap_plots(
@@ -640,11 +603,11 @@ ptc_3c_4c <- wrap_plots(pathway_plots[[5]][c(9:16, 1:8)],
            nrow = 2,
            axis_titles = "collect",
            guides = "collect") &
-  theme(legend.position = "bottom")
+  theme(legend.position = "bottom", plot.margin = margin(t = 1, r = 1, b = 1, l = 1, unit = "pt"))
 
 
-# wrap_plots(list(titles_site, ptc_3c_4c), heights = {\(x) c(x, 1-x)}(0.075)) +
-#   plot_annotation(title = "Validation 3c & 4c")
+wrap_plots(list(titles_site, ptc_3c_4c), heights = {\(x) c(x, 1-x)}(0.075)) 
+  # plot_annotation(title = "Validation 3c & 4c")
 ptc_3c_4c
 ggsave(ptc_3c_4c,
        filename = "./validation/validation_3c_4c.png",
