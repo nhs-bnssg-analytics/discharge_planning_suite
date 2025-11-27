@@ -2,88 +2,38 @@ library(fitdistrplus)
 library(tidyverse)
 library(tidymodels)
 source("utils/utils.R")
-
-con <- switch(.Platform$OS.type,
-              windows = RODBC::odbcDriverConnect("driver={SQL Server};\n  server=Xsw-00-ash01;\n  trusted_connection=true"),#RODBC::odbcConnect(dsn = "xsw"),
-              unix = xswauth::modelling_sql_area()
-)
-
-nctr_df <-
-  RODBC::sqlQuery(
-    con,
-    "SELECT
-       [Organisation_Code_Provider]
-      ,[Organisation_Code_Commissioner]
-      ,[Census_Date]
-      ,[NHS_Number]
-      ,[Person_Stated_Gender_Code]
-      ,[Person_Age]
-      ,[CDS_Unique_Identifier]
-      ,[Sub_ICB_Location]
-      ,[Organisation_Site_Code]
-      ,[Current_Ward]
-      ,[Specialty_Code]
-      ,[Bed_Type]
-      ,[Date_Of_Admission]
-      ,[BNSSG]
-      ,[Local_Authority]
-      ,[Criteria_To_Reside]
-      ,[Date_NCTR]
-      ,[Current_LOS]
-      ,[Days_NCTR]
-      ,[Current_Delay_Code]
-      ,[Current_Covid_Status]
-      ,[Planned_Date_Of_Discharge]
-      ,[Date_Toc_Form_Completed]
-      ,[Toc_Form_Status]
-      ,[Discharge_Pathway]
-      ,[DER_File_Name]
-      ,[DER_Load_Timestamp]
-  FROM Analyst_SQL_Area.dbo.vw_NCTR_Status_Report_Daily_JI"
-  ) %>%
-  mutate(Census_Date = lubridate::ymd(Census_Date))
+source("code_data_training.R")
 
 validation_end <- ymd("2024-09-01")
 validation_start <- ymd("2023-07-01")
 # weeks_test <- 13
-nctr_df <- nctr_df %>% filter(between(Census_Date, validation_start, validation_end-ddays(1)))
 
 date_co <- validation_start #as.Date(max_census - lubridate::dmonths(6))
 
 los_df <- nctr_df %>%
   ungroup() %>%
-  filter(Census_Date > date_co, Date_Of_Admission > date_co) %>%
-  filter(Person_Stated_Gender_Code %in% 1:2) %>%
-  mutate(nhs_number = as.character(NHS_Number),
-         nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
-         sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>% 
-  group_by(nhs_number, Date_Of_Admission) %>%
+  filter(census_date > date_co, admission_date > date_co) %>%
+  group_by(nhs_number, admission_date) %>%
   mutate(spell_id = cur_group_id()) %>%
   group_by(spell_id) %>%
   mutate(
-    der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/lubridate::ddays(1),
-    der_ctr = case_when(
-      Criteria_To_Reside == "Y" | is.na(Criteria_To_Reside) ~ TRUE,
-      !is.na(Days_NCTR) ~ FALSE,
-      !is.na(Date_NCTR) ~ FALSE,
-      Criteria_To_Reside == "N" ~ FALSE
-    ),
-    # der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - lubridate::ddays(1),max(Census_Date)))) %>%
-    der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) ,max(Census_Date)))) %>% # should it be max(census_date)+1 (if you become NCTR since last census you might have crossed another midnight..?)
+    der_los = (as.Date(census_date) - as.Date(admission_date))/lubridate::ddays(1),
+    # der_date_nctr = as.Date(if_else(any(!der_ctr),min(census_date[!der_ctr]) - lubridate::ddays(1),max(census_date)))) %>%
+    der_date_nctr = as.Date(if_else(any(!ctr),min(census_date[!ctr]) ,max(census_date)))) %>% # should it be max(census_date)+1 (if you become NCTR since last census you might have crossed another midnight..?)
   ungroup() %>%
-  mutate(der_date_nctr = pmax(Date_Of_Admission, pmin(der_date_nctr, Date_NCTR, na.rm = TRUE), na.rm = TRUE)) %>%
+  mutate(der_date_nctr = pmax(admission_date, pmin(der_date_nctr, date_nctr, na.rm = TRUE), na.rm = TRUE)) %>%
   mutate(der_date_nctr = as.Date(der_date_nctr)) %>%
-  arrange(Census_Date) %>%
+  arrange(census_date) %>%
   group_by(spell_id) %>%
   # (DEPRECATED) minus one as you mLOS is less than the time observed across the census snapshots (i.e. this is the left censor value)
-  mutate(discharge_rdy_los = (der_date_nctr - as.Date(Date_Of_Admission))/lubridate::ddays(1)) %>%
+  mutate(discharge_rdy_los = (der_date_nctr - as.Date(admission_date))/lubridate::ddays(1)) %>%
   # take max with zero for some cases where it is -1 due to date nctr == date admission and so los = -1
   mutate(discharge_rdy_los = pmax(discharge_rdy_los, 0)) %>%
   # take first discharge ready value
-  group_by(NHS_Number, Date_Of_Admission) %>%
+  group_by(spell_id) %>%
   arrange(discharge_rdy_los) %>% 
   slice(1) %>%
-  mutate(day_of_admission = weekdays(Date_Of_Admission)) %>%
+  mutate(day_of_admission = weekdays(admission_date)) %>%
   ungroup() %>%
   # filter(discharge_rdy_los >= 0) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
@@ -94,9 +44,9 @@ los_df <- nctr_df %>%
   mutate(Organisation_Site_Code = factor(Organisation_Site_Code)) %>%
   filter(Organisation_Site_Code != "nbt") %>%
   dplyr::select(
-    Census_Date,
+    census_date,
     nhs_number = nhs_number,
-    admission_date = Date_Of_Admission,
+    admission_date,
     date_nctr = Date_NCTR,
     der_date_nctr,
     site = Organisation_Site_Code,
