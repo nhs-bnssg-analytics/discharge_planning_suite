@@ -103,6 +103,19 @@ max_date <- nctr_df %>%
   pull(Census_Date) %>%
   max()
 
+# recode LA
+nctr_df <- nctr_df %>%
+  mutate(la = case_when(
+    Local_Authority == "SOUTH GLOUCESTERSHIRE COUNCIL" ~ "south gloucestershire",
+    Local_Authority == "South Glos" ~ "south gloucestershire",
+    Local_Authority == "NORTH SOMERSET COUNCIL" ~ "north somerset",
+    Local_Authority == "North Somerset" ~ "north somerset",
+    Local_Authority == "BRISTOL CITY COUNCIL" ~ "bristol",
+    Local_Authority == "Bristol" ~ "bristol",
+    .default = "Other"
+  )) 
+
+
 # NCTR data summary
 
 nctr_sum <- nctr_df %>%
@@ -145,13 +158,18 @@ nctr_sum <- nctr_df %>%
     "Other",
     pathway
   )) %>%
+  pivot_longer(
+    cols = c(site, la),
+    names_to = "grp_type",
+    values_to = "grp",
+  ) %>%
   dplyr::select(
     report_date,
     nhs_number,
     sex,
     age = Person_Age,
     ctr = der_ctr,
-    site,
+    grp,
     spec = Specialty_Code,
     bed_type = Bed_Type,
     los = der_los,

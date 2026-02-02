@@ -6,9 +6,9 @@ source("code_data_training.R")
 
 validation_end <- ymd("2024-09-01")
 validation_start <- ymd("2023-07-01")
-# weeks_test <- 13
 
-date_co <- validation_start #as.Date(max_census - lubridate::dmonths(6))
+
+date_co <- validation_start 
 
 los_df <- nctr_df %>%
   ungroup() %>%
@@ -30,31 +30,23 @@ los_df <- nctr_df %>%
   # take max with zero for some cases where it is -1 due to date nctr == date admission and so los = -1
   mutate(discharge_rdy_los = pmax(discharge_rdy_los, 0)) %>%
   # take first discharge ready value
-  group_by(spell_id) %>%
+  group_by(spell_id, grp) %>%
   arrange(discharge_rdy_los) %>% 
   slice(1) %>%
   mutate(day_of_admission = weekdays(admission_date)) %>%
   ungroup() %>%
-  # filter(discharge_rdy_los >= 0) %>%
-  filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
-  mutate(Organisation_Site_Code = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt',
-                                            Organisation_Site_Code == 'RA701' ~ 'bri',
-                                            Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
-                                            TRUE ~ '')) %>%
-  mutate(Organisation_Site_Code = factor(Organisation_Site_Code)) %>%
-  filter(Organisation_Site_Code != "nbt") %>%
   dplyr::select(
     census_date,
     nhs_number = nhs_number,
     admission_date,
-    date_nctr = Date_NCTR,
+    date_nctr,
     der_date_nctr,
-    site = Organisation_Site_Code,
+    grp,
     day_of_admission,
     sex,
-    age = Person_Age,
+    age,
     # spec = Specialty_Code,
-    bed_type = Bed_Type,
+    bed_type,
     los = discharge_rdy_los
   )  #%>%
 # # filter outlier LOS
@@ -96,9 +88,13 @@ los_df <- los_df %>%
 # ECDF
 
 los_df %>%
-  mutate(site = recode(site,
+  mutate(grp = recode(grp,
+                       "nbt" = "Southmead Hosipital",
                        "bri" = "Bristol Royal Infirmary",
-                       "weston" = "Weston General Hospital"
+                       "weston" = "Weston General Hospital",
+                       "bristol" = "Bristol LA",
+                       "north somerset" = "North Somerset LA",
+                       "south gloucestershire" = "South Gloucestershire LA"
                        )) %>%
   ggplot() +
   stat_ecdf(aes(x = los+1), geom = "step") +
@@ -110,7 +106,7 @@ los_df %>%
   labs(#title = "Calibration 4e",
        y = str_wrap("Empirical Cumulative Distribution Function", 40),
        x = "Medical length of stay (days)") +
-  facet_wrap(vars(site), nrow = 1)
+  facet_wrap(vars(grp), nrow = 2)
 
 
 ggsave(last_plot(),
@@ -121,8 +117,8 @@ ggsave(last_plot(),
        scale = 0.5)
 
 
-saveRDS(los_df, "data/los_df.RDS")
-los_df <- readRDS("data/los_df.RDS")
+saveRDS(los_df, "data/los_df_la.RDS")
+los_df <- readRDS("data/los_df_la.RDS")
 
 #(DEPRECATED) This was the old test/train split 
 # los_testing <- los_df %>%
@@ -135,12 +131,12 @@ los_df <- readRDS("data/los_df.RDS")
 
 # Now use all data for training and test
 los_testing <- los_df %>%
-  filter(between(Census_Date, validation_start, validation_end)) %>%
-  dplyr::select(-Census_Date)
+  filter(between(census_date, validation_start, validation_end)) %>%
+  dplyr::select(-census_date)
 
 los_train <- los_df %>%
-  filter(between(Census_Date, validation_start, validation_end)) %>%
-  dplyr::select(-Census_Date)
+  filter(between(census_date, validation_start, validation_end)) %>%
+  dplyr::select(-census_date)
 
 # attributes to join
 
@@ -163,7 +159,7 @@ model_df_train <- los_train %>%
   dplyr::select(
          # nhs_number,
          los,
-         site,
+         grp,
          # day_of_admission,
          cambridge_score,
          age,
@@ -185,7 +181,7 @@ model_df_test <- los_testing %>%
   dplyr::select(
                 #nhs_number,
                 los,
-                site,
+                grp,
                 # day_of_admission,
                 cambridge_score,
                 age,
@@ -216,11 +212,11 @@ tree_spec <- decision_tree(
 tree_grid <- grid_regular(cost_complexity(range = c(-6, -1), trans = log10_trans()),
                           tree_depth(range = c(2, 7)),
                           min_n(range = c(1500, 3000)),
-                          levels = 15)
+                          levels = 3)
 
 
 tree_rec <- recipe(los ~ ., data = model_df_train)  %>%
-  update_role(site, new_role = "site id") %>%  
+  update_role(grp, new_role = "grp id") %>%  
   step_novel(all_nominal_predictors(), new_level = "Other") %>%
   step_other(all_nominal_predictors(), threshold = 0.1, other = "Other")
 

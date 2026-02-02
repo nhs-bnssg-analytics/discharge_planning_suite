@@ -2,85 +2,8 @@ library(fitdistrplus)
 library(tidyverse)
 library(tidymodels)
 
-
-con <- switch(.Platform$OS.type,
-              windows = RODBC::odbcDriverConnect("driver={SQL Server};\n  server=Xsw-00-ash01;\n  trusted_connection=true"),#RODBC::odbcConnect(dsn = "xsw"),
-              unix = xswauth::modelling_sql_area()
-)
-
-pathway_recodes <- c(
-  "Pathway 3 - Other" = "P3",
-  "Awaiting confirmation MDT" = "Other",
-  "Awaiting referral to SPA" = "Other",
-  "Pathway 3 - D2A" = "P3",
-  "Pathway 0" = "Other",
-  "Pathway 1 - D2A" = "P1",
-  "Awaiting confirmation Social" = "Other",
-  "Pathway 2 - Other" = "P2",
-  "Pathway 2 - D2A" = "P2",
-  "Pathway 2" = "P2",
-  "Pathway 2  Safeguarding concern" = "P2",
-  "Pathway 2   Specialist  eg BIRU" = "P2",
-  "Awaiting confirmation Other" = "Other",
-  "Pathway 1 - Other" = "P1",
-  "Pathway 1" = "P1",
-  "P3 / Other Complex Discharge" = "P3",
-  "Pathway 3 / Other Complex Discharge" = "P3",
-  "Uncoded" = "Other",
-  "Repatriation" = "Other",
-  "NCTR Null" = "Other",
-  "Not Set" = "Other",
-  "18a  Infection  bxviii  Standard" = "Other",
-  "xviii. Awaiting discharge to a care home but have not had a COVID 19 test (in 48 hrs preceding discharge)." = "Other",
-  "15b  Repat  bxv  WGH" = "Other",
-  "Meets Criteria to Reside" = "Other"
-)
-
-
-nctr_df <-
-  RODBC::sqlQuery(
-    con,
-    "SELECT [RN]
-      ,[Organisation_Code_Provider]
-      ,[Organisation_Code_Commissioner]
-      ,[Census_Date]
-      ,[Month_Date]
-      ,[Month]
-      ,[Day_Of_Week]
-      ,[Week_Start_Date]
-      ,[NHS_Number]
-      ,[Person_Stated_Gender_Code]
-      ,[Person_Age]
-      ,[CDS_Unique_Identifier]
-      ,[Sub_ICB_Location]
-      ,[Organisation_Site_Code]
-      ,[Current_Ward]
-      ,[Specialty_Code]
-      ,[Bed_Type]
-      ,[Date_Of_Admission]
-      ,[BNSSG]
-      ,[Local_Authority]
-      ,[Criteria_To_Reside]
-      ,[Date_NCTR]
-      ,[Current_LOS]
-      ,[Days_NCTR]
-      ,[Days_NCTR_On_Current_Code]
-      ,[Current_Delay_Code]
-      ,[Local_Authority_grouped]
-      ,[Site_Name]
-      ,[Current_Delay_Code_Standard]
-      ,[Current_Delay_Code_Detailed]
-      ,[Acute Community split]
-      ,[Current_Covid_Status]
-      ,[Planned_Date_Of_Discharge]
-      ,[Date_Toc_Form_Completed]
-      ,[Toc_Form_Status]
-      ,[Discharge_Pathway]
-      ,[DER_File_Name]
-      ,[DER_Load_Timestamp]
-  FROM Analyst_SQL_Area.dbo.vw_NCTR_Status_Report_Daily_JI"
-  ) %>%
-  mutate(Census_Date = lubridate::ymd(Census_Date))
+source("utils/utils.R")
+source("code_data_training.R")
 
 validation_end <- ymd("2024-09-01")
 validation_start <- ymd("2023-07-01")
@@ -88,47 +11,26 @@ weeks_test <- 13
 nctr_df <- nctr_df %>% filter(between(Census_Date, validation_start, validation_end-ddays(1)))
 
 pathway_df <- nctr_df %>%
-  mutate(pathway = recode(Current_Delay_Code_Standard,
-                          !!!pathway_recodes),
-         pathway = coalesce(pathway, "Other")) %>%
-  mutate(pathway = if_else(pathway %in% c("Other", "P1", "P2", "P3"), pathway, "Other")) %>%
-  filter(Person_Stated_Gender_Code %in% 1:2) %>%
-  mutate(nhs_number = as.character(NHS_Number),
-         nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
-         sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
-  group_by(nhs_number, Date_Of_Admission) %>%
+  group_by(nhs_number, admission_date, grp) %>%
   mutate(spell_id = cur_group_id()) %>%
-  group_by(spell_id) %>%
-  mutate(
-    der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/lubridate::ddays(1),
-    der_ctr = case_when(
-      Criteria_To_Reside == "Y" | is.na(Criteria_To_Reside) ~ TRUE,
-      !is.na(Days_NCTR) ~ FALSE,
-      !is.na(Date_NCTR) ~ FALSE,
-      Criteria_To_Reside == "N" ~ FALSE
-    ),
-    # der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - lubridate::ddays(1),max(Census_Date)))) %>%
-    der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) ,max(Census_Date)))) %>%
-  ungroup() %>%
-  mutate(der_date_nctr = pmax(Date_Of_Admission, pmin(der_date_nctr, Date_NCTR, na.rm = TRUE), na.rm = TRUE)) %>%
-  mutate(der_date_nctr = as.Date(der_date_nctr)) %>%
   group_by(nhs_number) %>%
-  arrange(Census_Date) %>%
-  group_by(nhs_number, Date_Of_Admission) %>%
-  mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
+  arrange(census_date) %>%
+  group_by(nhs_number, admission_date) %>%
+  mutate(pathway = ifelse(!ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
   # mutate(pathway = ifelse(any(!der_ctr), pathway[!der_ctr][1], "Other")) %>%
   ungroup() %>%
   group_by(nhs_number) %>%
-  reframe(Census_Date = Census_Date[1],
-          date_nctr = der_date_nctr[1],
+  reframe(census_date = census_date[1],
+          date_nctr = date_nctr[1],
+          grp = grp[1],
           pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other"),
           sex = sex[1],
-          age = Person_Age[1],
-          spec = Specialty_Code[1],
-          bed_type = Bed_Type[1]) %>%
+          age = age[1],
+          spec = spec[1],
+          bed_type = bed_type[1]) %>%
   dplyr::select(
-         Census_Date,
-         site,
+         census_date,
+         grp,
          date_nctr,
          nhs_number,
          sex,

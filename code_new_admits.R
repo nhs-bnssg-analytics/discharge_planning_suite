@@ -10,7 +10,7 @@ df_new_admit <- local({
     c(., set_names(., rep("nbt", times = length(.)))) %>% # bind all rows together to make global dist for nbt
     split(names(.)) %>%
     map(~partial(EnvStats::remp, obs = .x)) %>%
-    enframe(name = "site", value = "rdist")
+    enframe(name = "grp", value = "rdist")
     
 
   
