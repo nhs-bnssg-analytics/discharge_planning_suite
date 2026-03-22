@@ -11,6 +11,8 @@ weeks_test <- 13
 nctr_df <- nctr_df %>% filter(between(census_date, validation_start, validation_end-ddays(1)))
 
  pathway_df <- nctr_df %>%
+   # Remove "Other LA" this data seems to have very low DTA utilisation
+   filter(grp != "Other") %>%
   group_by(nhs_number, admission_date, grp) %>%
   mutate(spell_id = cur_group_id()) %>%
   group_by(spell_id) %>%

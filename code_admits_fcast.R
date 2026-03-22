@@ -34,15 +34,20 @@ admissions <- nctr_df %>%
                                             TRUE ~ '')) %>%
   group_by(nhs_number = NHS_Number) %>%
   distinct(Date_Of_Admission, .keep_all = TRUE) %>%
-  group_by(site , date = as.Date(Date_Of_Admission)) %>%
+  pivot_longer(
+    cols = c(site, la),
+    names_to = "grp_type",
+    values_to = "grp",
+  ) %>%
+  group_by(grp , date = as.Date(Date_Of_Admission)) %>%
   count() %>%
   filter(date > ymd("2023-07-01")) # data before this are spurious 
   
 
 models <- admissions %>%
   ungroup() %>%
-  complete(date, site, fill = list(count = 0)) %>%
-  group_by(site) %>%
+  complete(date, grp, fill = list(count = 0)) %>%
+  group_by(grp) %>%
   arrange(date) %>%
   nest() %>%
   mutate(data = map(data, as_tsibble, index = date)) %>%
@@ -60,9 +65,9 @@ models <- admissions %>%
          frame = pmap(list(frame, u_85, l_85), ~mutate(..1, u_85 = ..2, l_85 = ..3)),
          data = map(data, as_tibble),
          frame = map2(data, frame, bind_rows)) %>%
-  dplyr::select(site, frame) %>%
+  dplyr::select(grp, frame) %>%
   unnest(cols = c(frame)) %>%
-  pivot_longer(cols = -c(site, date),
+  pivot_longer(cols = -c(grp, date),
                names_to = "metric",
                values_to = "value") %>%
   filter(!is.na(value)) %>%
@@ -74,7 +79,7 @@ models <- admissions %>%
   # mutate(day = ((date - report_start)/ddays(1))-1, (DEPRECATED - this was when I considered report_date to be 'day 0')
   mutate(day = ((date - report_start)/ddays(1) + 1), # This sets the convention that 'day 1' is the 'today' (i.e. latest census date)
          report_date = report_start) %>%
-  mutate(site = recode(site, 'SOUTHMEAD HOSPITAL' = 'nbt', 
+  mutate(grp = recode(grp, 'SOUTHMEAD HOSPITAL' = 'nbt', 
                        'BRISTOL ROYAL INFIRMARY' = 'bri', 
                        'WESTON GENERAL HOSPITAL' = 'weston'))
 
@@ -92,7 +97,7 @@ if(plot_int){
     geom_line(aes(y = fcast), col = "blue") +
     # geom_ribbon(aes(ymin = l_80, ymax = u_80), alpha = 0.25) +
     geom_ribbon(aes(ymin = l_85, ymax = u_85), alpha = 0.25) +
-    facet_wrap(vars(site), ncol = 1)
+    facet_wrap(vars(grp), ncol = 1)
   print(p)
   rm(p)
 }

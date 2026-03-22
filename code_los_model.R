@@ -543,12 +543,12 @@ fitdistcens_safe <- safely(fitdistcens)
   
   
 fit_dists <- los_model_df %>%
-  dplyr::select(site, leaf, los) %>%
-  mutate(site = fct_drop(site)) %>%
+  dplyr::select(grp, leaf, los) %>%
+  mutate(grp = fct_drop(grp)) %>%
   bind_rows(mutate(., leaf = -1)) %>%
   group_by(leaf) %>%
   nest() %>%
-  mutate(data = map(data, ~mutate(.x, los = set_names(los, site)))) %>%
+  mutate(data = map(data, ~mutate(.x, los = set_names(los, grp)))) %>%
   mutate(los = map(data, pull, los)) %>%
   select(leaf, los)
 
@@ -563,8 +563,8 @@ fit_dists <- los_model_df %>%
   #   mutate(tdist = map2(pdist, qdist, ~partial(rtruncdist, pdist = .x, qdist = .y)))
 
 
-saveRDS(fit_dists, "data/fit_dists.RDS")
-saveRDS(tree_fit, "data/los_wf.RDS")
+saveRDS(fit_dists, "data/fit_dists_grp.RDS")
+saveRDS(tree_fit, "data/los_wf_grp.RDS")
 cat("LOS model outputs written", fill = TRUE)
 
 # VALIDATION code

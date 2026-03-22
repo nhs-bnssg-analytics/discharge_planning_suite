@@ -201,7 +201,7 @@ source("code_curr_admits.R")
 
 if(plot_int){
   bind_rows(df_curr_admits, df_new_admit) %>%
-    group_by(site, day, pathway, source) %>%
+    group_by(grp, day, pathway, source) %>%
     summarise(across(count, list(
       mean = mean,
       u85 = {\(x) quantile(x, 0.925)},
@@ -210,7 +210,7 @@ if(plot_int){
     filter(between(day, 1, n_days))  %>%
     ggplot(aes(x = day, y = count_mean, fill = source)) +
     geom_col() +
-    facet_grid(pathway ~ site, scales = "free") +
+    facet_grid(pathway ~ grp, scales = "free") +
     labs(title = "New additions to D2A queue, by forecast source")
 }
 
