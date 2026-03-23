@@ -19,7 +19,7 @@ source("utils/colour_functions.R")
 plot_int <- TRUE
 seed <- FALSE
 
-n_rep <- 1E1
+n_rep <- 1E3
 n_days <- 10
 
 # latest nctr data
@@ -100,8 +100,10 @@ pathway_recodes <- c(
 max_date <- nctr_df %>%
   filter(!is.na(NHS_Number)) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
+  summarise(Census_Date = max(Census_Date, na.rm= TRUE), .by = Organisation_Site_Code) %>%
   pull(Census_Date) %>%
-  max()
+  # min of the max dates (in case of reporting gaps)
+  min()
 
 # NCTR data summary
 
