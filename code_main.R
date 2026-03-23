@@ -19,7 +19,7 @@ source("utils/colour_functions.R")
 plot_int <- TRUE
 seed <- FALSE
 
-n_rep <- 1E3
+n_rep <- 1E1
 n_days <- 10
 
 # latest nctr data
