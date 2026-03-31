@@ -3,10 +3,14 @@ library(tidyverse)
 library(tidymodels)
 
 
-con <- switch(.Platform$OS.type,
-              windows = RODBC::odbcConnect(dsn = "xsw"),
-              unix = xswauth::modelling_sql_area()
-)
+# con <- switch(.Platform$OS.type,
+#               windows = RODBC::odbcConnect(dsn = "xsw"),
+#               unix = xswauth::modelling_sql_area()
+# )
+
+
+con <- DBI::dbConnect(odbc::odbc(), "xsw")
+
 
 pathway_recodes <- c(
   "Pathway 3 - Other" = "P3",
@@ -33,8 +37,30 @@ pathway_recodes <- c(
   "18a  Infection  bxviii  Standard" = "Other",
   "xviii. Awaiting discharge to a care home but have not had a COVID 19 test (in 48 hrs preceding discharge)." = "Other",
   "15b  Repat  bxv  WGH" = "Other",
-  "Meets Criteria to Reside" = "Other"
+  "Meets Criteria to Reside" = "Other",
+   "Uncoded" = "Other",
+  "Pathway 2" = "P2",
+  "Other"= "Other",
+  "Pathway 1" = "P1",
+  "Repatriation" = "Other",
+  "NCTR Null"= "Other",
+  "Awaiting referral to SPA" = "Other",
+  "Awaiting confirmation MDT" = "Other",
+  "Pathway 2 - Other" = "P2",
+  "Pathway 1 - D2A" = "P1",
+  "Pathway 3 - Other" = "P3",
+  "Not Set" = "Other",
+  "Pathway 0" = "P0",
+  "Pathway 3 / Other Complex Discharge" = "P3",
+  "Pathway 3 - D2A" = "P3",
+  "Awaiting confirmation Other" = "Other",
+  "Pathway 2 - D2A" = "P2",
+  "Pathway 1 - Other" = "P1",
+  "Awaiting confirmation Social" = "Other"
 )
+
+
+
 
 
 nctr_df <-
@@ -87,15 +113,16 @@ validation_start <- ymd("2023-07-01")
 
 # recode LA
 nctr_df <- nctr_df %>%
-  mutate(la = case_when(
-    Local_Authority == "SOUTH GLOUCESTERSHIRE COUNCIL" ~ "south gloucestershire",
-    Local_Authority == "South Glos" ~ "south gloucestershire",
-    Local_Authority == "NORTH SOMERSET COUNCIL" ~ "north somerset",
-    Local_Authority == "North Somerset" ~ "north somerset",
-    Local_Authority == "BRISTOL CITY COUNCIL" ~ "bristol",
-    Local_Authority == "Bristol" ~ "bristol",
-    .default = "Other"
-  )) 
+  mutate(la = Local_Authority_grouped[which.max(Census_Date)], .by = CDS_Unique_Identifier)
+  # mutate(la = case_when(
+  #   Local_Authority == "SOUTH GLOUCESTERSHIRE COUNCIL" ~ "south gloucestershire",
+  #   Local_Authority == "South Glos" ~ "south gloucestershire",
+  #   Local_Authority == "NORTH SOMERSET COUNCIL" ~ "north somerset",
+  #   Local_Authority == "North Somerset" ~ "north somerset",
+  #   Local_Authority == "BRISTOL CITY COUNCIL" ~ "bristol",
+  #   Local_Authority == "Bristol" ~ "bristol",
+  #   .default = "Other"
+  # )) 
 
 
 nctr_df <- nctr_df %>% filter(between(Census_Date, validation_start, validation_end-ddays(1)))
