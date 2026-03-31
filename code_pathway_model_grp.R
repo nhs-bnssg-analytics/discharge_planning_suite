@@ -1,6 +1,7 @@
 library(fitdistrplus)
 library(tidyverse)
 library(tidymodels)
+library(dbplyr)
 
 
 # con <- switch(.Platform$OS.type,
@@ -11,7 +12,24 @@ library(tidymodels)
 
 con <- DBI::dbConnect(odbc::odbc(), "xsw")
 
+nctr_tbl <- tbl(con,
+  in_catalog(
+    catalog = "analyst_sql_area",
+    schema = "dbo",
+    table = "vw_NCTR_Status_Report_Daily_JI"
+  )
+) 
 
+
+ pds <- tbl(con,
+  in_catalog(
+    catalog = "analyst_sql_area",
+    schema = "dbo",
+    table = "tbl_bnssg_datasets_combined_PDS"
+  )
+) %>%
+  mutate(nhs_number = as.character(Pseudo_NHS_Number))
+  
 pathway_recodes <- c(
   "Pathway 3 - Other" = "P3",
   "Awaiting confirmation MDT" = "Other",
@@ -60,75 +78,32 @@ pathway_recodes <- c(
 )
 
 
-
-
-
-nctr_df <-
-  RODBC::sqlQuery(
-    con,
-    "SELECT [RN]
-      ,[Organisation_Code_Provider]
-      ,[Organisation_Code_Commissioner]
-      ,[Census_Date]
-      ,[Month_Date]
-      ,[Month]
-      ,[Day_Of_Week]
-      ,[Week_Start_Date]
-      ,[NHS_Number]
-      ,[Person_Stated_Gender_Code]
-      ,[Person_Age]
-      ,[CDS_Unique_Identifier]
-      ,[Sub_ICB_Location]
-      ,[Organisation_Site_Code]
-      ,[Current_Ward]
-      ,[Specialty_Code]
-      ,[Bed_Type]
-      ,[Date_Of_Admission]
-      ,[BNSSG]
-      ,[Local_Authority]
-      ,[Criteria_To_Reside]
-      ,[Date_NCTR]
-      ,[Current_LOS]
-      ,[Days_NCTR]
-      ,[Days_NCTR_On_Current_Code]
-      ,[Current_Delay_Code]
-      ,[Local_Authority_grouped]
-      ,[Site_Name]
-      ,[Current_Delay_Code_Standard]
-      ,[Current_Delay_Code_Detailed]
-      ,[Acute Community split]
-      ,[Current_Covid_Status]
-      ,[Planned_Date_Of_Discharge]
-      ,[Date_Toc_Form_Completed]
-      ,[Toc_Form_Status]
-      ,[Discharge_Pathway]
-      ,[DER_File_Name]
-      ,[DER_Load_Timestamp]
-  FROM Analyst_SQL_Area.dbo.vw_NCTR_Status_Report_Daily_JI"
-  )
-
 validation_end <- ymd("2024-09-01")
 validation_start <- ymd("2023-07-01")
-# weeks_test <- 13
+validation_end_excl <- validation_end-ddays(1)
 
-# recode LA
-nctr_df <- nctr_df %>%
-  mutate(la = Local_Authority_grouped[which.max(Census_Date)], .by = CDS_Unique_Identifier)
-  # mutate(la = case_when(
-  #   Local_Authority == "SOUTH GLOUCESTERSHIRE COUNCIL" ~ "south gloucestershire",
-  #   Local_Authority == "South Glos" ~ "south gloucestershire",
-  #   Local_Authority == "NORTH SOMERSET COUNCIL" ~ "north somerset",
-  #   Local_Authority == "North Somerset" ~ "north somerset",
-  #   Local_Authority == "BRISTOL CITY COUNCIL" ~ "bristol",
-  #   Local_Authority == "Bristol" ~ "bristol",
-  #   .default = "Other"
-  # )) 
-
-
-nctr_df <- nctr_df %>% filter(between(Census_Date, validation_start, validation_end-ddays(1)))
-
-
-pathway_df <- nctr_df %>%
+pathway_df <- nctr_tbl %>%
+  left_join(
+    pds %>% 
+      select(pds_nhs_number = Pseudo_NHS_Number, la_pds = Locality_Area) %>% 
+      distinct(),
+    by = join_by(NHS_Number == pds_nhs_number)
+  ) %>%
+  filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
+  group_by(CDS_Unique_Identifier) %>%
+  window_order(Census_Date) %>%
+  mutate(la_raw = last(Local_Authority_grouped)) %>%
+  ungroup() %>%
+  mutate(
+    la_clean = if_else(la_raw == "Other", replace(la_pds, " Area", ""), la_raw),
+    la = case_when(
+      la_clean == "NOT BNSSG" | la_clean == "Other" | is.na(la_clean) ~ "Other",
+      TRUE ~ la_clean
+    ),
+    la = tolower(la) 
+  ) %>%
+  filter(between(Census_Date, !!validation_start, !!validation_end_excl)) %>%
+  collect() %>%
   mutate(
     pathway = recode(Current_Delay_Code_Standard, !!!pathway_recodes),
     pathway = coalesce(pathway, "Other")
@@ -137,7 +112,7 @@ pathway_df <- nctr_df %>%
   filter(Person_Stated_Gender_Code %in% 1:2) %>%
   mutate(
     nhs_number = as.character(NHS_Number),
-    nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
+    nhs_number = if_else(is.na(nhs_number), paste0("unknown_", row_number()), nhs_number),
     sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")
   ) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
@@ -205,7 +180,8 @@ pathway_df <- nctr_df %>%
     cols = c(site, la),
     names_to = "grp_type",
     values_to = "grp",
-  )
+  ) 
+
 
 # remove patients who died
 

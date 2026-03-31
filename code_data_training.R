@@ -1,54 +1,109 @@
 library(fitdistrplus)
 library(tidyverse)
 library(tidymodels)
-source("utils/utils.R")
+library(dbplyr)
 
-con <- switch(.Platform$OS.type,
-              windows = RODBC::odbcDriverConnect("driver={SQL Server};\n  server=Xsw-00-ash01;\n  trusted_connection=true"),#RODBC::odbcConnect(dsn = "xsw"),
-              unix = xswauth::modelling_sql_area()
+
+# con <- switch(.Platform$OS.type,
+#               windows = RODBC::odbcConnect(dsn = "xsw"),
+#               unix = xswauth::modelling_sql_area()
+# )
+
+
+con <- DBI::dbConnect(odbc::odbc(), "xsw")
+
+nctr_tbl <- tbl(con,
+  in_catalog(
+    catalog = "analyst_sql_area",
+    schema = "dbo",
+    table = "vw_NCTR_Status_Report_Daily_JI"
+  )
+) 
+
+
+ pds <- tbl(con,
+  in_catalog(
+    catalog = "analyst_sql_area",
+    schema = "dbo",
+    table = "tbl_bnssg_datasets_combined_PDS"
+  )
+) %>%
+  mutate(nhs_number = as.character(Pseudo_NHS_Number))
+  
+pathway_recodes <- c(
+  "Pathway 3 - Other" = "P3",
+  "Awaiting confirmation MDT" = "Other",
+  "Awaiting referral to SPA" = "Other",
+  "Pathway 3 - D2A" = "P3",
+  "Pathway 0" = "Other",
+  "Pathway 1 - D2A" = "P1",
+  "Awaiting confirmation Social" = "Other",
+  "Pathway 2 - Other" = "P2",
+  "Pathway 2 - D2A" = "P2",
+  "Pathway 2" = "P2",
+  "Pathway 2  Safeguarding concern" = "P2",
+  "Pathway 2   Specialist  eg BIRU" = "P2",
+  "Awaiting confirmation Other" = "Other",
+  "Pathway 1 - Other" = "P1",
+  "Pathway 1" = "P1",
+  "P3 / Other Complex Discharge" = "P3",
+  "Pathway 3 / Other Complex Discharge" = "P3",
+  "Uncoded" = "Other",
+  "Repatriation" = "Other",
+  "NCTR Null" = "Other",
+  "Not Set" = "Other",
+  "18a  Infection  bxviii  Standard" = "Other",
+  "xviii. Awaiting discharge to a care home but have not had a COVID 19 test (in 48 hrs preceding discharge)." = "Other",
+  "15b  Repat  bxv  WGH" = "Other",
+  "Meets Criteria to Reside" = "Other",
+   "Uncoded" = "Other",
+  "Pathway 2" = "P2",
+  "Other"= "Other",
+  "Pathway 1" = "P1",
+  "Repatriation" = "Other",
+  "NCTR Null"= "Other",
+  "Awaiting referral to SPA" = "Other",
+  "Awaiting confirmation MDT" = "Other",
+  "Pathway 2 - Other" = "P2",
+  "Pathway 1 - D2A" = "P1",
+  "Pathway 3 - Other" = "P3",
+  "Not Set" = "Other",
+  "Pathway 0" = "P0",
+  "Pathway 3 / Other Complex Discharge" = "P3",
+  "Pathway 3 - D2A" = "P3",
+  "Awaiting confirmation Other" = "Other",
+  "Pathway 2 - D2A" = "P2",
+  "Pathway 1 - Other" = "P1",
+  "Awaiting confirmation Social" = "Other"
 )
 
-nctr_df <-
-  RODBC::sqlQuery(
-    con,
-    "SELECT
-       [Organisation_Code_Provider]
-      ,[Organisation_Code_Commissioner]
-      ,[Census_Date]
-      ,[NHS_Number]
-      ,[Person_Stated_Gender_Code]
-      ,[Person_Age]
-      ,[CDS_Unique_Identifier]
-      ,[Sub_ICB_Location]
-      ,[Organisation_Site_Code]
-      ,[Current_Ward]
-      ,[Specialty_Code]
-      ,[Bed_Type]
-      ,[Date_Of_Admission]
-      ,[BNSSG]
-      ,[Local_Authority]
-      ,[Criteria_To_Reside]
-      ,[Date_NCTR]
-      ,[Current_LOS]
-      ,[Days_NCTR]
-      ,[Current_Delay_Code]
-      ,[Current_Delay_Code_Standard]
-      ,[Current_Covid_Status]
-      ,[Planned_Date_Of_Discharge]
-      ,[Date_Toc_Form_Completed]
-      ,[Toc_Form_Status]
-      ,[Discharge_Pathway]
-      ,[DER_File_Name]
-      ,[DER_Load_Timestamp]
-  FROM Analyst_SQL_Area.dbo.vw_NCTR_Status_Report_Daily_JI"
-  ) %>%
-  mutate(Census_Date = lubridate::ymd(Census_Date))
 
 validation_end <- ymd("2024-09-01")
 validation_start <- ymd("2023-07-01")
+validation_end_excl <- validation_end-ddays(1)
 
-nctr_df <- nctr_df %>% filter(between(Census_Date, validation_start, validation_end-ddays(1)))
-
+pathway_df <- nctr_tbl %>%
+  left_join(
+    pds %>% 
+      select(pds_nhs_number = Pseudo_NHS_Number, la_pds = Locality_Area) %>% 
+      distinct(),
+    by = join_by(NHS_Number == pds_nhs_number)
+  ) %>%
+  filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
+  group_by(CDS_Unique_Identifier) %>%
+  window_order(Census_Date) %>%
+  mutate(la_raw = last(Local_Authority_grouped)) %>%
+  ungroup() %>%
+  mutate(
+    la_clean = if_else(la_raw == "Other", replace(la_pds, " Area", ""), la_raw),
+    la = case_when(
+      la_clean == "NOT BNSSG" | la_clean == "Other" | is.na(la_clean) ~ "Other",
+      TRUE ~ la_clean
+    ),
+    la = tolower(la) 
+  ) %>%
+  filter(between(Census_Date, !!validation_start, !!validation_end_excl)) %>%
+  collect() 
 # recode LA
 nctr_df <- nctr_df %>%
   mutate(la = case_when(
