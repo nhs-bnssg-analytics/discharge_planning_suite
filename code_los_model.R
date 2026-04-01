@@ -212,7 +212,7 @@ tree_spec <- decision_tree(
 tree_grid <- grid_regular(cost_complexity(range = c(-6, -1), trans = log10_trans()),
                           tree_depth(range = c(2, 7)),
                           min_n(range = c(1500, 3000)),
-                          levels = 3)
+                          levels = 10)
 
 
 tree_rec <- recipe(los ~ ., data = model_df_train)  %>%
@@ -234,7 +234,7 @@ tree_metrics <-  metric_set(
   #mape
 )
 
-doParallel::registerDoParallel()
+doParallel::registerDoParallel(parallel::detectCores() - 2)
 set.seed(345)
 tree_rs <- tune_grid(
   tree_wf,
@@ -476,7 +476,7 @@ los_model_df <- model_df_train %>%
 labeller_leaf_id<- function(string, prefix = "Leaf ID: ") paste0(prefix, string)
 
 los_model_df %>%
-  mutate(site = recode(site,
+  mutate(site = recode(grp,
                        "bri" = "Bristol Royal Infirmary",
                        "weston" = "Weston General Hospital"
   )) %>%

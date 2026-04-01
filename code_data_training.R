@@ -82,7 +82,7 @@ validation_end <- ymd("2024-09-01")
 validation_start <- ymd("2023-07-01")
 validation_end_excl <- validation_end-ddays(1)
 
-pathway_df <- nctr_tbl %>%
+nctr_df <- nctr_tbl %>%
   left_join(
     pds %>% 
       select(pds_nhs_number = Pseudo_NHS_Number, la_pds = Locality_Area) %>% 
@@ -104,17 +104,7 @@ pathway_df <- nctr_tbl %>%
   ) %>%
   filter(between(Census_Date, !!validation_start, !!validation_end_excl)) %>%
   collect() 
-# recode LA
-nctr_df <- nctr_df %>%
-  mutate(la = case_when(
-    Local_Authority == "SOUTH GLOUCESTERSHIRE COUNCIL" ~ "south gloucestershire",
-    Local_Authority == "South Glos" ~ "south gloucestershire",
-    Local_Authority == "NORTH SOMERSET COUNCIL" ~ "north somerset",
-    Local_Authority == "North Somerset" ~ "north somerset",
-    Local_Authority == "BRISTOL CITY COUNCIL" ~ "bristol",
-    Local_Authority == "Bristol" ~ "bristol",
-    .default = "Other"
-  )) 
+
 
 pathway_recodes <- c(
   "Pathway 3 - Other" = "P3",

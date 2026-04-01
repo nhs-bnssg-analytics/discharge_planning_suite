@@ -2,55 +2,11 @@
 
 
 plot_df_queue_sim <- local({
-
-# calculate the number of discharges made by observing patients on a queue
-# leaving the census on the following day
-# discharges_ts <- nctr_df %>%
-#   filter(!is.na(NHS_Number)) %>%
-#   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
-#   # filter for CTR, we wont predict the NCTR outcome for those already NCTR/on a queue
-#   # filter(Criteria_To_Reside == "N") %>%
-#   mutate(
-#     site = case_when(
-#       Organisation_Site_Code == 'RVJ01' ~ 'nbt',
-#       Organisation_Site_Code == 'RA701' ~ 'bri',
-#       Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
-#       TRUE ~ 'other'
-#     )) %>%
-#   mutate(pathway = recode(Current_Delay_Code_Standard,
-#                           !!!pathway_recodes),
-#          pathway = coalesce(pathway, "Other")) %>%
-#   mutate(pathway = if_else(
-#     !pathway %in% c("P1", "P2", "P3", "P3" , "Other"),
-#     "Other",
-#     pathway
-#   )) %>%
-#   dplyr::select(nhs_number = NHS_Number, site, pathway, date = Census_Date, Date_Of_Admission) %>%
-#   distinct() %>%
-#   filter(pathway != "Other") %>%
-#   group_by(nhs_number, Date_Of_Admission) %>%
-#   mutate(id = cur_group_id()) %>%
-#   group_by(id) %>%
-#   # # (DEPRECATED) take the first non-other pathway
-#   # filter(date == min(date)) %>%
-#   # Find the last date for each ID
-#   filter(date == max(date)) %>%
-#   group_by(site, pathway, date = date + ddays(1)) %>%
-#   count() %>%
-#   group_by(site, pathway) %>%
-#   filter(date < max(date)) %>%
-#   arrange(date) %>%
-#   slice(-1)
-# 
-# 
-# # mean number of discharges per day/site
-# discharge_sum <- discharges_ts %>%
-#   filter(date >= (max(date) - dweeks(4))) %>%
-#   group_by(site, pathway) %>% 
-#   summarise(mean = mean(n),
-#             sd = sd(n))
+  
+  nctr_lazy <- lazy_dt(nctr_df)
   
   discharges_ts <- nctr_df %>%
+    filter(Census_Date >= (max(Census_Date) - dweeks(4))) %>%
     filter(Person_Stated_Gender_Code %in% 1:2) %>%
     mutate(nhs_number = as.character(NHS_Number),
            nhs_number = if_else(is.na(nhs_number), CDS_Unique_Identifier, nhs_number),
@@ -65,7 +21,6 @@ plot_df_queue_sim <- local({
       ),
       Date_Of_Admission = as.Date(Date_Of_Admission)
     ) %>%
-    ungroup() %>%
     mutate(
       der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/ddays(1),
       der_ctr = case_when(
@@ -89,33 +44,34 @@ plot_df_queue_sim <- local({
       pathway
     )) %>%
     group_by(NHS_Number, Date_Of_Admission) %>%
-    # mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
-    # mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
     mutate(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other")) %>%
-    # mutate(keep_date = case_when(any(!der_ctr) ~ Census_Date[!der_ctr][1], .default = tail(Census_Date, 1))) %>%
-    # mutate(keep_date = case_when(any(!der_ctr) ~ Census_Date[!der_ctr][1], .default = max(Census_Date))) %>%
     mutate(keep_date = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - ddays(1),max(Census_Date)))) %>%
     filter(Census_Date < max(Census_Date)) %>%
+    pivot_longer(
+      cols = c(site, la),
+      names_to = "grp_type",
+      values_to = "grp",
+    ) %>%
     dplyr::select(
       date = keep_date,
       nhs_number,
-      site,
+      grp,
       pathway
     ) %>%
     ungroup() %>%
     distinct()  %>%
     # group_by(site, pathway, date = date + ddays(1)) %>%
     filter(!is.na(date)) %>%
-    group_by(site, pathway, date = date) %>%
+    group_by(grp, pathway, date = date) %>%
     count() %>%
     ungroup() %>%
-    complete(nesting(site, date), pathway, fill = list(n = 0)) %>%
+    complete(nesting(grp, date), pathway, fill = list(n = 0)) %>%
     filter(date != max(date, na.rm = TRUE), date != min(date, na.rm = TRUE), pathway != "Other")
   
   
   discharge_sum <- discharges_ts %>%
-    filter(date >= (max(date) - dweeks(4))) %>%
-    group_by(site, pathway) %>% 
+    # filter(date >= (max(date) - dweeks(4))) %>%
+    group_by(grp, pathway) %>% 
     summarise(mean = mean(n),
               sd = sd(n))
 
@@ -125,7 +81,7 @@ ggplot(aes(x = date, y = n)) +
   geom_hline(data = discharge_sum,
       aes(yintercept = mean), col = "blue",
       linetype = 2) +
-  facet_grid(site ~ pathway, scales = "free")
+  facet_grid(grp ~ pathway, scales = "free")
 
 
 # current queue
@@ -134,7 +90,7 @@ pathway_queue <- nctr_sum %>%
   filter(!is.na(nhs_number), !is.na(ctr)) %>%
   filter(pathway != "Other", !ctr) %>% 
   dplyr::select(-ctr) %>%
-  group_by(site, pathway) %>%
+  group_by(grp, pathway) %>%
   count() %>%
   mutate(source = "current_ctr_data",
          report_date = max_date,
@@ -163,14 +119,14 @@ sim_fn <- function(q, d, c) {
 }
 
 df_sim <- pathway_queue %>%
-  dplyr::select(site, pathway, value) %>%
+  dplyr::select(grp, pathway, value) %>%
   left_join({
     df_pred %>%
-      group_by(site, pathway) %>%
+      group_by(grp, pathway) %>%
       nest(.key = "demand_fc")
-  }, by = join_by(site, pathway)) %>%
+  }, by = join_by(grp, pathway)) %>%
   # join on daily discharage average
-  left_join(discharge_sum, by = join_by(site, pathway)) %>%
+  left_join(discharge_sum, by = join_by(grp, pathway)) %>%
   rename(initial_queue = value) %>%
   mutate(cap = map2(mean, sd, ~c(av = ..1, sd = ..2))) %>%
   mutate(cap_u = map(cap, ~c(av = .x[["av"]]*1.1, sd = .x[["sd"]])),
@@ -217,9 +173,9 @@ df_sim <- pathway_queue %>%
   mutate(n_l = map(sim_l, colMeans),
          n_l_u85 = map(sim_l, ~ map_dbl(array_branch(.x, margin = 2), ~ quantile(.x, .925))),
          n_l_l85 = map(sim_l, ~ map_dbl(array_branch(.x, margin = 2), ~ quantile(.x, .075)))) %>%
-  dplyr::select(site, pathway, n, n_u85, n_l85, n_u, n_u_u85, n_u_l85, n_l, n_l_u85, n_l_l85) %>%
+  dplyr::select(grp, pathway, n, n_u85, n_l85, n_u, n_u_u85, n_u_l85, n_l, n_l_u85, n_l_l85) %>%
   unnest(c(n, n, n_u85, n_l85, n_u, n_u_u85, n_u_l85, n_l, n_l_u85, n_l_l85)) %>%
-  mutate(day = rep(c(1:n_days), times = n_distinct(site)*n_distinct(pathway))) %>%
+  mutate(day = rep(c(1:n_days), times = n_distinct(grp)*n_distinct(pathway))) %>%
   mutate(ctr = "N",
          source = "queue_sim",
          report_date = max_date) %>%
@@ -231,7 +187,7 @@ df_sim <- pathway_queue %>%
 df_sim <- df_sim %>%
   bind_rows(discharge_sum %>%
               dplyr::select(-sd) %>%
-              pivot_longer(cols = -c(site, pathway),
+              pivot_longer(cols = -c(grp, pathway),
                            names_to = "metric", 
                            values_to = "value") %>%
               mutate(ctr = "N",

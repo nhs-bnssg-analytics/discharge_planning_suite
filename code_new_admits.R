@@ -1,18 +1,23 @@
 df_new_admit <- local({ 
+  
   if(seed) set.seed(123)
   # report_date <- report_start -ddays(1) # (DEPRECATED)
   report_date <- report_start
   
+
   rdist <- readRDS("data/fit_dists_grp.RDS") %>%
     filter(leaf == -1) %>%
     pull(los) %>% 
-    pluck(1) %>%
-    c(., set_names(., rep("nbt", times = length(.)))) %>% # bind all rows together to make global dist for nbt
+    pluck(1) %>% 
+    {
+      targets <- .[names(.) %in% c("weston", "bri")]
+      c(., set_names(targets, rep("nbt", length(targets))))
+    } %>% 
     split(names(.)) %>%
     map(~partial(EnvStats::remp, obs = .x)) %>%
     enframe(name = "grp", value = "rdist")
-    
-
+  
+  
   
   props_grp <- readRDS("data/rf_fit_props_grp.RDS") %>%
     mutate(props = map(fit, "props")) %>%

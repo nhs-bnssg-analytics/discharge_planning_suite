@@ -1,4 +1,3 @@
-options(shiny.autoreload = TRUE)
 library(shiny)
 library(shinydashboard)
 library(tidyverse)
@@ -90,11 +89,11 @@ server <- shinyServer(function(input, output) {
       geom_col_interactive(aes(tooltip = tooltip_n), alpha = 0.75) +
       geom_hline_interactive(data = {data_dpp %>%
           filter(source == "queue_sim") %>%
-          select(site, pathway_add, slot_avg, tooltip_slot_avg) %>%
+          select(grp, pathway_add, slot_avg, tooltip_slot_avg) %>%
           distinct() %>%
           na.omit()}, aes(yintercept = slot_avg, tooltip = tooltip_slot_avg), linetype = 2, size = 1, col = "#333333") +
       geom_errorbar_interactive(aes(ymin = l85, ymax = u85, tooltip = tooltip_errorbar), width = 1, size = 0.8, col = "#333333")  +
-      ggh4x::facet_grid2(site~pathway_add, independent = "y", scales = "free_y", switch = "y") +
+      ggh4x::facet_grid2(grp~pathway_add, independent = "y", scales = "free_y", switch = "y") +
       bnssgtheme() +
       scale_x_datetime(date_breaks = "1 days", labels = date_format('%a %d')) +
       # this is a ugly hack to get the right labels/colours for the legend
@@ -117,7 +116,7 @@ server <- shinyServer(function(input, output) {
       # remake tooltip as levels changed
       mutate(tooltip_n = glue::glue("{pathway_add} = {round(n, 0)}")) %>%
       filter(source == "current_ctr_data", ctr == "N") %>%
-      ggplot(aes(x = site, y = round(n, 0),
+      ggplot(aes(x = grp, y = round(n, 0),
                  fill = pathway_add,
                  group = pathway_add)) +
       geom_col_interactive(aes(tooltip = tooltip_n))  +
@@ -176,14 +175,14 @@ server <- shinyServer(function(input, output) {
       geom_ribbon_interactive(aes(ymin = n_l85, ymax = n_u85), alpha = 0.33)  +
       geom_line_interactive(aes(col = pathway_q)) +
       geom_point_interactive(aes(tooltip = tooltip_q, col = pathway_q), size = 1.5) +
-      ggh4x::facet_grid2(site~pathway_q, scales = "free_y", switch = "y") +
+      ggh4x::facet_grid2(grp~pathway_q, scales = "free_y", switch = "y") +
       bnssgtheme() +
       scale_x_datetime(date_breaks = "3 days", labels = date_format('%a\n%d %b')) +
       scale_fill_manual(values = cols_q) +
       scale_colour_manual(values = cols_q) +
       theme(strip.placement = "outside",
             legend.position = "off") +
-      labs(title = "D2A queue forecasts, per site/pathway",
+      labs(title = "D2A queue forecasts, per grp/pathway",
            x = "",
            y = "")
 
