@@ -322,8 +322,8 @@ RODBC::sqlQuery(con, query_delete)
 RODBC::sqlSave(con,
                plot_df,
                tablename = 'discharge_pathway_projections',
-               rownames = FALSE,
-               append = TRUE)
+               rownames = FALSE
+               )
 
 
 # Write to ICS MySQL db
