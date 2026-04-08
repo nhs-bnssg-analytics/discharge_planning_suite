@@ -118,28 +118,53 @@ dpp_module_server <- function(id, data_subset, report_date) {
 }
 
 ui <- dashboardPage(
-  header = dashboardHeader(title = "BNSSG Discharge Suite", titleWidth = "30vw"),
-  sidebar = dashboardSidebar(disable = TRUE), # Sidebar no longer needed
+  header = dashboardHeader(title = "BNSSG Discharge Suite", titleWidth = "250px"),
+  
+  # 1. Put the controls in the actual sidebar
+  sidebar = dashboardSidebar(
+    width = "250px",
+    div(style = "padding: 20px;",
+        # Date Display
+        div(style = "margin-bottom: 25px;",
+            HTML(glue::glue(
+              "<label style= text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px;'>Report updated</label><br>
+               <span style='font-size: 18px; font-weight: bold;'>{format(report_date, '%a %d %b')}</span>"
+            ))
+        ),
+        # The Selector
+        radioButtons(
+          "view_toggle",
+          label = "Reporting Group:",
+          choices = c("Local Authoritie" = "la", "Acute Hospital" = "acute"),
+          inline = FALSE
+        )
+    )
+  ), 
+  
   body = dashboardBody(
-    tags$head(tags$style(type="text/css", "text {font-family: sans-serif}")),
-    
-    # Global Controls Row
-    fluidRow(
-      box(width = 8, 
-          HTML(glue::glue("<h5>Report updated: <b>{format(report_date, '%a %d %b')}</b></h5>"))),
-      box(width = 4,
-          radioButtons("view_toggle", 
-                       label = "Select View:",
-                       choices = c("Acute Hospitals" = "acute", "Local Authorities" = "la"),
-                       inline = TRUE))
+    # 2. Add custom CSS to make the sidebar look like a clean panel
+    tags$head(
+      tags$style(HTML("
+        /* Make sidebar background light instead of dark (optional) */
+        .main-sidebar { background-color: #f4f4f4 !important; }
+        .main-sidebar .sidebar { color: #333 !important; }
+        .main-sidebar .sidebar label { color: #333 !important; }
+        
+        /* Adjust the body height and background */
+        .content-wrapper { min-height: 100vh !important; background-color: #ecf0f5; }
+        
+        /* Fix radio button text color for light sidebar */
+        .shiny-input-container { color: #333 !important; }
+      "))
     ),
-    
-    # Single Module UI call
-    dpp_module_ui("main_dashboard")
+
+    # Main Content
+    fluidRow(
+      # The module UI now just lives here and fills the remaining space
+      dpp_module_ui("main_dashboard")
+    )
   )
 )
-
-
 server <- function(input, output, session) {
   
   # Reactive expression to determine which data to show

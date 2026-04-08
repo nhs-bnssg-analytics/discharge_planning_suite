@@ -5,6 +5,8 @@ library(lubridate)
 library(dbplyr)
 library(dtplyr)
 library(RMySQL)
+library(fable)
+library(fabletools)
 
 con <- switch(.Platform$OS.type,
               windows = RODBC::odbcConnect(dsn = "xsw"),
@@ -123,9 +125,10 @@ nctr_df <- nctr_tbl %>%
 max_date <- nctr_df %>%
   filter(!is.na(NHS_Number)) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
+  slice_max(order_by = Census_Date, by = Organisation_Site_Code) %>%
   pull(Census_Date) %>%
   as.Date() %>%
-  max() 
+  min() 
 
 # recode LA
 # nctr_df <- nctr_df %>%
@@ -302,32 +305,32 @@ plot_df <- bind_rows(plot_df_pred,
 #                 )
 
 # change con to write to modelling sql area
-RODBC::odbcClose(con)
+# RODBC::odbcClose(con)
 
-con <- switch(.Platform$OS.type,
-              windows = {
-                "driver={SQL Server};server=Xsw-00-ash01;
-                 database=MODELLING_SQL_AREA;
-                 trusted_connection=true" |>
-                 RODBC::odbcDriverConnect()
-                },
-              unix = {
-                "/root/sql/sql_modelling_connect_string_linux" |>
-                  readr::read_lines() |>
-                  RODBC::odbcDriverConnect()
-                }
+con <- switch(
+  .Platform$OS.type,
+  windows = {
+    dbConnect(
+      odbc::odbc(),
+      Driver = "SQL Server",
+      Server = "Xsw-00-ash01",
+      Database = "MODELLING_SQL_AREA",
+      Trusted_Connection = "True"
+    )
+  },
+  unix = {
+    "/root/sql/sql_modelling_connect_string_linux" |>
+      readr::read_lines() |>
+      RODBC::odbcDriverConnect()
+  }
 )
 
-
-# delete old data
-query_delete <- "DELETE FROM MODELLING_SQL_AREA.dbo.discharge_pathway_projections"
-RODBC::sqlQuery(con, query_delete)
-RODBC::sqlSave(con,
-               plot_df,
-               tablename = 'discharge_pathway_projections',
-               rownames = FALSE
-               )
-
+dbWriteTable(
+  con, 
+  name = Id(schema = "BNSSG\\Nick.Howlett", table = "discharge_pathway_projections"), 
+  value = plot_df, 
+  overwrite = TRUE
+)
 
 # Write to ICS MySQL db
 
