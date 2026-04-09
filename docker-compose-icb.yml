@@ -13,3 +13,4 @@ services:
     volumes:
       - /samba/nowcast-data/dpp/data:/root/data
       - /home/rshiny:/root/sql
+    image: dps_forecast_v1

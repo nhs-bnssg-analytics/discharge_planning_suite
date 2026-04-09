@@ -1,7 +1,9 @@
 version: '1.0'
 services:
     shiny:
-      build: .
+      build:
+        context: .
+        dockerfile: Dockerfile-ics
       image: shiny_with_pkg:dps
       restart: always
       environment:
@@ -16,4 +18,4 @@ services:
         - shiny-static:/usr/local/lib/R/site-library/shiny/www/shared/
 volumes:
   shiny-static:
-
+image: dpp_shiny_v1
