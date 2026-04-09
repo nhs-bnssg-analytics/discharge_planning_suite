@@ -10,10 +10,10 @@ library(fabletools)
 
 con <- switch(.Platform$OS.type,
               windows = RODBC::odbcConnect(dsn = "xsw"),
-              unix = {"/root/sql/sql_connect_string_linux" |>
-                  readr::read_lines() |>
-                  RODBC::odbcDriverConnect()}
-)
+              unix = {
+                conn_str <- readr::read_lines("/root/sql/sql_connect_string_linux")
+                DBI::dbConnect(odbc::odbc(), .connection_string = conn_str)
+              })
 
 source("utils/utils.R")
 source("utils/theme.R")
@@ -25,11 +25,6 @@ seed <- FALSE
 
 n_rep <- 1E2
 n_days <- 10
-
-
-
-
-con <- DBI::dbConnect(odbc::odbc(), "xsw")
 
 nctr_tbl <- tbl(con,
                 in_catalog(
