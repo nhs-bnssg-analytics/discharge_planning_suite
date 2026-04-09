@@ -9,7 +9,7 @@ library(fable)
 library(fabletools)
 
 con <- switch(.Platform$OS.type,
-              windows = RODBC::odbcConnect(dsn = "xsw"),
+              windows = DBI::dbConnect(odbc::odbc(), dsn = "xsw"),
               unix = {
                 conn_str <- readr::read_lines("/root/sql/sql_connect_string_linux")
                 DBI::dbConnect(odbc::odbc(), .connection_string = conn_str)
@@ -204,13 +204,10 @@ report_start <- max_date
 report_end <- report_start + ddays(n_days)
 
 
-attr_df <-
-  RODBC::sqlQuery(
-    RODBC::odbcDriverConnect("driver={SQL Server};\n  server=Xsw-00-ash01;\n  trusted_connection=true"),
-    "select * from (
+
+attr_df <- DBI::dbGetQuery(con,  "select * from (
 select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
-[MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
-  )
+[MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1")
 
 
 nctr_df <- nctr_df %>%
@@ -302,27 +299,10 @@ plot_df <- bind_rows(plot_df_pred,
 # change con to write to modelling sql area
 # RODBC::odbcClose(con)
 
-con <- switch(
-  .Platform$OS.type,
-  windows = {
-    dbConnect(
-      odbc::odbc(),
-      Driver = "SQL Server",
-      Server = "Xsw-00-ash01",
-      Database = "MODELLING_SQL_AREA",
-      Trusted_Connection = "True"
-    )
-  },
-  unix = {
-    "/root/sql/sql_modelling_connect_string_linux" |>
-      readr::read_lines() |>
-      RODBC::odbcDriverConnect()
-  }
-)
 
 dbWriteTable(
   con, 
-  name = Id(schema = "BNSSG\\Nick.Howlett", table = "discharge_pathway_projections"), 
+  name = Id(db = "modelling_SQL_AREA", schema = "BNSSG\\Nick.Howlett", table = "discharge_pathway_projections"), 
   value = plot_df, 
   overwrite = TRUE
 )
