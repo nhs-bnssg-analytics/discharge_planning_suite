@@ -296,8 +296,18 @@ plot_df <- bind_rows(plot_df_pred,
 #                 "value" float)'
 #                 )
 
-# change con to write to modelling sql area
 # RODBC::odbcClose(con)
+
+
+# change con to write to modelling sql area
+con <- switch(
+  .Platform$OS.type,
+  windows = DBI::dbConnect(odbc::odbc(), dsn = "xsw"),
+  unix = {
+    conn_str <- readr::read_lines("/root/sql/sql_modelling_connect_string_linux")
+    DBI::dbConnect(odbc::odbc(), .connection_string = conn_str)
+  }
+)
 
 
 dbWriteTable(
