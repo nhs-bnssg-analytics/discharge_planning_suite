@@ -299,23 +299,24 @@ plot_df <- bind_rows(plot_df_pred,
 # RODBC::odbcClose(con)
 
 
-# change con to write to modelling sql area
-con <- switch(
-  .Platform$OS.type,
-  windows = DBI::dbConnect(odbc::odbc(), dsn = "xsw"),
-  unix = {
-    conn_str <- readr::read_lines("/root/sql/sql_modelling_connect_string_linux")
-    DBI::dbConnect(odbc::odbc(), .connection_string = conn_str)
-  }
-)
+# # change con to write to modelling sql area
+# con <- switch(
+#   .Platform$OS.type,
+#   windows = DBI::dbConnect(odbc::odbc(), dsn = "xsw"),
+#   unix = {
+#     conn_str <- readr::read_lines("/root/sql/sql_modelling_connect_string_linux")
+#     DBI::dbConnect(odbc::odbc(), .connection_string = conn_str)
+#   }
+# )
+# 
+# 
+# dbWriteTable(
+#   con, 
+#   name = Id(db = "modelling_SQL_AREA", schema = "dbo", table = "discharge_pathway_projections"), 
+#   value = plot_df, 
+#   overwrite = TRUE
+# )
 
-
-dbWriteTable(
-  con, 
-  name = Id(db = "modelling_SQL_AREA", schema = "BNSSG\\Nick.Howlett", table = "discharge_pathway_projections"), 
-  value = plot_df, 
-  overwrite = TRUE
-)
 
 # Write to ICS MySQL db
 
