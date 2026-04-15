@@ -23,7 +23,7 @@ dpp_module_ui <- function(id) {
     box(width = 12,
         tabsetPanel(id = ns("tabset"),
                     tabPanel("D2A Demand", 
-                             girafeOutput(ns("dpp_plot"), width = "100%", height = "600px")),
+                             girafeOutput(ns("dpp_plot"), width = "100%", height = "75vh")),
                     tabPanel("Acute Queueing",
                              fluidRow(
                                box(width = 3,
@@ -71,21 +71,27 @@ dpp_module_server <- function(id, data_subset, report_date) {
         labs(title = "Prediction of new patients becoming ready for discharge on future days**..", x = "", y = "")
       
       p_curr <- data_subset() %>%
-        mutate(pathway_add = fct_recode(pathway_add, "P1 queue" = "..for P1 service", "P2 queue" = "..for P2 service", "P3 queue" = "..for P3 service")) %>%
+        mutate(pathway_add = fct_recode(pathway_add, 
+                                        "P1 queue" = "..for P1 service", 
+                                        "P2 queue" = "..for P2 service", 
+                                        "P3 queue" = "..for P3 service")) %>%
         mutate(pathway_add = fct_relevel(pathway_add, "P2 queue", "P1 queue", after = Inf)) %>%
         mutate(tooltip_n = glue::glue("{pathway_add} = {round(n, 0)}")) %>%
         filter(source == "current_ctr_data", ctr == "N") %>%
         ggplot(aes(x = grp, y = round(n, 0), fill = pathway_add, group = pathway_add)) +
-        geom_col_interactive(aes(tooltip = tooltip_n))  +
+        geom_col_interactive(aes(tooltip = tooltip_n), width = 0.7)  +
+        coord_flip() +  # <--- THIS flips it to horizontal
         bnssgtheme() +
         scale_fill_manual(values = cols_curr, limits = rev(names(cols_curr))) +
         theme(legend.position = "none") +
-        labs(title = "NCTR patient* queues\ntoday", x = "", y = "")
+        labs(title = "NCTR patient* queues today", x = "", y = "Patient Count")
       
-      ptc <- patchwork::wrap_plots(p_curr, p_pred, widths = c(0.2, 0.8)) +
-        patchwork::plot_layout(guides = "collect") & theme(legend.position = 'bottom')
+      ptc <- (p_curr / p_pred) + 
+        plot_layout(heights = c(2, 4), guides = "collect") & 
+        patchwork::plot_annotation(caption = "*Meant to include all patients with LOS over 24 hrs.\n**Dashed line represents 4-week mean number of patients discharged to D2A pathway") &
+        theme(legend.position = 'bottom')
       
-      girafe(ggobj = ptc, width_svg = 16, height_svg = 7.5)
+      girafe(ggobj = ptc, width_svg = 16, height_svg = 10)
     })
     
     output$queue_fc <- renderGirafe({
@@ -118,6 +124,15 @@ dpp_module_server <- function(id, data_subset, report_date) {
 }
 
 ui <- dashboardPage(
+  
+  tags$style(HTML("
+  .content-wrapper { background-color: #ffffff; }
+  /* Force the box to be seamless */
+  .box { border-top: none; box-shadow: none; margin-bottom: 0px; }
+  /* Allow the SVG to scale nicely */
+  .girafe_container_std { width: 100% !important; }
+")),
+  
   header = dashboardHeader(title = "BNSSG Discharge Suite", titleWidth = "250px"),
   
   # 1. Put the controls in the actual sidebar
@@ -182,7 +197,5 @@ server <- function(input, output, session) {
   # Call the module once, passing the reactive data
   dpp_module_server("main_dashboard", filtered_data, report_date)
 }
-
-shinyApp(ui, server)
 
 shinyApp(ui, server)

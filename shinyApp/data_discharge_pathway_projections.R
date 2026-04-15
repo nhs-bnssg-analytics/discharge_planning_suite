@@ -61,8 +61,9 @@ data_dpp <- data_dpp %>%
                "P2 queue",
                "P3 queue")
   )) %>%
-  mutate(grp = factor(recode(grp, bri = "BRI", nbt = "NBT", weston = "Weston", "north somerset" = "NSC", "bristol" = "BCC", "south gloucestershire" = "SGC"),
+  mutate(grp = factor(recode(grp, bri = "BRI", nbt = "NBT", weston = "Weston", "north somerset" = "NSC", "bristol" = "BCC", "south gloucestershire" = "SGC", "other" = "Other"),
                       levels = c("NBT", "BRI", "Weston", "NSC", "BCC", "SGC"))) %>% 
+  filter(grp != "Other") %>%
   # mutate(pathway = fct_recode(pathway,  !!!levels)) %>%
   # mutate(pathway = fct_recode(pathway,  "NTCR but not on D2A queue" = "Other")) %>%
   pivot_wider(names_from = metric,
