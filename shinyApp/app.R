@@ -125,11 +125,18 @@ dpp_module_server <- function(id, data_subset, report_date) {
         select(-any_of(select_vec)) %>%
         mutate(day = report_date + ddays(day-1)) %>%
         rename(!!!rename_vec) %>%
-        ggplot(aes(x = day, y = n, fill = pathway_q, group = pathway_q)) +
-        geom_ribbon_interactive(aes(ymin = n_l85, ymax = n_u85), alpha = 0.33)  +
-        geom_line_interactive(aes(col = pathway_q)) +
-        geom_point_interactive(aes(tooltip = tooltip_q, col = pathway_q), size = 1.5) +
-        ggh4x::facet_grid2(grp~pathway_q, scales = "free_y", axes = "y", switch = "y") +
+        ggplot(aes(x = day, y = n, fill = pathway_q)) +
+        # 1. The Column (Replacing the line)
+        geom_col_interactive(aes(tooltip = tooltip_q), alpha = 0.8) +
+        
+        # 2. The Error Bar (Replacing the ribbon)
+        geom_errorbar_interactive(
+          aes(ymin = n_l85, ymax = n_u85), 
+          width = 0.3, 
+          linewidth = 0.8
+        ) +
+        
+        ggh4x::facet_grid2(grp ~ pathway_q, scales = "free_y", axes = "y", switch = "y") +
         ggh4x::facetted_pos_scales(
           y = list(
             pathway_q == "P1" ~ scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.1))),
@@ -140,8 +147,12 @@ dpp_module_server <- function(id, data_subset, report_date) {
         bnssgtheme() +
         scale_fill_manual(values = cols_q) +
         scale_colour_manual(values = cols_q) +
-        theme(legend.position = "none", strip.placement = "outside") +
-        labs(title = "D2A queue forecasts", x = "", y = "")
+        theme(
+          legend.position = "none", 
+          strip.placement = "outside",
+          panel.grid.major.x = element_blank() # Bars look better without vertical grids
+        ) +
+        labs(title = "D2A queue forecasts", x = "", y = "Queue size")
       
       girafe(ggobj = p, width_svg = 14, height_svg = 7)
     })
