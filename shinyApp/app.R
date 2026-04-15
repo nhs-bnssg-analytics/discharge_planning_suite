@@ -125,13 +125,13 @@ dpp_module_server <- function(id, data_subset, report_date) {
 
 ui <- dashboardPage(
   
-  tags$style(HTML("
-  .content-wrapper { background-color: #ffffff; }
-  /* Force the box to be seamless */
-  .box { border-top: none; box-shadow: none; margin-bottom: 0px; }
-  /* Allow the SVG to scale nicely */
-  .girafe_container_std { width: 100% !important; }
-")),
+#   tags$style(HTML("
+#   .content-wrapper { background-color: #ffffff; }
+#   /* Force the box to be seamless */
+#   .box { border-top: none; box-shadow: none; margin-bottom: 0px; }
+#   /* Allow the SVG to scale nicely */
+#   .girafe_container_std { width: 100% !important; }
+# ")),
   
   header = dashboardHeader(title = "BNSSG Discharge Suite", titleWidth = "250px"),
   
@@ -170,6 +170,11 @@ ui <- dashboardPage(
         
         /* Fix radio button text color for light sidebar */
         .shiny-input-container { color: #333 !important; }
+          .content-wrapper { background-color: #ffffff; }
+  /* Force the box to be seamless */
+  .box { border-top: none; box-shadow: none; margin-bottom: 0px; }
+  /* Allow the SVG to scale nicely */
+  .girafe_container_std { width: 100% !important; }
       "))
     ),
 
