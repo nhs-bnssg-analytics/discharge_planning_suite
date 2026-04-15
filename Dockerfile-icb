@@ -24,7 +24,7 @@ RUN apt-get update && apt-get install -y gnupg2 curl \
     && ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc-dev
 
 RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/bullseye/latest')); \
-    install.packages(c('tidymodels', 'fable', 'fitdistrplus', 'ggtext', 'bslib', 'RODBC', 'odbc', 'RMySQL', 'RJDBC'))"
+    install.packages(c('tidymodels', 'fable', 'fabletools', 'forecast', 'feasts',  'fitdistrplus', 'EnvStats', 'ranger', 'extraDistr', 'treeClust', 'ggtext', 'bslib', 'RODBC', 'odbc', 'RMySQL', 'RJDBC'))"
 
 
 WORKDIR /root
