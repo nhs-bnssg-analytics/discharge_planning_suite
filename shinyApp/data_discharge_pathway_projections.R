@@ -36,6 +36,10 @@ con <- DBI::dbConnect(DBI::dbDriver("MySQL"),
                        password=password)
 
 
+# on.exit(DBI::dbDisconnect(con))
+
+
+
 
 ## Use the lines below to read the predictions made using the server
 query <- '

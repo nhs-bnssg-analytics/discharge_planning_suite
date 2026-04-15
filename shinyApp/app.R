@@ -25,18 +25,36 @@ dpp_module_ui <- function(id) {
                     tabPanel("D2A Demand", 
                              girafeOutput(ns("dpp_plot"), width = "100%", height = "75vh")),
                     tabPanel("Acute Queueing",
+                             # Use a container fluidRow to hold the header and controls
                              fluidRow(
-                               box(width = 3,
-                                   HTML("<h2>Overview</h2><br><h5>Projections for the P1-3 queue size based on forecasted demand and capacity.</h5>"),
-                                   radioButtons(
-                                     ns("capacity"),
-                                     label = h3("D2A daily discharge capacity"),
-                                     choices = list("+10%" = 1, "4-week mean" = 2, "-10%" = 3),
-                                     selected = 2
-                                   )
+                               style = "padding: 20px; display: flex; align-items: center;", # Flexbox for vertical alignment
+                               
+                               # Column 1: The Overview Text
+                               column(8, 
+                                      HTML("<h2 style='margin-top: 0;'>Overview</h2>"),
+                                      tags$p("Projections for the queue sizes for P1-3 based on the current position, the demand forecasted by the model, and a given capacity scenario (relative to currently outflow over 4-weeks).",
+                                             style = "color: #666; font-size: 1.1em;")
                                ),
-                               box(width = 9, 
-                                   girafeOutput(ns("queue_fc"), width = "100%", height = "600px"))
+                               
+                               # Column 2: The Radio Buttons (Selector)
+                               column(4, 
+                                      div(style = "background: #f9f9f9; padding: 15px; border-radius: 8px; border: 1px solid #ddd;",
+                                          radioButtons(
+                                            ns("capacity"),
+                                            label = tags$span("D2A daily discharge capacity", style = "font-weight: bold;"),
+                                            choices = list("+10%" = 1, "4-week mean" = 2, "-10%" = 3),
+                                            selected = 2,
+                                            inline = TRUE # This makes the -10%/Mean/+10% sit horizontally
+                                          )
+                                      )
+                               )
+                             ),
+                             
+                             # The Chart Row
+                             fluidRow(
+                               column(12, 
+                                      girafeOutput(ns("queue_fc"), width = "100%", height = "75vh")
+                               )
                              )
                     )
         )
@@ -111,14 +129,21 @@ dpp_module_server <- function(id, data_subset, report_date) {
         geom_ribbon_interactive(aes(ymin = n_l85, ymax = n_u85), alpha = 0.33)  +
         geom_line_interactive(aes(col = pathway_q)) +
         geom_point_interactive(aes(tooltip = tooltip_q, col = pathway_q), size = 1.5) +
-        ggh4x::facet_grid2(grp~pathway_q, scales = "free_y", switch = "y") +
+        ggh4x::facet_grid2(grp~pathway_q, scales = "free_y", axes = "y", switch = "y") +
+        ggh4x::facetted_pos_scales(
+          y = list(
+            pathway_q == "P1" ~ scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.1))),
+            pathway_q == "P2" ~ scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.1))),
+            pathway_q == "P3" ~ scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.1)))
+          )
+        ) +
         bnssgtheme() +
         scale_fill_manual(values = cols_q) +
         scale_colour_manual(values = cols_q) +
-        theme(legend.position = "none") +
+        theme(legend.position = "none", strip.placement = "outside") +
         labs(title = "D2A queue forecasts", x = "", y = "")
       
-      girafe(ggobj = p, width_svg = 10, height_svg = 5)
+      girafe(ggobj = p, width_svg = 14, height_svg = 7)
     })
   })
 }
