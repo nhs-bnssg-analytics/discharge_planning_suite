@@ -2,109 +2,51 @@ library(fitdistrplus)
 library(tidyverse)
 library(tidymodels)
 source("utils/utils.R")
-
-con <- switch(.Platform$OS.type,
-              windows = RODBC::odbcDriverConnect("driver={SQL Server};\n  server=Xsw-00-ash01;\n  trusted_connection=true"),#RODBC::odbcConnect(dsn = "xsw"),
-              unix = xswauth::modelling_sql_area()
-)
-
-nctr_df <-
-  RODBC::sqlQuery(
-    con,
-    "SELECT
-       [Organisation_Code_Provider]
-      ,[Organisation_Code_Commissioner]
-      ,[Census_Date]
-      ,[NHS_Number]
-      ,[Person_Stated_Gender_Code]
-      ,[Person_Age]
-      ,[CDS_Unique_Identifier]
-      ,[Sub_ICB_Location]
-      ,[Organisation_Site_Code]
-      ,[Current_Ward]
-      ,[Specialty_Code]
-      ,[Bed_Type]
-      ,[Date_Of_Admission]
-      ,[BNSSG]
-      ,[Local_Authority]
-      ,[Criteria_To_Reside]
-      ,[Date_NCTR]
-      ,[Current_LOS]
-      ,[Days_NCTR]
-      ,[Current_Delay_Code]
-      ,[Current_Covid_Status]
-      ,[Planned_Date_Of_Discharge]
-      ,[Date_Toc_Form_Completed]
-      ,[Toc_Form_Status]
-      ,[Discharge_Pathway]
-      ,[DER_File_Name]
-      ,[DER_Load_Timestamp]
-  FROM Analyst_SQL_Area.dbo.vw_NCTR_Status_Report_Daily_JI"
-  ) %>%
-  mutate(Census_Date = lubridate::ymd(Census_Date))
+source("code_data_training.R")
 
 validation_end <- ymd("2024-09-01")
 validation_start <- ymd("2023-07-01")
-# weeks_test <- 13
-nctr_df <- nctr_df %>% filter(between(Census_Date, validation_start, validation_end-ddays(1)))
 
-date_co <- validation_start #as.Date(max_census - lubridate::dmonths(6))
+
+date_co <- validation_start 
 
 los_df <- nctr_df %>%
   ungroup() %>%
-  filter(Census_Date > date_co, Date_Of_Admission > date_co) %>%
-  filter(Person_Stated_Gender_Code %in% 1:2) %>%
-  mutate(nhs_number = as.character(NHS_Number),
-         nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
-         sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>% 
-  group_by(nhs_number, Date_Of_Admission) %>%
+  filter(census_date > date_co, admission_date > date_co) %>%
+  group_by(nhs_number, admission_date) %>%
   mutate(spell_id = cur_group_id()) %>%
   group_by(spell_id) %>%
   mutate(
-    der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/lubridate::ddays(1),
-    der_ctr = case_when(
-      Criteria_To_Reside == "Y" | is.na(Criteria_To_Reside) ~ TRUE,
-      !is.na(Days_NCTR) ~ FALSE,
-      !is.na(Date_NCTR) ~ FALSE,
-      Criteria_To_Reside == "N" ~ FALSE
-    ),
-    # der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - lubridate::ddays(1),max(Census_Date)))) %>%
-    der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) ,max(Census_Date)))) %>% # should it be max(census_date)+1 (if you become NCTR since last census you might have crossed another midnight..?)
+    der_los = (as.Date(census_date) - as.Date(admission_date))/lubridate::ddays(1),
+    # der_date_nctr = as.Date(if_else(any(!der_ctr),min(census_date[!der_ctr]) - lubridate::ddays(1),max(census_date)))) %>%
+    der_date_nctr = as.Date(if_else(any(!ctr),min(census_date[!ctr]) ,max(census_date)))) %>% # should it be max(census_date)+1 (if you become NCTR since last census you might have crossed another midnight..?)
   ungroup() %>%
-  mutate(der_date_nctr = pmax(Date_Of_Admission, pmin(der_date_nctr, Date_NCTR, na.rm = TRUE), na.rm = TRUE)) %>%
+  mutate(der_date_nctr = pmax(admission_date, pmin(der_date_nctr, date_nctr, na.rm = TRUE), na.rm = TRUE)) %>%
   mutate(der_date_nctr = as.Date(der_date_nctr)) %>%
-  arrange(Census_Date) %>%
+  arrange(census_date) %>%
   group_by(spell_id) %>%
   # (DEPRECATED) minus one as you mLOS is less than the time observed across the census snapshots (i.e. this is the left censor value)
-  mutate(discharge_rdy_los = (der_date_nctr - as.Date(Date_Of_Admission))/lubridate::ddays(1)) %>%
+  mutate(discharge_rdy_los = (der_date_nctr - as.Date(admission_date))/lubridate::ddays(1)) %>%
   # take max with zero for some cases where it is -1 due to date nctr == date admission and so los = -1
   mutate(discharge_rdy_los = pmax(discharge_rdy_los, 0)) %>%
   # take first discharge ready value
-  group_by(NHS_Number, Date_Of_Admission) %>%
+  group_by(spell_id, grp) %>%
   arrange(discharge_rdy_los) %>% 
   slice(1) %>%
-  mutate(day_of_admission = weekdays(Date_Of_Admission)) %>%
+  mutate(day_of_admission = weekdays(admission_date)) %>%
   ungroup() %>%
-  # filter(discharge_rdy_los >= 0) %>%
-  filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
-  mutate(Organisation_Site_Code = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt',
-                                            Organisation_Site_Code == 'RA701' ~ 'bri',
-                                            Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
-                                            TRUE ~ '')) %>%
-  mutate(Organisation_Site_Code = factor(Organisation_Site_Code)) %>%
-  filter(Organisation_Site_Code != "nbt") %>%
   dplyr::select(
-    Census_Date,
+    census_date,
     nhs_number = nhs_number,
-    admission_date = Date_Of_Admission,
-    date_nctr = Date_NCTR,
+    admission_date,
+    date_nctr,
     der_date_nctr,
-    site = Organisation_Site_Code,
+    grp,
     day_of_admission,
     sex,
-    age = Person_Age,
+    age,
     # spec = Specialty_Code,
-    bed_type = Bed_Type,
+    bed_type,
     los = discharge_rdy_los
   )  #%>%
 # # filter outlier LOS
@@ -146,9 +88,13 @@ los_df <- los_df %>%
 # ECDF
 
 los_df %>%
-  mutate(site = recode(site,
+  mutate(grp = recode(grp,
+                       "nbt" = "Southmead Hosipital",
                        "bri" = "Bristol Royal Infirmary",
-                       "weston" = "Weston General Hospital"
+                       "weston" = "Weston General Hospital",
+                       "bristol" = "Bristol LA",
+                       "north somerset" = "North Somerset LA",
+                       "south gloucestershire" = "South Gloucestershire LA"
                        )) %>%
   ggplot() +
   stat_ecdf(aes(x = los+1), geom = "step") +
@@ -160,7 +106,7 @@ los_df %>%
   labs(#title = "Calibration 4e",
        y = str_wrap("Empirical Cumulative Distribution Function", 40),
        x = "Medical length of stay (days)") +
-  facet_wrap(vars(site), nrow = 1)
+  facet_wrap(vars(grp), nrow = 2)
 
 
 ggsave(last_plot(),
@@ -171,8 +117,8 @@ ggsave(last_plot(),
        scale = 0.5)
 
 
-saveRDS(los_df, "data/los_df.RDS")
-los_df <- readRDS("data/los_df.RDS")
+saveRDS(los_df, "data/los_df_la.RDS")
+los_df <- readRDS("data/los_df_la.RDS")
 
 #(DEPRECATED) This was the old test/train split 
 # los_testing <- los_df %>%
@@ -185,12 +131,12 @@ los_df <- readRDS("data/los_df.RDS")
 
 # Now use all data for training and test
 los_testing <- los_df %>%
-  filter(between(Census_Date, validation_start, validation_end)) %>%
-  dplyr::select(-Census_Date)
+  filter(between(census_date, validation_start, validation_end)) %>%
+  dplyr::select(-census_date)
 
 los_train <- los_df %>%
-  filter(between(Census_Date, validation_start, validation_end)) %>%
-  dplyr::select(-Census_Date)
+  filter(between(census_date, validation_start, validation_end)) %>%
+  dplyr::select(-census_date)
 
 # attributes to join
 
@@ -213,7 +159,7 @@ model_df_train <- los_train %>%
   dplyr::select(
          # nhs_number,
          los,
-         site,
+         grp,
          # day_of_admission,
          cambridge_score,
          age,
@@ -235,7 +181,7 @@ model_df_test <- los_testing %>%
   dplyr::select(
                 #nhs_number,
                 los,
-                site,
+                grp,
                 # day_of_admission,
                 cambridge_score,
                 age,
@@ -266,11 +212,11 @@ tree_spec <- decision_tree(
 tree_grid <- grid_regular(cost_complexity(range = c(-6, -1), trans = log10_trans()),
                           tree_depth(range = c(2, 7)),
                           min_n(range = c(1500, 3000)),
-                          levels = 15)
+                          levels = 10)
 
 
 tree_rec <- recipe(los ~ ., data = model_df_train)  %>%
-  update_role(site, new_role = "site id") %>%  
+  update_role(grp, new_role = "grp id") %>%  
   step_novel(all_nominal_predictors(), new_level = "Other") %>%
   step_other(all_nominal_predictors(), threshold = 0.1, other = "Other")
 
@@ -288,7 +234,7 @@ tree_metrics <-  metric_set(
   #mape
 )
 
-doParallel::registerDoParallel()
+doParallel::registerDoParallel(parallel::detectCores() - 2)
 set.seed(345)
 tree_rs <- tune_grid(
   tree_wf,
@@ -530,7 +476,7 @@ los_model_df <- model_df_train %>%
 labeller_leaf_id<- function(string, prefix = "Leaf ID: ") paste0(prefix, string)
 
 los_model_df %>%
-  mutate(site = recode(site,
+  mutate(site = recode(grp,
                        "bri" = "Bristol Royal Infirmary",
                        "weston" = "Weston General Hospital"
   )) %>%
@@ -597,12 +543,12 @@ fitdistcens_safe <- safely(fitdistcens)
   
   
 fit_dists <- los_model_df %>%
-  dplyr::select(site, leaf, los) %>%
-  mutate(site = fct_drop(site)) %>%
+  dplyr::select(grp, leaf, los) %>%
+  mutate(grp = fct_drop(grp)) %>%
   bind_rows(mutate(., leaf = -1)) %>%
   group_by(leaf) %>%
   nest() %>%
-  mutate(data = map(data, ~mutate(.x, los = set_names(los, site)))) %>%
+  mutate(data = map(data, ~mutate(.x, los = set_names(los, grp)))) %>%
   mutate(los = map(data, pull, los)) %>%
   select(leaf, los)
 
@@ -617,8 +563,8 @@ fit_dists <- los_model_df %>%
   #   mutate(tdist = map2(pdist, qdist, ~partial(rtruncdist, pdist = .x, qdist = .y)))
 
 
-saveRDS(fit_dists, "data/fit_dists.RDS")
-saveRDS(tree_fit, "data/los_wf.RDS")
+saveRDS(fit_dists, "data/fit_dists_grp.RDS")
+saveRDS(tree_fit, "data/los_wf_grp.RDS")
 cat("LOS model outputs written", fill = TRUE)
 
 # VALIDATION code

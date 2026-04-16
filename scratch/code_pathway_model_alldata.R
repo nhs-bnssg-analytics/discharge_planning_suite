@@ -2,163 +2,53 @@ library(fitdistrplus)
 library(tidyverse)
 library(tidymodels)
 
-
-con <- switch(.Platform$OS.type,
-              windows = RODBC::odbcDriverConnect("driver={SQL Server};\n  server=Xsw-00-ash01;\n  trusted_connection=true"),#RODBC::odbcConnect(dsn = "xsw"),
-              unix = xswauth::modelling_sql_area()
-)
-
-pathway_recodes <- c(
-  "Pathway 3 - Other" = "P3",
-  "Awaiting confirmation MDT" = "Other",
-  "Awaiting referral to SPA" = "Other",
-  "Pathway 3 - D2A" = "P3",
-  "Pathway 0" = "Other",
-  "Pathway 1 - D2A" = "P1",
-  "Awaiting confirmation Social" = "Other",
-  "Pathway 2 - Other" = "P2",
-  "Pathway 2 - D2A" = "P2",
-  "Pathway 2" = "P2",
-  "Pathway 2  Safeguarding concern" = "P2",
-  "Pathway 2   Specialist  eg BIRU" = "P2",
-  "Awaiting confirmation Other" = "Other",
-  "Pathway 1 - Other" = "P1",
-  "Pathway 1" = "P1",
-  "P3 / Other Complex Discharge" = "P3",
-  "Pathway 3 / Other Complex Discharge" = "P3",
-  "Uncoded" = "Other",
-  "Repatriation" = "Other",
-  "NCTR Null" = "Other",
-  "Not Set" = "Other",
-  "18a  Infection  bxviii  Standard" = "Other",
-  "xviii. Awaiting discharge to a care home but have not had a COVID 19 test (in 48 hrs preceding discharge)." = "Other",
-  "15b  Repat  bxv  WGH" = "Other",
-  "Meets Criteria to Reside" = "Other"
-)
-
-
-nctr_df <-
-  RODBC::sqlQuery(
-    con,
-    "SELECT [RN]
-      ,[Organisation_Code_Provider]
-      ,[Organisation_Code_Commissioner]
-      ,[Census_Date]
-      ,[Month_Date]
-      ,[Month]
-      ,[Day_Of_Week]
-      ,[Week_Start_Date]
-      ,[NHS_Number]
-      ,[Person_Stated_Gender_Code]
-      ,[Person_Age]
-      ,[CDS_Unique_Identifier]
-      ,[Sub_ICB_Location]
-      ,[Organisation_Site_Code]
-      ,[Current_Ward]
-      ,[Specialty_Code]
-      ,[Bed_Type]
-      ,[Date_Of_Admission]
-      ,[BNSSG]
-      ,[Local_Authority]
-      ,[Criteria_To_Reside]
-      ,[Date_NCTR]
-      ,[Current_LOS]
-      ,[Days_NCTR]
-      ,[Days_NCTR_On_Current_Code]
-      ,[Current_Delay_Code]
-      ,[Local_Authority_grouped]
-      ,[Site_Name]
-      ,[Current_Delay_Code_Standard]
-      ,[Current_Delay_Code_Detailed]
-      ,[Acute Community split]
-      ,[Current_Covid_Status]
-      ,[Planned_Date_Of_Discharge]
-      ,[Date_Toc_Form_Completed]
-      ,[Toc_Form_Status]
-      ,[Discharge_Pathway]
-      ,[DER_File_Name]
-      ,[DER_Load_Timestamp]
-  FROM Analyst_SQL_Area.dbo.vw_NCTR_Status_Report_Daily_JI"
-  )
+source("utils/utils.R")
+source("code_data_training.R")
 
 validation_end <- ymd("2024-09-01")
 validation_start <- ymd("2023-07-01")
-# weeks_test <- 13
-nctr_df <- nctr_df %>% filter(between(Census_Date, validation_start, validation_end-ddays(1)))
+weeks_test <- 13
+nctr_df <- nctr_df %>% filter(between(census_date, validation_start, validation_end-ddays(1)))
 
-
-pathway_df <- nctr_df %>%
-  mutate(
-    pathway = recode(Current_Delay_Code_Standard, !!!pathway_recodes),
-    pathway = coalesce(pathway, "Other")
-  ) %>%
-  mutate(pathway = if_else(pathway %in% c("Other", "P1", "P2", "P3"), pathway, "Other")) %>%
-  filter(Person_Stated_Gender_Code %in% 1:2) %>%
-  mutate(
-    nhs_number = as.character(NHS_Number),
-    nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
-    sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")
-  ) %>%
-  filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
-  mutate(
-    site = case_when(
-      Organisation_Site_Code == 'RVJ01' ~ 'nbt',
-      Organisation_Site_Code == 'RA701' ~ 'bri',
-      Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
-      TRUE ~ 'other'
-    )
-  ) %>%
-  group_by(nhs_number, Date_Of_Admission) %>%
+ pathway_df <- nctr_df %>%
+   # Remove "Other LA" this data seems to have very low DTA utilisation
+   filter(grp != "Other") %>%
+  group_by(nhs_number, admission_date, grp) %>%
   mutate(spell_id = cur_group_id()) %>%
   group_by(spell_id) %>%
   mutate(
-    der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission)) / lubridate::ddays(1),
-    der_ctr = case_when(
-      Criteria_To_Reside == "Y" | is.na(Criteria_To_Reside) ~ TRUE,
-      !is.na(Days_NCTR) ~ FALSE,
-      !is.na(Date_NCTR) ~ FALSE,
-      Criteria_To_Reside == "N" ~ FALSE
-    ),
-    # der_date_nctr = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - lubridate::ddays(1),max(Census_Date)))) %>%
-    der_date_nctr = as.Date(if_else(
-      any(!der_ctr), min(Census_Date[!der_ctr]) , max(Census_Date)
-    ))
-  ) %>%
+    der_los = (as.Date(census_date) - as.Date(admission_date))/lubridate::ddays(1),
+    # der_date_nctr = as.Date(if_else(any(!der_ctr),min(census_date[!der_ctr]) - lubridate::ddays(1),max(census_date)))) %>%
+    der_date_nctr = as.Date(if_else(any(!ctr),min(census_date[!ctr]) ,max(census_date)))) %>% # should it be max(census_date)+1 (if you become NCTR since last census you might have crossed another midnight..?)
   ungroup() %>%
-  mutate(der_date_nctr = pmax(
-    Date_Of_Admission,
-    pmin(der_date_nctr, Date_NCTR, na.rm = TRUE),
-    na.rm = TRUE
-  )) %>%
+  mutate(der_date_nctr = pmax(admission_date, pmin(der_date_nctr, date_nctr, na.rm = TRUE), na.rm = TRUE)) %>%
   mutate(der_date_nctr = as.Date(der_date_nctr)) %>%
-  mutate(discharge_rdy_los = (der_date_nctr - as.Date(Date_Of_Admission)) /
-           lubridate::ddays(1)) %>%
+  arrange(census_date) %>%
+  group_by(spell_id) %>%
+  mutate(pathway = ifelse(!ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
+  mutate(discharge_rdy_los = (der_date_nctr - as.Date(admission_date))/lubridate::ddays(1)) %>%
+  # take max with zero for some cases where it is -1 due to date nctr == date admission and so los = -1
   mutate(discharge_rdy_los = pmax(discharge_rdy_los, 0)) %>%
-  group_by(nhs_number) %>%
-  arrange(Census_Date) %>%
-  group_by(nhs_number, Date_Of_Admission) %>%
-  # mutate(pathway = ifelse(!der_ctr & any(pathway != "Other"), head(pathway[pathway != "Other"], 1), pathway)) %>%
-  mutate(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other")) %>%
-  mutate(discharge_rdy_los = min(discharge_rdy_los)) %>%
   mutate(los = cut(discharge_rdy_los, breaks = c(0, 3, 4, 5, 6, 7, 8, 9, 10, Inf), include.lowest = TRUE)) %>%
   # mutate(pathway = ifelse(any(!der_ctr), pathway[!der_ctr][1], "Other")) %>%
   slice(1) %>%
   ungroup() %>%
   dplyr::select(
-    Census_Date,
+    census_date,
     date_nctr = der_date_nctr,
-    site,
+    grp,
     nhs_number,
     sex,
-    age = Person_Age,
+    age,
     los,
     pathway,
     # spec = Specialty_Code, # spec is too multinomial
-    bed_type = Bed_Type
+    bed_type
   ) %>%
   na.omit() %>%
   # remove the last 10 days to avoid any boundary effects from the derivation of pathways
-  filter(Census_Date < max(Census_Date) - ddays(10))
+  filter(census_date < max(census_date) - ddays(10))
+
 
 # remove patients who died
 
@@ -209,9 +99,9 @@ attr_df <- readRDS("data/attr_df.RDS")
 model_df <- pathway_df %>%
   left_join(dplyr::select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
             by = join_by(nhs_number == nhs_number)) %>%
-  dplyr::select(Census_Date,
+  dplyr::select(census_date,
                 pathway,
-                site,
+                grp,
                 cambridge_score,
                 age,
                 sex,
@@ -233,9 +123,9 @@ model_df_split <- rsample::make_splits(x = list(
   analysis = 1:nrow(model_df),
   assessment = 1:nrow(model_df)
 ),
-data = dplyr::select(model_df, -Census_Date))
+data = dplyr::select(model_df, -census_date))
 
-model_df <- model_df %>% dplyr::select(-Census_Date)
+model_df <- model_df %>% dplyr::select(-census_date)
 
 model_df_train <- training(model_df_split)
 model_df_test <- testing(model_df_split)
@@ -243,28 +133,8 @@ model_df_test <- testing(model_df_split)
 model_df_folds <- vfold_cv(model_df_train, strata = pathway)
 
 
-# model_df_train %>%
-#   pull(pathway) %>%
-#   table() %>%
-#   proportions() %>%
-#   as.list() %>%
-#   as_tibble() %>%
-#   pivot_longer(cols = everything(),
-#                names_to = "IC Pathway",
-#                values_to = "Proportion") %>%
-#   mutate(Proportion = percent(Proportion)) %>%
-#   show_in_excel()
-
 
 props <- model_df_train %>%
-  # arrange(los) %>%
-  # mutate(los_cut = cut(
-  #   los,
-  #   breaks = c(0, 3, 4, 5, 6, 7, 8, 9, 10, Inf),
-  #   include.lowest = TRUE
-  # )) %>%
-  # mutate(los_cut = fct_reorder(los_cut, los)) %>%
-  # mutate(los = los_cut) %>%
   nest(.by = los) %>%
   mutate(props = map(data, \(data) {
     data %>%
@@ -327,130 +197,42 @@ rf_fit_rs <- rf_wf %>%
     })) 
 
 
-# roc_df <- rf_fit$.predictions[[1]] %>%
-  #   dplyr::select(starts_with(".pred"), truth = pathway, -.pred_class) %>%
-  #   pivot_longer(
-  #     cols = starts_with(".pred"),
-  #     names_to = "class",
-  #     values_to = "prob",
-  #     names_prefix = ".pred_"
-  #   ) %>%
-  #   mutate(truth = factor(truth), class = factor(class)) %>%
-  #   group_by(class) %>%
-  #   nest() %>%
-  #   mutate(data = map2(data,
-  #                      class,
-  #                      ~ mutate(.x, truth = factor(
-  #                        if_else(truth == .y, truth, "X")
-  #                      )))) %>%
-  #   mutate(roc = map(data, ~roc_curve(.x, truth = truth, prob))) %>%
-  #   mutate(auc = map(data, ~roc_auc(.x, truth = truth, prob))) %>%
-  #   dplyr::select(class, roc, auc) %>%
-  #   unnest(cols = c(roc, auc))
 
 
 
 
 rf_fit <- last_fit(rf_wf, model_df_split)
 
-# rf_fit %>%
-#   extract_fit_parsnip() %>%
-#   vip::vi() %>%
-#   mutate(Variable = recode(Variable 
-#                            ,age = "Age"
-#                            ,cambridge_score = "Cambridge Score"
-#                            ,bed_type_Neuro.MSK = "Bed Type: Neuro-MSK"
-#                            ,bed_type_Medicine = "Bed Type: Medicine"
-#                            ,bed_type_Surgery = "Bed Type: Surgery"
-#                            ,bed_type_other  = "Bed Type: Other"
-#                            ,sex_Male = "Sex"
-#   )) %>%
-#   mutate(Variable = factor(Variable)) %>%
-#   mutate(Variable = fct_reorder(Variable, Importance)) %>%
-#   ggplot(aes(x = Importance, y = Variable)) + 
-#   geom_col() +
-#   theme_minimal()
-# 
-# ggsave(last_plot(),
-#        filename = "validation/calib_pathway_importance.png",
-#        bg = "white",
-#        width = 10,
-#        height = 7.5,
-#        scale = 0.45)
-# 
-# roc_df <- rf_fit$.predictions[[1]] %>%
-#   dplyr::select(starts_with(".pred"), truth = pathway, -.pred_class) %>%
-#   pivot_longer(
-#     cols = starts_with(".pred"),
-#     names_to = "class",
-#     values_to = "prob",
-#     names_prefix = ".pred_"
-#   ) %>%
-#   mutate(truth = factor(truth), class = factor(class)) %>%
-#   group_by(class) %>%
-#   nest() %>%
-#   mutate(data = map2(data,
-#                      class,
-#                      ~ mutate(.x, truth = factor(
-#                        if_else(truth == .y, truth, "X")
-#                      )))) %>%
-#   mutate(roc = map(data, ~roc_curve(.x, truth = truth, prob))) %>%
-#   mutate(auc = map(data, ~roc_auc(.x, truth = truth, prob))) %>%
-#   dplyr::select(class, roc, auc) %>%
-#   unnest(cols = c(roc, auc))
-# 
-# 
-# (validation_plot_pathway <-
-#     ggplot(roc_df, aes(
-#       x = 1 - specificity,
-#       y = sensitivity,
-#       col = glue::glue("{class}\nAUC: {round(.estimate, 2)}")
-#     )) +
-#     geom_line() +
-#     ggplot2::geom_abline(lty = 3) +
-#     ggplot2::coord_equal() +
-#     ggplot2::theme_minimal() +
-#     theme(legend.position = "bottom") +
-#     labs(colour = ""))
-# 
-# ggsave(validation_plot_pathway,
-#        filename = "validation/validation_plot_pathway.png",
-#        bg = "white",
-#        width = 10,
-#        height = 10,
-#        scale = 0.45)
-
-# save workflow
 final_wf <- rf_fit %>% extract_workflow()
 list(props = props, fit = rf_fit, fit_rs = rf_fit_rs)
 }
 
 
 fits <- model_df %>%
-  nest(.by = site) %>%
+  nest(.by = grp) %>%
   mutate(fit = map(data, ~fit_rf_model(.x)))
 
-saveRDS(dplyr::select(fits, site, fit), "data/rf_fit_props_site.RDS") 
+saveRDS(dplyr::select(fits, grp, fit), "data/rf_fit_props_grp.RDS") 
 
-fits <- readRDS("data/rf_fit_props_site.RDS")
+fits <- readRDS("data/rf_fit_props_grp.RDS")
 
 library(gt)
 
 fits %>%
-  filter(site != "nbt") %>%
-  mutate(fit = set_names(fit, site)) %>%
+  filter(grp != "nbt") %>%
+  mutate(fit = set_names(fit, grp)) %>%
   pull(fit) %>%
   map("props") %>%
   map(enframe) %>%
   map(\(x) unnest_wider(x, value)) %>%
-  bind_rows(.id = "site") %>%
-  pivot_longer(cols = -c(site, name), names_to = "pathway", values_to = "proportion") %>%
+  bind_rows(.id = "grp") %>%
+  pivot_longer(cols = -c(grp, name), names_to = "pathway", values_to = "proportion") %>%
   pivot_wider(names_from = name, values_from = proportion) %>%
   gt() %>%
   tab_spanner(label = "Medical length of stay",
-              columns = -c(site, pathway)) %>%
+              columns = -c(grp, pathway)) %>%
   fmt_number(
-    columns = -c(site, pathway),
+    columns = -c(grp, pathway),
     decimals = 3
   ) %>%
   gt::gtsave("materials/pathway_props.html")
@@ -460,7 +242,7 @@ fits %>%
 
 library(patchwork)
 
-roc_plot <- function(fit, site) {
+roc_plot <- function(fit, grp) {
   labels <- fit$fit_rs$roc_df %>%
     bind_rows(.id = "fold") %>%
     ungroup() %>%
@@ -491,17 +273,17 @@ roc_plot <- function(fit, site) {
     ggplot2::theme(plot.title = element_blank(),
                    panel.background = element_rect(fill = NA, color = "#DDDDDD", linewidth = 1),
       panel.spacing.x = unit(x = 0.75, units = "cm"))+
-    labs(#title = site,
+    labs(#title = grp,
          colour = "",
          y = "Sensitivity",
          x = "1 - Specificity") +
-    facet_grid(str_c(site)~class)
+    facet_grid(str_c(grp)~class)
   }
 
 fits %>%
-  filter(site != "nbt") %>%
-  mutate(site = recode(site, !!!c("bri" = "Bristol Royal\nInfirmary", "weston" = "Weston General\nHospital"))) %>%
-  mutate(plot = map2(fit, site, \(fit, site) roc_plot(fit, site))
+  filter(grp != "nbt") %>%
+  mutate(grp = recode(grp, !!!c("bri" = "Bristol Royal\nInfirmary", "weston" = "Weston General\nHospital"))) %>%
+  mutate(plot = map2(fit, grp, \(fit, grp) roc_plot(fit, grp))
     ) %>%
   pull(plot) %>%
  wrap_plots(ncol = 1) +
@@ -517,9 +299,9 @@ ggsave(last_plot(),
        scale = 0.7)
 
 fits %>%
-  filter(site != "nbt") %>%
-  mutate(site = recode(site, !!!c("bri" = "Bristol Royal Infirmary", "weston" = "Weston General Hospital"))) %>%
-  mutate(vip = map2(fit, site, \(fit, site) {
+  filter(grp != "nbt") %>%
+  mutate(grp = recode(grp, !!!c("bri" = "Bristol Royal Infirmary", "weston" = "Weston General Hospital"))) %>%
+  mutate(vip = map2(fit, grp, \(fit, grp) {
     fit$fit %>%
       extract_fit_parsnip() %>%
       vip::vi() %>%
@@ -540,7 +322,7 @@ fits %>%
       ggplot(aes(x = Importance, y = Variable)) +
       geom_col(fill = "grey40") +
       theme_minimal() +
-      labs(title = site, x = "Permutation importance", y = "")
+      labs(title = grp, x = "Permutation importance", y = "")
   })) %>%
   pull(vip) %>%
   patchwork::wrap_plots(axes = "collect") &
@@ -558,18 +340,18 @@ ggsave(last_plot(),
 
 fits %>%
 
-filter(site != "nbt") %>%
-  mutate(site = recode(site, !!!c("bri" = "Bristol Royal Infirmary", "weston" = "Weston General Hospital"))) %>%
+filter(grp != "nbt") %>%
+  mutate(grp = recode(grp, !!!c("bri" = "Bristol Royal Infirmary", "weston" = "Weston General Hospital"))) %>%
   hoist(fit, "props") %>%
-  select(site, props) %>%
+  select(grp, props) %>%
   unnest_wider(props) %>%
-  pivot_longer(cols = -site) %>%
-  pivot_wider(names_from = site, values_from = value) %>%
+  pivot_longer(cols = -grp) %>%
+  pivot_wider(names_from = grp, values_from = value) %>%
   rename("IC pathway" = name) %>%
   show_in_excel()
   
-# filter(site != "nbt") %>%
-map2(.$fit$fit, .$site, \(fit, site) {
+# filter(grp != "nbt") %>%
+map2(.$fit$fit, .$grp, \(fit, grp) {
   fit %>%
   extract_fit_parsnip() %>%
     vip::vi() %>%
@@ -620,9 +402,9 @@ fits %>%
   mutate(wf = map(wf, extract_workflow)) %>%
   mutate(samp = map(data, \(x) map(seq_len(n_samp), ~sample_n(x, 1000)))) %>%
   mutate(preds = map2(samp, wf, \(x, y) map(x, ~predict(y, .x, type = "prob"))))  %>%
-  dplyr::select(site, samp, preds) %>%
+  dplyr::select(grp, samp, preds) %>%
   unnest(cols = c(samp, preds)) %>%
-  reframe(bind = map2(samp, preds, bind_cols), .by = site) %>%
+  reframe(bind = map2(samp, preds, bind_cols), .by = grp) %>%
   mutate(out = map(bind, \(x) 
                    {x %>% 
   mutate(pathwaysamp = pmap(list(.pred_Other,
@@ -644,17 +426,17 @@ fits %>%
   mutate(across(matches("pathway_emp"), as.numeric)) %>%
   pivot_longer(cols = everything(), names_sep = "_", names_to = c("bla", "source", "pathway")) %>%
   dplyr::select(source, pathway, value)})) %>%
-  dplyr::select(site, out) %>%
-  mutate(id = seq_len(n_samp), .by = site) %>%
+  dplyr::select(grp, out) %>%
+  mutate(id = seq_len(n_samp), .by = grp) %>%
   unnest(cols = out) %>%
   pivot_wider(names_from = source, values_from = value) %>%
   mutate(residual = emp - rf) %>%
   summarise(mean_residual = mean(residual),
             u95 = quantile(residual, 0.975),
-            l95 = quantile(residual, 0.025), .by = c(site, pathway)) %>%
+            l95 = quantile(residual, 0.025), .by = c(grp, pathway)) %>%
   ggplot(aes(x = pathway)) +
   geom_errorbar(aes(ymin = l95, ymax = u95)) +
   geom_point(aes(y = mean_residual)) +
-  facet_wrap(vars(site), ncol = 1)
+  facet_wrap(vars(grp), ncol = 1)
 
          

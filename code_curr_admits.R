@@ -1,4 +1,6 @@
 df_curr_admits <- local({
+  
+  
   if(seed) set.seed(123)
   require(tidyverse)
   # LOS predictions
@@ -15,17 +17,17 @@ df_curr_admits <- local({
         mutate(nhs_number = as.character(nhs_number)),
       by = join_by(nhs_number == nhs_number)
     ) %>%
-    dplyr::select(age, sex, cambridge_score, bed_type, site, spec, los) #%>%
+    dplyr::select(age, sex, cambridge_score, bed_type, grp, spec, los) #%>%
   #na.omit()
   
   # pathway model
   
   # rf_wf <- readRDS("data/rf_wf.RDS")
   
-  rf_wf_site <- readRDS("data/rf_fit_props_site.RDS") %>% 
+  rf_wf_grp <- readRDS("data/rf_fit_props_grp.RDS") %>% 
     mutate(fit = map(fit, "fit")) %>%
     mutate(wf = map(fit, extract_workflow)) %>%
-    dplyr::select(site, wf)
+    dplyr::select(grp, wf)
   
   # %>%
   #   mutate(wf = set_names(wf, site)) %>%
@@ -33,13 +35,13 @@ df_curr_admits <- local({
   
   # los_tree
   
-  los_wf <- readRDS("data/los_wf.RDS")
+  los_wf_grp <- readRDS("data/los_wf_grp.RDS")
   
 
   
   los_df <- los_df %>%
-    recipes::bake(workflows::extract_recipe(los_wf), .) %>%
-    mutate(leaf = as.character(treeClust::rpart.predict.leaves(workflows::extract_fit_engine(los_wf), .))) 
+    recipes::bake(workflows::extract_recipe(los_wf_grp), .) %>%
+    mutate(leaf = as.character(treeClust::rpart.predict.leaves(workflows::extract_fit_engine(los_wf_grp), .))) 
   
   # %>%
   #   nest(.by = site) %>%
@@ -52,7 +54,7 @@ df_curr_admits <- local({
   
   # los distributions
   
-  los_dist <- readRDS("data/fit_dists.RDS")  %>%
+  los_dist <- readRDS("data/fit_dists_grp.RDS")  %>%
     mutate(leaf = as.character(leaf)) %>%
     rename(los_hist = los)
   
@@ -81,10 +83,10 @@ df_curr_admits <- local({
     )),
     rep = list(seq_len(n_rep))) %>%
     # Use the now predictoed total length of stay to predict pathway requirement
-    dplyr::select(site, cambridge_score, age, sex, bed_type, los, los_remaining, rep) %>%
+    dplyr::select(grp, cambridge_score, age, sex, bed_type, los, los_remaining, rep) %>%
     unnest(cols = c(rep, los, los_remaining)) %>%
-    nest(.by = site) %>%
-    left_join(rf_wf_site) %>%
+    nest(.by = grp) %>%
+    left_join(rf_wf_grp) %>%
     mutate(pred = map2(data, wf, ~predict(.y, .x, type = "prob"))) %>%
     dplyr::select(-wf) %>%
     unnest(cols = c(data, pred)) %>%
@@ -98,14 +100,14 @@ df_curr_admits <- local({
                             replace = TRUE)
                     )) %>%
     mutate(pathway = factor(pathway,levels = c("Other", "P1", "P2", "P3"))) %>%
-    dplyr::select(rep, site, los_remaining, pathway) %>%
+    dplyr::select(rep, grp, los_remaining, pathway) %>%
     mutate(los_remaining = ifelse(los_remaining < 0, 0, los_remaining)) %>%
     mutate(los_remaining = los_remaining %/% 1) %>%
-    # group_by(rep, site, day = los_remaining + 1, pathway = pathways) %>% # (DEPRECATED - this was when I considered sim to start on 'day zero')
-    group_by(rep, site, day = los_remaining + 1, pathway) %>% # day is los_remaining + 1 as we start sim on 'day one' so zero day los on first day should be day = 1
+    # group_by(rep, grp, day = los_remaining + 1, pathway = pathways) %>% # (DEPRECATED - this was when I considered sim to start on 'day zero')
+    group_by(rep, grp, day = los_remaining + 1, pathway) %>% # day is los_remaining + 1 as we start sim on 'day one' so zero day los on first day should be day = 1
     count(name = "count") %>%
     ungroup() %>%
-    complete(rep, site, day, pathway, fill =list(count = 0)) %>%
+    complete(rep, grp, day, pathway, fill =list(count = 0)) %>%
     mutate(source = "current_admits")
   df_pred
 })

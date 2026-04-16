@@ -18,4 +18,4 @@ services:
         - shiny-static:/usr/local/lib/R/site-library/shiny/www/shared/
 volumes:
   shiny-static:
-
+image: dpp_shiny_v1

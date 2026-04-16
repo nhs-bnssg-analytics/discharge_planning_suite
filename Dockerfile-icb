@@ -1,0 +1,53 @@
+FROM rocker/tidyverse
+
+RUN apt update && apt -y install cron
+RUN mkdir /root/utils
+
+# Install system dependencies for openssl and textshaping
+RUN apt-get update && apt-get install -y \
+    libcurl4-openssl-dev \
+    libxml2-dev \
+    libzstd-dev \
+    libssl-dev \
+    libharfbuzz-dev \
+    libfribidi-dev \
+    default-libmysqlclient-dev \
+    libcairo2-dev \
+    libfreetype6-dev \
+    libfontconfig1-dev
+
+
+RUN apt-get update && apt-get install -y gnupg2 curl \
+    && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
+    && curl https://packages.microsoft.com/config/debian/11/prod.list > /etc/apt/sources.list.d/mssql-release.list \
+    && apt-get update \
+    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc-dev
+
+RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/bullseye/latest')); \
+    install.packages(c('tidymodels', 'fable', 'fabletools', 'forecast', 'feasts',  'fitdistrplus', 'EnvStats', 'ranger', 'extraDistr', 'treeClust', 'ggtext', 'bslib', 'RODBC', 'odbc', 'RMySQL', 'RJDBC'))"
+
+
+WORKDIR /root
+
+
+# Copy the scripts
+COPY utils/ utils/
+COPY code_main.R code_main.R
+COPY code_admits_fcast.R code_admits_fcast.R
+COPY code_new_admits.R code_new_admits.R
+COPY code_curr_admits.R code_curr_admits.R
+COPY code_queue_sim.R code_queue_sim.R
+
+
+# Copy hello-cron file to the cron.d directory
+COPY crontab /etc/cron.d/crontab
+
+# Give execution rights on the cron job
+RUN chmod 0644 /etc/cron.d/crontab
+
+# Apply cron job
+RUN crontab /etc/cron.d/crontab
+
+# Run the command on container startup
+CMD printenv > /etc/environment && cron -f
+

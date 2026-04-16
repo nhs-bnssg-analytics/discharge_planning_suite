@@ -2,14 +2,18 @@ library(fitdistrplus)
 library(tidyverse)
 library(tidymodels)
 library(lubridate)
+library(dbplyr)
+library(dtplyr)
 library(RMySQL)
+library(fable)
+library(fabletools)
 
 con <- switch(.Platform$OS.type,
-              windows = RODBC::odbcConnect(dsn = "xsw"),
-              unix = {"/root/sql/sql_connect_string_linux" |>
-                  readr::read_lines() |>
-                  RODBC::odbcDriverConnect()}
-)
+              windows = DBI::dbConnect(odbc::odbc(), dsn = "xsw"),
+              unix = {
+                conn_str <- readr::read_lines("/root/sql/sql_connect_string_linux")
+                DBI::dbConnect(odbc::odbc(), .connection_string = conn_str)
+              })
 
 source("utils/utils.R")
 source("utils/theme.R")
@@ -22,51 +26,23 @@ seed <- FALSE
 n_rep <- 1E3
 n_days <- 10
 
-# latest nctr data
-nctr_df <-
-  RODBC::sqlQuery(
-    con,
-    "SELECT
-       [RN]
-      ,[Organisation_Code_Provider]
-      ,[Organisation_Code_Commissioner]
-      ,[Census_Date]
-      ,[Month_Date]
-      ,[Month]
-      ,[Day_Of_Week]
-      ,[Week_Start_Date]
-      ,[NHS_Number]
-      ,[Person_Stated_Gender_Code]
-      ,[Person_Age]
-      ,[CDS_Unique_Identifier]
-      ,[Sub_ICB_Location]
-      ,[Organisation_Site_Code]
-      ,[Current_Ward]
-      ,[Specialty_Code]
-      ,[Bed_Type]
-      ,[Date_Of_Admission]
-      ,[BNSSG]
-      ,[Local_Authority]
-      ,[Criteria_To_Reside]
-      ,[Date_NCTR]
-      ,[Current_LOS]
-      ,[Days_NCTR]
-      ,[Days_NCTR_On_Current_Code]
-      ,[Current_Delay_Code]
-      ,[Local_Authority_grouped]
-      ,[Site_Name]
-      ,[Current_Delay_Code_Standard]
-      ,[Current_Delay_Code_Detailed]
-      ,[Acute Community split]
-      ,[Current_Covid_Status]
-      ,[Planned_Date_Of_Discharge]
-      ,[Date_Toc_Form_Completed]
-      ,[Toc_Form_Status]
-      ,[Discharge_Pathway]
-      ,[DER_File_Name]
-      ,[DER_Load_Timestamp]
-  FROM Analyst_SQL_Area.dbo.vw_NCTR_Status_Report_Daily_JI"
-  )
+nctr_tbl <- tbl(con,
+                in_catalog(
+                  catalog = "analyst_sql_area",
+                  schema = "dbo",
+                  table = "vw_NCTR_Status_Report_Daily_JI"
+                )
+) 
+
+
+pds <- tbl(con,
+           in_catalog(
+             catalog = "analyst_sql_area",
+             schema = "dbo",
+             table = "tbl_bnssg_datasets_combined_PDS"
+           )
+) %>%
+  mutate(nhs_number = as.character(Pseudo_NHS_Number))
 
 
 pathway_recodes <- c(
@@ -94,16 +70,73 @@ pathway_recodes <- c(
   "18a  Infection  bxviii  Standard" = "Other",
   "xviii. Awaiting discharge to a care home but have not had a COVID 19 test (in 48 hrs preceding discharge)." = "Other",
   "15b  Repat  bxv  WGH" = "Other",
-  "Meets Criteria to Reside" = "Other"
+  "Meets Criteria to Reside" = "Other",
+  "Uncoded" = "Other",
+  "Pathway 2" = "P2",
+  "Other"= "Other",
+  "Pathway 1" = "P1",
+  "Repatriation" = "Other",
+  "NCTR Null"= "Other",
+  "Awaiting referral to SPA" = "Other",
+  "Awaiting confirmation MDT" = "Other",
+  "Pathway 2 - Other" = "P2",
+  "Pathway 1 - D2A" = "P1",
+  "Pathway 3 - Other" = "P3",
+  "Not Set" = "Other",
+  "Pathway 0" = "P0",
+  "Pathway 3 / Other Complex Discharge" = "P3",
+  "Pathway 3 - D2A" = "P3",
+  "Awaiting confirmation Other" = "Other",
+  "Pathway 2 - D2A" = "P2",
+  "Pathway 1 - Other" = "P1",
+  "Awaiting confirmation Social" = "Other"
 )
+
+
+nctr_df <- nctr_tbl %>%
+  left_join(
+    pds %>% 
+      select(pds_nhs_number = Pseudo_NHS_Number, la_pds = Locality_Area) %>% 
+      distinct(),
+    by = join_by(NHS_Number == pds_nhs_number)
+  ) %>%
+  filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
+  filter(!is.na(NHS_Number)) %>% # cant join attributes otherwise
+  window_order(Census_Date, .by = CDS_Unique_Identifier) %>%
+  mutate(la = last(Local_Authority_grouped), .by = CDS_Unique_Identifier) %>%
+  ungroup() %>%
+  mutate(
+    la = if_else(la == "Other", replace(la_pds, " Area", ""), la),
+    la = case_when(
+      la == "NOT BNSSG" | la == "Other" | is.na(la) ~ "Other",
+      TRUE ~ la
+    ),
+    la = tolower(la) 
+  ) %>%
+  collect()
+
+
 # max census date
 max_date <- nctr_df %>%
   filter(!is.na(NHS_Number)) %>%
   filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
-  summarise(Census_Date = max(Census_Date, na.rm= TRUE), .by = Organisation_Site_Code) %>%
+  slice_max(order_by = Census_Date, by = Organisation_Site_Code) %>%
   pull(Census_Date) %>%
-  # min of the max dates (in case of reporting gaps)
-  min()
+  as.Date() %>%
+  min() 
+
+# recode LA
+# nctr_df <- nctr_df %>%
+#   mutate(la = case_when(
+#     Local_Authority == "SOUTH GLOUCESTERSHIRE COUNCIL" ~ "south gloucestershire",
+#     Local_Authority == "South Glos" ~ "south gloucestershire",
+#     Local_Authority == "NORTH SOMERSET COUNCIL" ~ "north somerset",
+#     Local_Authority == "North Somerset" ~ "north somerset",
+#     Local_Authority == "BRISTOL CITY COUNCIL" ~ "bristol",
+#     Local_Authority == "Bristol" ~ "bristol",
+#     .default = "Other"
+#   )) 
+
 
 # NCTR data summary
 
@@ -112,7 +145,6 @@ nctr_sum <- nctr_df %>%
   mutate(nhs_number = as.character(NHS_Number),
          nhs_number = if_else(is.na(nhs_number), glue::glue("unknown_{1:n()}"), nhs_number),
          sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
-  filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
   mutate(
     site = case_when(
       Organisation_Site_Code == 'RVJ01' ~ 'nbt',
@@ -147,13 +179,18 @@ nctr_sum <- nctr_df %>%
     "Other",
     pathway
   )) %>%
+  pivot_longer(
+    cols = c(site, la),
+    names_to = "grp_type",
+    values_to = "grp",
+  ) %>%
   dplyr::select(
     report_date,
     nhs_number,
     sex,
     age = Person_Age,
     ctr = der_ctr,
-    site,
+    grp,
     spec = Specialty_Code,
     bed_type = Bed_Type,
     los = der_los,
@@ -167,13 +204,10 @@ report_start <- max_date
 report_end <- report_start + ddays(n_days)
 
 
-attr_df <-
-  RODBC::sqlQuery(
-    con,
-    "select * from (
+
+attr_df <- DBI::dbGetQuery(con,  "select * from (
 select a.*, ROW_NUMBER() over (partition by nhs_number order by attribute_period desc) rn from
-[MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1"
-  )
+[MODELLING_SQL_AREA].[dbo].[New_Cambridge_Score] a) b where b.rn = 1")
 
 
 nctr_df <- nctr_df %>%
@@ -185,7 +219,7 @@ source("code_curr_admits.R")
 
 if(plot_int){
   bind_rows(df_curr_admits, df_new_admit) %>%
-    group_by(site, day, pathway, source) %>%
+    group_by(grp, day, pathway, source) %>%
     summarise(across(count, list(
       mean = mean,
       u85 = {\(x) quantile(x, 0.925)},
@@ -194,15 +228,15 @@ if(plot_int){
     filter(between(day, 1, n_days))  %>%
     ggplot(aes(x = day, y = count_mean, fill = source)) +
     geom_col() +
-    facet_grid(pathway ~ site, scales = "free") +
+    facet_grid(pathway ~ grp, scales = "free") +
     labs(title = "New additions to D2A queue, by forecast source")
 }
 
 
 df_pred <- bind_rows(df_curr_admits, df_new_admit) %>%
-  group_by(site, rep, day, pathway) %>%
+  group_by(grp, rep, day, pathway) %>%
   summarise(n = sum(count)) %>% # aggregate over source (current/new admits)
-  group_by(site, day, pathway) %>% # compute CIs/mean over reps
+  group_by(grp, day, pathway) %>% # compute CIs/mean over reps
   summarise(across(n, list(mean = mean,
                            u85 = {\(x) quantile(x, 0.925)},
                            l85 = {\(x) quantile(x, 0.075)}
@@ -214,7 +248,6 @@ df_pred <- bind_rows(df_curr_admits, df_new_admit) %>%
 
 # Now simulate the queue evolution
 source("code_queue_sim.R")
-
 
 
 # dataset for plotting (and storing on SQL)
@@ -229,7 +262,7 @@ plot_df_pred <- df_pred %>%
 
 plot_df_current <- nctr_sum %>%
   filter(!is.na(nhs_number), !is.na(ctr)) %>%
-  group_by(site, ctr, pathway) %>%
+  group_by(grp, ctr, pathway) %>%
   count() %>%
   mutate(ctr = if_else(ctr, "Y", "N"),
          source = "current_ctr_data",
@@ -249,7 +282,8 @@ plot_df <- bind_rows(plot_df_pred,
   mutate(pathway = factor(pathway, levels = (c("Other", "P1", "P2", "P3"))),
          report_date = as.character(report_date)) # convert date to character because RODBC/R/SQL can't handle writing this in a consistent way
 
-# create the table
+# # create the table
+# con<-RODBC::odbcDriverConnect("driver={SQL Server};\n  server=Xsw-00-ash01;\n  trusted_connection=true")
 # RODBC::sqlQuery(con,
 #                 query = 'USE modelling_sql_area CREATE TABLE dbo.discharge_pathway_projections
 #                 (
@@ -262,30 +296,26 @@ plot_df <- bind_rows(plot_df_pred,
 #                 "metric" varchar(255),
 #                 "value" float)'
 #                 )
+# RODBC::odbcClose(con)
+
 
 # change con to write to modelling sql area
-RODBC::odbcClose(con)
-con <- switch(.Platform$OS.type,
-              windows = {
-                "driver={SQL Server};server=Xsw-00-ash01;
-                 database=MODELLING_SQL_AREA;
-                 trusted_connection=true" |>
-                 RODBC::odbcDriverConnect()
-                },
-              unix = {
-                "/root/sql/sql_modelling_connect_string_linux" |>
-                  readr::read_lines() |>
-                  RODBC::odbcDriverConnect()
-                }
+con <- switch(
+  .Platform$OS.type,
+  windows = DBI::dbConnect(odbc::odbc(), dsn = "xsw"),
+  unix = {
+    conn_str <- readr::read_lines("/root/sql/sql_modelling_connect_string_linux")
+    DBI::dbConnect(odbc::odbc(), .connection_string = conn_str)
+  }
 )
-# delete old data
-query_delete <- "DELETE FROM MODELLING_SQL_AREA.dbo.discharge_pathway_projections"
-RODBC::sqlQuery(con, query_delete)
-RODBC::sqlSave(con,
-               plot_df,
-               tablename = 'discharge_pathway_projections',
-               rownames = FALSE,
-               append = TRUE)
+
+
+dbWriteTable(
+  con,
+  name = Id(db = "modelling_SQL_AREA", schema = "dbo", table = "discharge_pathway_projections"),
+  value = plot_df,
+  overwrite = TRUE
+)
 
 
 # Write to ICS MySQL db
