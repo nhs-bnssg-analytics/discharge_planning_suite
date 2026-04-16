@@ -282,7 +282,8 @@ plot_df <- bind_rows(plot_df_pred,
   mutate(pathway = factor(pathway, levels = (c("Other", "P1", "P2", "P3"))),
          report_date = as.character(report_date)) # convert date to character because RODBC/R/SQL can't handle writing this in a consistent way
 
-# create the table
+# # create the table
+# con<-RODBC::odbcDriverConnect("driver={SQL Server};\n  server=Xsw-00-ash01;\n  trusted_connection=true")
 # RODBC::sqlQuery(con,
 #                 query = 'USE modelling_sql_area CREATE TABLE dbo.discharge_pathway_projections
 #                 (
@@ -295,27 +296,26 @@ plot_df <- bind_rows(plot_df_pred,
 #                 "metric" varchar(255),
 #                 "value" float)'
 #                 )
-
 # RODBC::odbcClose(con)
 
 
-# # change con to write to modelling sql area
-# con <- switch(
-#   .Platform$OS.type,
-#   windows = DBI::dbConnect(odbc::odbc(), dsn = "xsw"),
-#   unix = {
-#     conn_str <- readr::read_lines("/root/sql/sql_modelling_connect_string_linux")
-#     DBI::dbConnect(odbc::odbc(), .connection_string = conn_str)
-#   }
-# )
-# 
-# 
-# dbWriteTable(
-#   con, 
-#   name = Id(db = "modelling_SQL_AREA", schema = "dbo", table = "discharge_pathway_projections"), 
-#   value = plot_df, 
-#   overwrite = TRUE
-# )
+# change con to write to modelling sql area
+con <- switch(
+  .Platform$OS.type,
+  windows = DBI::dbConnect(odbc::odbc(), dsn = "xsw"),
+  unix = {
+    conn_str <- readr::read_lines("/root/sql/sql_modelling_connect_string_linux")
+    DBI::dbConnect(odbc::odbc(), .connection_string = conn_str)
+  }
+)
+
+
+dbWriteTable(
+  con,
+  name = Id(db = "modelling_SQL_AREA", schema = "dbo", table = "discharge_pathway_projections"),
+  value = plot_df,
+  overwrite = TRUE
+)
 
 
 # Write to ICS MySQL db
