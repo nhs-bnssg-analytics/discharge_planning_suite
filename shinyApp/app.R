@@ -1,5 +1,5 @@
 library(shiny)
-library(bslib)        # replaces shinydashboard
+library(bslib)       
 library(tidyverse)
 library(ggplot2)
 library(patchwork)
@@ -10,6 +10,8 @@ library(lubridate)
 library(RODBC)
 library(ggiraph)
 library(ggh4x)
+
+options(gfonts.cache = tempdir())
 
 # functions/data
 source("./data_discharge_pathway_projections.R")
