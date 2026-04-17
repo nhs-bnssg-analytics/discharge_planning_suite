@@ -1,5 +1,5 @@
 library(shiny)
-library(shinydashboard)
+library(bslib)        # replaces shinydashboard
 library(tidyverse)
 library(ggplot2)
 library(patchwork)
@@ -19,49 +19,124 @@ source("./theme.R")
 
 dpp_module_ui <- function(id) {
   ns <- NS(id)
-  tagList(
-    box(width = 12,
-        tabsetPanel(id = ns("tabset"),
-                    tabPanel("D2A Demand", 
-                             girafeOutput(ns("dpp_plot"), width = "100%", height = "75vh")),
-                    tabPanel("Acute Queueing",
-                             # Use a container fluidRow to hold the header and controls
-                             fluidRow(
-                               style = "padding: 20px; display: flex; align-items: center;", # Flexbox for vertical alignment
-                               
-                               # Column 1: The Overview Text
-                               column(8, 
-                                      HTML("<h2 style='margin-top: 0;'>Overview</h2>"),
-                                      tags$p("Projections for the queue sizes for P1-3 based on the current position, the demand forecasted by the model, and a given capacity scenario (relative to currently outflow over 4-weeks).",
-                                             style = "color: #666; font-size: 1.1em;")
-                               ),
-                               
-                               # Column 2: The Radio Buttons (Selector)
-                               column(4, 
-                                      div(style = "background: #f9f9f9; padding: 15px; border-radius: 8px; border: 1px solid #ddd;",
-                                          radioButtons(
-                                            ns("capacity"),
-                                            label = tags$span("D2A daily discharge capacity", style = "font-weight: bold;"),
-                                            choices = list("+10%" = 1, "4-week mean" = 2, "-10%" = 3),
-                                            selected = 2,
-                                            inline = TRUE # This makes the -10%/Mean/+10% sit horizontally
-                                          )
-                                      )
-                               )
-                             ),
-                             
-                             # The Chart Row
-                             fluidRow(
-                               column(12, 
-                                      girafeOutput(ns("queue_fc"), width = "100%", height = "75vh")
-                               )
-                             )
-                    )
-        )
+  
+  card(
+    full_screen = TRUE,
+    class = "no-border",
+    navset_card_underline(
+      id = ns("tabset"),
+      
+      nav_panel(
+        "D2A Demand",
+        girafeOutput(ns("dpp_plot"), width = "100%", height = "75vh")
+      ),
+      
+      nav_panel(
+        "Acute Queueing",
+        layout_columns(
+          col_widths = c(8, 4),
+          
+          div(
+            h2("Overview", style = "margin-top: 0;"),
+            p(
+              "Projections for the queue sizes for P1-3 based on the current position,
+               the demand forecasted by the model, and a given capacity scenario
+               (relative to currently outflow over 4-weeks).",
+              style = "color: #666; font-size: 1.1em;"
+            )
+          ),
+          
+          div(
+            style = "background: #f9f9f9; padding: 15px; border-radius: 8px;
+                     border: 1px solid #ddd;",
+            radioButtons(
+              ns("capacity"),
+              label = tags$span(
+                "D2A daily discharge capacity",
+                style = "font-weight: bold;"
+              ),
+              choices = list("+10%" = 1, "4-week mean" = 2, "-10%" = 3),
+              selected = 2,
+              inline = TRUE
+            )
+          )
+        ),
+        
+        girafeOutput(ns("queue_fc"), width = "100%", height = "70vh")
+      )
     )
   )
 }
 
+ui <- page_sidebar(
+  
+  title = "BNSSG Discharge Suite",
+  
+  theme = bs_theme(
+    version = 5,
+    bg        = "#ffffff",
+    fg        = "#333333",
+    primary   = "#003087",
+    base_font = font_google("Inter", wght = c(400, 500))
+  ),
+  
+  tags$head(
+    tags$style(HTML("
+      /* Sidebar */
+      .bslib-sidebar-layout > .sidebar {
+        background-color: #f4f4f4 !important;
+        border-right: 1px solid #e9ecef !important;
+      }
+
+      /* Flat, borderless cards */
+      .no-border {
+        border: none !important;
+        box-shadow: none !important;
+      }
+      .card {
+        border: 0.5px solid #e0e0e0 !important;
+        box-shadow: none !important;
+        border-radius: 8px !important;
+      }
+
+      /* Tidy up radio buttons in sidebar */
+      .shiny-input-container label { font-weight: 500; }
+      .radio label { font-size: 14px; color: #333; }
+
+      /* girafe fills its container */
+      .girafe_container_std { width: 100% !important; }
+    "))
+  ),
+  
+  sidebar = sidebar(
+    width = 250,
+    bg = "#f4f4f4",
+    padding = "20px",
+    
+    div(
+      style = "margin-bottom: 25px;",
+      tags$label(
+        "Report updated",
+        style = "text-transform: uppercase; font-size: 10px;
+                 letter-spacing: 0.5px; color: #888;"
+      ),
+      br(),
+      tags$span(
+        format(report_date, "%a %d %b"),
+        style = "font-size: 18px; font-weight: 500;"
+      )
+    ),
+    
+    radioButtons(
+      "view_toggle",
+      label = "Reporting group",
+      choices = c("Local Authority" = "la", "Acute Hospital" = "acute"),
+      inline = FALSE
+    )
+  ),
+  
+  dpp_module_ui("main_dashboard")
+)
 
 dpp_module_server <- function(id, data_subset, report_date) {
   moduleServer(id, function(input, output, session) {
@@ -71,7 +146,6 @@ dpp_module_server <- function(id, data_subset, report_date) {
     cols_q    <- c("P0 queue or other" = "#999999", "P3 queue" = "#853358", "P2 queue" = "#003087", "P1 queue" = "#8d488d")
     
     output$dpp_plot <- renderGirafe({
-      # We call the reactive data: data_subset()
       p_pred <- data_subset() %>%
         mutate(pathway_add = fct_relevel(pathway_add, "..not for D2A service", after = Inf)) %>%
         mutate(day = report_date + ddays(day-1)) %>%
@@ -98,7 +172,7 @@ dpp_module_server <- function(id, data_subset, report_date) {
         filter(source == "current_ctr_data", ctr == "N") %>%
         ggplot(aes(x = grp, y = round(n, 0), fill = pathway_add, group = pathway_add)) +
         geom_col_interactive(aes(tooltip = tooltip_n), width = 0.7)  +
-        coord_flip() +  # <--- THIS flips it to horizontal
+        coord_flip() +
         bnssgtheme() +
         scale_fill_manual(values = cols_curr, limits = rev(names(cols_curr))) +
         theme(legend.position = "none") +
@@ -126,16 +200,12 @@ dpp_module_server <- function(id, data_subset, report_date) {
         mutate(day = report_date + ddays(day-1)) %>%
         rename(!!!rename_vec) %>%
         ggplot(aes(x = day, y = n, fill = pathway_q)) +
-        # 1. The Column (Replacing the line)
         geom_col_interactive(aes(tooltip = tooltip_q), alpha = 0.8) +
-        
-        # 2. The Error Bar (Replacing the ribbon)
         geom_errorbar_interactive(
           aes(ymin = n_l85, ymax = n_u85), 
           width = 0.3, 
           linewidth = 0.8
         ) +
-        
         ggh4x::facet_grid2(grp ~ pathway_q, scales = "free_y", axes = "y", switch = "y") +
         ggh4x::facetted_pos_scales(
           y = list(
@@ -150,80 +220,18 @@ dpp_module_server <- function(id, data_subset, report_date) {
         theme(
           legend.position = "none", 
           strip.placement = "outside",
-          panel.grid.major.x = element_blank() # Bars look better without vertical grids
+          panel.grid.major.x = element_blank()
         ) +
         labs(title = "D2A queue forecasts", x = "", y = "Queue size")
       
-      girafe(ggobj = p, width_svg = 14, height_svg = 7)
+      girafe(ggobj = p, width_svg = 16, height_svg = 6)
     })
   })
 }
 
-ui <- dashboardPage(
-  
-#   tags$style(HTML("
-#   .content-wrapper { background-color: #ffffff; }
-#   /* Force the box to be seamless */
-#   .box { border-top: none; box-shadow: none; margin-bottom: 0px; }
-#   /* Allow the SVG to scale nicely */
-#   .girafe_container_std { width: 100% !important; }
-# ")),
-  
-  header = dashboardHeader(title = "BNSSG Discharge Suite", titleWidth = "250px"),
-  
-  # 1. Put the controls in the actual sidebar
-  sidebar = dashboardSidebar(
-    width = "250px",
-    div(style = "padding: 20px;",
-        # Date Display
-        div(style = "margin-bottom: 25px;",
-            HTML(glue::glue(
-              "<label style= text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px;'>Report updated</label><br>
-               <span style='font-size: 18px; font-weight: bold;'>{format(report_date, '%a %d %b')}</span>"
-            ))
-        ),
-        # The Selector
-        radioButtons(
-          "view_toggle",
-          label = "Reporting Group:",
-          choices = c("Local Authority" = "la", "Acute Hospital" = "acute"),
-          inline = FALSE
-        )
-    )
-  ), 
-  
-  body = dashboardBody(
-    # 2. Add custom CSS to make the sidebar look like a clean panel
-    tags$head(
-      tags$style(HTML("
-        /* Make sidebar background light instead of dark (optional) */
-        .main-sidebar { background-color: #f4f4f4 !important; }
-        .main-sidebar .sidebar { color: #333 !important; }
-        .main-sidebar .sidebar label { color: #333 !important; }
-        
-        /* Adjust the body height and background */
-        .content-wrapper { min-height: 100vh !important; background-color: #ecf0f5; }
-        
-        /* Fix radio button text color for light sidebar */
-        .shiny-input-container { color: #333 !important; }
-          .content-wrapper { background-color: #ffffff; }
-  /* Force the box to be seamless */
-  .box { border-top: none; box-shadow: none; margin-bottom: 0px; }
-  /* Allow the SVG to scale nicely */
-  .girafe_container_std { width: 100% !important; }
-      "))
-    ),
-
-    # Main Content
-    fluidRow(
-      # The module UI now just lives here and fills the remaining space
-      dpp_module_ui("main_dashboard")
-    )
-  )
-)
+# server is unchanged
 server <- function(input, output, session) {
   
-  # Reactive expression to determine which data to show
   filtered_data <- reactive({
     acute_grps <- c("NBT", "BRI", "Weston")
     la_grps    <- c("NSC", "BCC", "SGC")
@@ -235,7 +243,6 @@ server <- function(input, output, session) {
     }
   })
   
-  # Call the module once, passing the reactive data
   dpp_module_server("main_dashboard", filtered_data, report_date)
 }
 
