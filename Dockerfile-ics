@@ -39,6 +39,10 @@ RUN R -e "pak::pkg_install('RODBC')"
 RUN R -e "pak::pkg_install('patchwork')"
 RUN R -e "pak::pkg_install('ggiraph')"
 RUN R -e "pak::pkg_install('ggh4x')"
+RUN R -e "pak::pkg_install('gfonts')"
+RUN R -e "pak::pkg_install('systemfonts')"
+
+
 
 
 ENV S6_VERSION="v2.1.0.2"
