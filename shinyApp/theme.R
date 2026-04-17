@@ -17,5 +17,8 @@ bnssgtheme <- function(base_size = 12, base_family = "sans",base_colour = "black
   # Customize facet title appearance
   strip.background = element_blank(),  # Set background to white
   strip.text = element_text(face = "bold", family = "sans", size = 12)  # Set font to Arial 12 for facet titles
-) 
+) +
+    theme(
+      text = element_text(family = "sans")
+    )
 }
