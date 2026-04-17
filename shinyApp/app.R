@@ -10,8 +10,13 @@ library(lubridate)
 library(RODBC)
 library(ggiraph)
 library(ggh4x)
+library(systemfonts)
+library(gfonts)
 
 options(gfonts.cache = tempdir())
+
+main_font <- "Arial" 
+if("Roboto" %in% system_fonts()$family) main_font <- "Roboto"
 
 # functions/data
 source("./data_discharge_pathway_projections.R")
@@ -71,6 +76,7 @@ dpp_module_ui <- function(id) {
 }
 
 ui <- page_sidebar(
+  options = list(shiny.busyIndicators = FALSE),
   
   title = "BNSSG Discharge Suite",
   
@@ -185,7 +191,7 @@ dpp_module_server <- function(id, data_subset, report_date) {
         patchwork::plot_annotation(caption = "*Meant to include all patients with LOS over 24 hrs.\n**Dashed line represents 4-week mean number of patients discharged to D2A pathway") &
         theme(legend.position = 'bottom')
       
-      girafe(ggobj = ptc, width_svg = 16, height_svg = 10, fonts = list(sans = "Roboto, Arial, sans-serif"))
+      girafe(ggobj = ptc, width_svg = 16, height_svg = 10, fonts = list(sans = main_font))
     })
     
     output$queue_fc <- renderGirafe({
@@ -226,7 +232,7 @@ dpp_module_server <- function(id, data_subset, report_date) {
         ) +
         labs(title = "D2A queue forecasts", x = "", y = "Queue size")
       
-      girafe(ggobj = p, width_svg = 16, height_svg = 6, fonts = list(sans = "Roboto, Arial, sans-serif"))
+      girafe(ggobj = p, width_svg = 16, height_svg = 6, fonts = list(sans = main_font))
     })
   })
 }
