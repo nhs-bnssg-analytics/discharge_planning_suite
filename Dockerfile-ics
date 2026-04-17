@@ -23,7 +23,9 @@ RUN apt-get update && apt-get install -y \
     default-libmysqlclient-dev \
     libcairo2-dev \
     libfreetype6-dev \
-    libfontconfig1-dev
+    libfontconfig1-dev \
+    fonts-roboto \
+    fonts-liberation
 
 RUN R -e "install.packages(c('pak', 'tidyr', 'lubridate',  'bslib', 'ggtext'), repos='https://cloud.r-project.org', dependencies = TRUE, verbose = TRUE)"
 RUN R -e "pak::pkg_install('RMySQL')"
