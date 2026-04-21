@@ -214,8 +214,11 @@ nctr_df <- nctr_df %>%
   filter(Census_Date <= report_start)
 
 source("code_admits_fcast.R")
+gc()
 source("code_new_admits.R")
+gc()
 source("code_curr_admits.R")
+gc()
 
 if(plot_int){
   bind_rows(df_curr_admits, df_new_admit) %>%
@@ -248,7 +251,7 @@ df_pred <- bind_rows(df_curr_admits, df_new_admit) %>%
 
 # Now simulate the queue evolution
 source("code_queue_sim.R")
-
+gc()
 
 # dataset for plotting (and storing on SQL)
 
