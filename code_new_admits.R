@@ -81,7 +81,6 @@ df_new_admit <- local({
     })) %>%
     select(grp, day = sim_day, rep, pathway_counts) %>%
     unnest(pathway_counts) %>%
-    mutate(source = "new_admits") %>%
     complete(grp, day, rep, pathway, fill = list(count = 0)) %>%
     mutate(source = "new_admits")
   sim
