@@ -1,114 +1,117 @@
 df_curr_admits <- local({
-  
-  
-  if(seed) set.seed(123)
-  require(tidyverse)
-  # LOS predictions
-  los_df <- nctr_sum %>%
-    # filter for our main sites / perhaps I shouldn't do this?
-    # filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
-    # filter for CTR, we wont predict the NCTR outcome for those already NCTR/on a queue
-    filter(ctr)
-  
-  
-  los_df <- los_df %>%
-    left_join(
-      dplyr::select(attr_df, -sex, -age) %>%
-        mutate(nhs_number = as.character(nhs_number)),
-      by = join_by(nhs_number == nhs_number)
-    ) %>%
-    dplyr::select(age, sex, cambridge_score, bed_type, grp, spec, los) #%>%
-  #na.omit()
-  
-  # pathway model
-  
-  # rf_wf <- readRDS("data/rf_wf.RDS")
-  
-  rf_wf_grp <- readRDS("data/rf_fit_props_grp.RDS") %>% 
-    mutate(fit = map(fit, "fit")) %>%
-    mutate(wf = map(fit, extract_workflow)) %>%
-    dplyr::select(grp, wf)
-  
-  # %>%
-  #   mutate(wf = set_names(wf, site)) %>%
-  #   pull(wf)
-  
-  # los_tree
-  
-  los_wf_grp <- readRDS("data/los_wf_grp.RDS")
-  
-
-  
-  los_df <- los_df %>%
-    recipes::bake(workflows::extract_recipe(los_wf_grp), .) %>%
-    mutate(leaf = as.character(treeClust::rpart.predict.leaves(workflows::extract_fit_engine(los_wf_grp), .))) 
-  
-  # %>%
-  #   nest(.by = site) %>%
-  #   left_join(rf_wf_site) %>%
-  #   mutate(pred = map2(data, wf, ~predict(.y, .x, type = "prob"))) %>%
-  #   unnest(cols = c(data, pred)) %>%
-  #   mutate(site = fct_drop(site)) %>%
-  #   dplyr::select(-wf)
-  
-  
-  # los distributions
-  
-  los_dist <- readRDS("data/fit_dists_grp.RDS")  %>%
-    mutate(leaf = as.character(leaf)) %>%
-    rename(los_hist = los)
-  
-  
-  df_pred <- 
-    los_df %>%
-    mutate(id = 1:n()) %>%
-    # Join historic LOS for each patient type (i.e. leaf)
-    left_join(los_dist, by = join_by(leaf == leaf)) %>%
-    # filter out any LOS less than current stay for that patient (i.e. truncate
-    # the ECDF)
-    mutate(los_hist = map2(los_hist, los, \(x, y) x[x >= y])) %>%
-    # If los history is now zero we add Inf - i.e. if this patient has a longer
-    # LOS than ever seen previously assume they won't leave in the 10-day
-    # horizon
-    mutate(los_hist = map(los_hist, \(x) ifelse(length(x) < 10, list(Inf), list(x)))) %>%
-    mutate(los_hist = map(los_hist, pluck, 1)) %>%
-    # mutate(los_dist = map(los_hist, ~partial(EnvStats::remp, obs = .x))) %>%
-    # mutate(los_tot = map(los_dist,  ~.x(n_rep)))
-    mutate(los_tot = map(los_hist,  \(x) sample(x, size = n_rep, replace = TRUE))) %>%
-    mutate(los_remaining = map2(los_tot, los, \(x, y) x - y)) %>%
-    mutate(los = map(los_tot, \(x) cut(
-      x,
-      breaks = c(0, 3, 4, 5, 6, 7, 8, 9, 10, Inf),
-      include.lowest = TRUE
-    )),
-    rep = list(seq_len(n_rep))) %>%
-    # Use the now predictoed total length of stay to predict pathway requirement
-    dplyr::select(grp, cambridge_score, age, sex, bed_type, los, los_remaining, rep) %>%
-    unnest(cols = c(rep, los, los_remaining)) %>%
-    nest(.by = grp) %>%
-    left_join(rf_wf_grp) %>%
-    mutate(pred = map2(data, wf, ~predict(.y, .x, type = "prob"))) %>%
-    dplyr::select(-wf) %>%
-    unnest(cols = c(data, pred)) %>%
-    mutate(pathway = pmap_chr(list(.pred_Other,
-                         .pred_P1,
-                         .pred_P2,
-                         .pred_P3), 
-                    ~sample(c("Other", "P1", "P2", "P3"),
-                            1,
-                            prob = c(..1, ..2, ..3, ..4),
-                            replace = TRUE)
-                    )) %>%
-    mutate(pathway = factor(pathway,levels = c("Other", "P1", "P2", "P3"))) %>%
-    dplyr::select(rep, grp, los_remaining, pathway) %>%
-    mutate(los_remaining = ifelse(los_remaining < 0, 0, los_remaining)) %>%
-    mutate(los_remaining = los_remaining %/% 1) %>%
-    # group_by(rep, grp, day = los_remaining + 1, pathway = pathways) %>% # (DEPRECATED - this was when I considered sim to start on 'day zero')
-    group_by(rep, grp, day = los_remaining + 1, pathway) %>% # day is los_remaining + 1 as we start sim on 'day one' so zero day los on first day should be day = 1
-    count(name = "count") %>%
-    ungroup() %>%
-    complete(rep, grp, day, pathway, fill =list(count = 0)) %>%
-    mutate(source = "current_admits")
-  df_pred
-})
+    if(seed) set.seed(123)
+    require(tidyverse)
+    require(workflows)
+    require(recipes)
     
+    # 1. INITIAL DATA PREP
+    # Get only the patients we need and their attributes
+    los_df <- nctr_sum %>%
+      filter(ctr) %>%
+      left_join(
+        dplyr::select(attr_df, -sex, -age) %>% mutate(nhs_number = as.character(nhs_number)),
+        by = join_by(nhs_number == nhs_number)
+      ) %>%
+      dplyr::select(age, sex, cambridge_score, bed_type, grp, spec, los_current = los)
+    
+    # 2. LOAD MODELS
+    # Extract workflows early to keep objects clean
+    rf_models <- readRDS("data/rf_fit_props_grp.RDS") %>% 
+      mutate(fit = map(fit, "fit")) %>%
+      mutate(wf = map(fit, extract_workflow)) %>%
+      dplyr::select(grp, wf)
+    
+    los_wf_grp <- readRDS("data/los_wf_grp.RDS")
+    los_dist <- readRDS("data/fit_dists_grp.RDS") %>%
+      mutate(leaf = as.character(leaf)) %>%
+      rename(los_hist = los)
+    
+    # 3. ASSIGN LEAVES (Done once per patient)
+    # Pre-bake the data through the recipe
+    los_df_baked <- recipes::bake(workflows::extract_recipe(los_wf_grp), los_df)
+    
+    los_df <- los_df %>%
+      mutate(leaf = as.character(treeClust::rpart.predict.leaves(
+        workflows::extract_fit_engine(los_wf_grp), 
+        los_df_baked
+      ))) %>%
+      left_join(los_dist, by = "leaf")
+    
+    # 4. SIMULATION LOOP (Processing by Group to save RAM)
+    # We process site-by-site so we don't have 2 million rows in RAM at once
+    grps_to_process <- unique(los_df$grp)
+    
+    results <- map(grps_to_process, function(current_grp) {
+      
+      # Filter for this specific group
+      site_data <- los_df %>% filter(grp == current_grp)
+      if(nrow(site_data) == 0) return(NULL)
+      
+      # A. Sample LOS 'n_rep' times for every patient in this site
+      site_sim <- site_data %>%
+        mutate(
+          sampled_los_tot = map2(los_hist, los_current, function(h, curr) {
+            valid <- h[h >= curr]
+            if(length(valid) < 5) return(rep(999, n_rep)) # Handle edge cases
+            sample(valid, n_rep, replace = TRUE)
+          }),
+          rep = list(seq_len(n_rep))
+        ) %>%
+        dplyr::select(-los_hist) %>% # Drop historic vectors immediately to free GBs
+        unnest(cols = c(sampled_los_tot, rep))
+      
+      # B. Format 'los' as expected by the RF model
+      # We rename sampled_los_tot to 'los' because the RF expects that name
+      site_sim <- site_sim %>%
+        mutate(los = factor(map_chr(sampled_los_tot, \(x) cut(
+          x,
+          breaks = c(0, 3, 4, 5, 6, 7, 8, 9, 10, Inf),
+          include.lowest = TRUE
+        ))))
+      
+      # C. Run Pathway Prediction
+      # Pull the specific model for this group
+      current_wf <- rf_models %>% filter(grp == current_grp) %>% pull(wf) %>% pluck(1)
+      
+      # Predict probabilities
+      preds <- predict(current_wf, site_sim, type = "prob")
+      
+      # D. Sample Pathways (Vectorized strategy)
+      # Instead of pmap/sample, we use matrix math for speed and memory
+      prob_mat <- as.matrix(preds)
+      r_vals <- runif(nrow(site_sim))
+      cum_probs <- matrixStats::rowCumsums(prob_mat)
+      path_indices <- rowSums(r_vals > cum_probs) + 1
+      
+      site_sim$pathway <- factor(
+        colnames(prob_mat)[path_indices], 
+        levels = c(".pred_Other", ".pred_P1", ".pred_P2", ".pred_P3")
+      )
+      
+      # E. Aggregate Site Results
+      # Collapse to counts immediately to shrink the object
+      site_summary <- site_sim %>%
+        mutate(
+          los_remaining = pmax(0, (sampled_los_tot - los_current) %/% 1),
+          day = pmin(15, los_remaining + 1), # Cap day at simulation horizon
+          pathway = str_remove(as.character(pathway), "\\.pred_") # Clean factor names
+        ) %>%
+        group_by(rep, grp, day, pathway) %>%
+        summarise(count = n(), .groups = "drop")
+      
+      # Clean up memory within the loop
+      rm(site_sim, preds, prob_mat, cum_probs)
+      gc()
+      
+      return(site_summary)
+    })
+    
+    # 5. COMBINE AND FINALIZE
+    df_pred <- bind_rows(results) %>%
+      mutate(pathway = factor(pathway, levels = c("Other", "P1", "P2", "P3"))) %>%
+      complete(rep, grp, day = 1:11, pathway, fill = list(count = 0)) %>%
+      filter(day <= 10) %>% # Keep only relevant horizon
+      mutate(source = "current_admits")
+    
+    df_pred
+  })
