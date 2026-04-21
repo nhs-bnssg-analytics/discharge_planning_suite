@@ -170,6 +170,50 @@ df_sim <- left_join(capacity_dists, demand_dists, by = c("grp", "pathway")) %>%
                               )
                             })) %>%
   select(grp, pathway, scenario_name, sim_results) %>%
-  unnest(sim_results)
+  unnest(sim_results)  %>%
+  pivot_wider(
+    names_from = scenario_name, 
+    values_from = c(avg, u85, l85)
+  ) %>%
+  rename(
+    n = `avg_Base case`, 
+    n_u85 = `u85_Base case`, 
+    n_l85 = `l85_Base case`,
+    n_u = `avg_Capacity +10%`, 
+    n_u_u85 = `u85_Capacity +10%`, 
+    n_u_l85 = `l85_Capacity +10%`,
+    n_l = `avg_Capacity -10%`, 
+    n_l_u85 = `u85_Capacity -10%`, 
+    n_l_l85 = `l85_Capacity -10%`
+  ) %>%
+  pivot_longer(
+    cols = starts_with("n"),
+    names_to = "metric",
+    values_to = "value"
+  ) %>%
+  mutate(
+    ctr = "N",
+    source = "queue_sim",
+    report_date = max_date
+  )
+
+
+df_sim <- df_sim %>%
+  # bind slot average values to plot baselines later on
+  bind_rows(
+    discharges_ts %>%
+      filter(date >= (max(date) - dweeks(4))) %>%
+      group_by(grp, pathway) %>% 
+      summarise(mean = mean(n)) %>%
+      pivot_longer(cols = -c(grp, pathway),
+                   names_to = "metric", 
+                   values_to = "value") %>%
+      mutate(ctr = "N",
+             metric = "slot_avg",
+             source = "queue_sim",
+             report_date = max_date)
+  )
+
 df_sim
+
 })
