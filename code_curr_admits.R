@@ -37,7 +37,7 @@ df_curr_admits <- local({
   
   los_wf_grp <- readRDS("data/los_wf_grp.RDS")
   
-  
+
   
   los_df <- los_df %>%
     recipes::bake(workflows::extract_recipe(los_wf_grp), .) %>%
@@ -91,14 +91,14 @@ df_curr_admits <- local({
     dplyr::select(-wf) %>%
     unnest(cols = c(data, pred)) %>%
     mutate(pathway = pmap_chr(list(.pred_Other,
-                                   .pred_P1,
-                                   .pred_P2,
-                                   .pred_P3), 
-                              ~sample(c("Other", "P1", "P2", "P3"),
-                                      1,
-                                      prob = c(..1, ..2, ..3, ..4),
-                                      replace = TRUE)
-    )) %>%
+                         .pred_P1,
+                         .pred_P2,
+                         .pred_P3), 
+                    ~sample(c("Other", "P1", "P2", "P3"),
+                            1,
+                            prob = c(..1, ..2, ..3, ..4),
+                            replace = TRUE)
+                    )) %>%
     mutate(pathway = factor(pathway,levels = c("Other", "P1", "P2", "P3"))) %>%
     dplyr::select(rep, grp, los_remaining, pathway) %>%
     mutate(los_remaining = ifelse(los_remaining < 0, 0, los_remaining)) %>%
@@ -111,3 +111,4 @@ df_curr_admits <- local({
     mutate(source = "current_admits")
   df_pred
 })
+    

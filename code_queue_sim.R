@@ -6,12 +6,6 @@ plot_df_queue_sim <- local({
   # Create distributions for discharge capacity, based empirically on the last
   # 4-weeks of actuals
   
-  
-  safe_min <- function(x) {
-    if (length(x) == 0 || all(is.na(x))) return(as.Date(NA))
-    min(x, na.rm = TRUE)
-  }
-  
   nctr_lazy <- lazy_dt(nctr_df)
   
   discharges_ts <- nctr_df %>%
@@ -54,10 +48,7 @@ plot_df_queue_sim <- local({
     )) %>%
     group_by(NHS_Number, Date_Of_Admission) %>%
     mutate(pathway = ifelse(length(pathway[pathway != "Other"]) > 0, head(pathway[pathway != "Other"], 1), "Other")) %>%
-    mutate(keep_date = case_when(
-      any(!der_ctr, na.rm = TRUE) ~ as.Date(safe_min(Census_Date[!der_ctr]) - ddays(1)),
-      TRUE ~ as.Date(max(Census_Date, na.rm = TRUE))
-    )) %>%
+    mutate(keep_date = as.Date(if_else(any(!der_ctr),min(Census_Date[!der_ctr]) - ddays(1),max(Census_Date)))) %>%
     filter(Census_Date < max(Census_Date)) %>%
     pivot_longer(
       cols = c(site, la),
@@ -155,22 +146,26 @@ calculate_queue_evolution <- function(demand_vec, capacity_vec, initial_q) {
 df_sim <- left_join(capacity_dists, demand_dists, by = c("grp", "pathway")) %>%
   left_join(pathway_queue %>% select(grp, pathway, initial_q = value), by = c("grp", "pathway")) %>%
   cross_join(scenarios) %>%
-  mutate(sim_results = pmap(list(capacity_dist, demand_dist, stip_factor, initial_q), 
-                            function(c_dist, d_dist, f, i_q) {
-                              reps <- replicate(n_rep, {
-                                c_traj <- round(c_dist(n_days) * f)
-                                d_traj <- d_dist()
-                                calculate_queue_evolution(d_traj, c_traj, i_q)
-                              }) 
-                              tibble(
-                                day = 1:n_days,
-                                avg = rowMeans(reps),
-                                u85 = apply(reps, 1, quantile, 0.925),
-                                l85 = apply(reps, 1, quantile, 0.075)
-                              )
-                            })) %>%
-  select(grp, pathway, scenario_name, sim_results) %>%
-  unnest(sim_results)  %>%
+  mutate(
+    capacity_traj = pmap(list(capacity_dist, stip_factor), function(dist_fn, f) {
+      replicate(n_rep, round(dist_fn(n_days) * f), simplify = FALSE)
+    }),
+    demand_traj = map(demand_dist, ~ replicate(n_rep, .x(), simplify = FALSE))
+  ) %>%
+  unnest(cols = c(capacity_traj, demand_traj)) %>%
+  mutate(
+    queue_traj = pmap(list(demand_traj, capacity_traj, initial_q),
+                      ~ calculate_queue_evolution(..1, ..2, ..3))
+  ) %>%
+  select(grp, pathway, scenario_name, queue_traj) %>%
+  unnest_longer(queue_traj, indices_to = "day", values_to = "value") %>%
+  group_by(grp, pathway, scenario_name, day) %>%
+  summarise(
+    avg = mean(value),
+    u85 = quantile(value, 0.925),
+    l85 = quantile(value, 0.075),
+    .groups = "drop"
+  ) %>%
   pivot_wider(
     names_from = scenario_name, 
     values_from = c(avg, u85, l85)
@@ -202,18 +197,16 @@ df_sim <- df_sim %>%
   # bind slot average values to plot baselines later on
   bind_rows(
     discharges_ts %>%
-      filter(date >= (max(date) - dweeks(4))) %>%
-      group_by(grp, pathway) %>% 
-      summarise(mean = mean(n)) %>%
-      pivot_longer(cols = -c(grp, pathway),
-                   names_to = "metric", 
-                   values_to = "value") %>%
-      mutate(ctr = "N",
-             metric = "slot_avg",
-             source = "queue_sim",
-             report_date = max_date)
+              filter(date >= (max(date) - dweeks(4))) %>%
+              group_by(grp, pathway) %>% 
+              summarise(mean = mean(n)) %>%
+              pivot_longer(cols = -c(grp, pathway),
+                           names_to = "metric", 
+                           values_to = "value") %>%
+              mutate(ctr = "N",
+                     metric = "slot_avg",
+                     source = "queue_sim",
+                     report_date = max_date)
   )
-
 df_sim
-
 })

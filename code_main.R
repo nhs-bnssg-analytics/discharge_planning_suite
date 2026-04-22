@@ -23,7 +23,7 @@ source("utils/colour_functions.R")
 plot_int <- TRUE
 seed <- FALSE
 
-n_rep <- 500
+n_rep <- 1E3
 n_days <- 10
 
 nctr_tbl <- tbl(con,
@@ -214,11 +214,8 @@ nctr_df <- nctr_df %>%
   filter(Census_Date <= report_start)
 
 source("code_admits_fcast.R")
-gc()
 source("code_new_admits.R")
-gc()
 source("code_curr_admits.R")
-gc()
 
 if(plot_int){
   bind_rows(df_curr_admits, df_new_admit) %>%
@@ -251,7 +248,7 @@ df_pred <- bind_rows(df_curr_admits, df_new_admit) %>%
 
 # Now simulate the queue evolution
 source("code_queue_sim.R")
-gc()
+
 
 # dataset for plotting (and storing on SQL)
 
@@ -302,23 +299,46 @@ plot_df <- bind_rows(plot_df_pred,
 # RODBC::odbcClose(con)
 
 
-# change con to write to modelling sql area
-con <- switch(
-  .Platform$OS.type,
-  windows = DBI::dbConnect(odbc::odbc(), dsn = "xsw"),
-  unix = {
-    conn_str <- readr::read_lines("/root/sql/sql_modelling_connect_string_linux")
-    DBI::dbConnect(odbc::odbc(), .connection_string = conn_str)
-  }
-)
+# # change con to write to modelling sql area
+# con <- switch(
+#   .Platform$OS.type,
+#   windows = DBI::dbConnect(odbc::odbc(), dsn = "xsw"),
+#   unix = {
+#     conn_str <- readr::read_lines("/root/sql/sql_modelling_connect_string_linux")
+#     DBI::dbConnect(odbc::odbc(), .connection_string = conn_str)
+#   }
+# )
+# 
+# 
+# dbWriteTable(
+#   con,
+#   name = Id(db = "modelling_SQL_AREA", schema = "dbo", table = "discharge_pathway_projections"),
+#   value = plot_df,
+#   overwrite = TRUE
+# )
 
 
-dbWriteTable(
-  con,
-  name = Id(db = "modelling_SQL_AREA", schema = "dbo", table = "discharge_pathway_projections"),
-  value = plot_df,
-  overwrite = TRUE
+con <- switch(.Platform$OS.type,
+              windows = {
+                "driver={SQL Server};server=Xsw-00-ash01;
+                 database=MODELLING_SQL_AREA;
+                 trusted_connection=true" |>
+                  RODBC::odbcDriverConnect()
+              },
+              unix = {
+                "/root/sql/sql_modelling_connect_string_linux" |>
+                  readr::read_lines() |>
+                  RODBC::odbcDriverConnect()
+              }
 )
+# delete old data
+query_delete <- "DELETE FROM MODELLING_SQL_AREA.dbo.discharge_pathway_projections"
+RODBC::sqlQuery(con, query_delete)
+RODBC::sqlSave(con,
+               plot_df,
+               tablename = 'dbo.discharge_pathway_projections',
+               rownames = FALSE,
+               append = TRUE)
 
 
 # Write to ICS MySQL db
