@@ -302,46 +302,23 @@ plot_df <- bind_rows(plot_df_pred,
 # RODBC::odbcClose(con)
 
 
-# # change con to write to modelling sql area
-# con <- switch(
-#   .Platform$OS.type,
-#   windows = DBI::dbConnect(odbc::odbc(), dsn = "xsw"),
-#   unix = {
-#     conn_str <- readr::read_lines("/root/sql/sql_modelling_connect_string_linux")
-#     DBI::dbConnect(odbc::odbc(), .connection_string = conn_str)
-#   }
-# )
-# 
-# 
-# dbWriteTable(
-#   con,
-#   name = Id(db = "modelling_SQL_AREA", schema = "dbo", table = "discharge_pathway_projections"),
-#   value = plot_df,
-#   overwrite = TRUE
-# )
-
-
-con <- switch(.Platform$OS.type,
-              windows = {
-                "driver={SQL Server};server=Xsw-00-ash01;
-                 database=MODELLING_SQL_AREA;
-                 trusted_connection=true" |>
-                  RODBC::odbcDriverConnect()
-              },
-              unix = {
-                "/root/sql/sql_modelling_connect_string_linux" |>
-                  readr::read_lines() |>
-                  RODBC::odbcDriverConnect()
-              }
+# change con to write to modelling sql area
+con <- switch(
+  .Platform$OS.type,
+  windows = DBI::dbConnect(odbc::odbc(), dsn = "xsw"),
+  unix = {
+    conn_str <- readr::read_lines("/root/sql/sql_modelling_connect_string_linux")
+    DBI::dbConnect(odbc::odbc(), .connection_string = conn_str)
+  }
 )
-# delete old data
-query_delete <- "DELETE FROM MODELLING_SQL_AREA.dbo.discharge_pathway_projections"
-RODBC::sqlQuery(con, query_delete)
-RODBC::sqlSave(con,
-               plot_df,
-               tablename = 'dbo.discharge_pathway_projections',
-               rownames = FALSE,
-               append = TRUE)
+
+
+dbWriteTable(
+  con,
+  name = Id(db = "modelling_SQL_AREA", schema = "dbo", table = "discharge_pathway_projections"),
+  value = plot_df,
+  overwrite = TRUE
+)
 
 
 # Write to ICS MySQL db
