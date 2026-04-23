@@ -39,6 +39,7 @@ admissions <- nctr_df %>%
     names_to = "grp_type",
     values_to = "grp",
   ) %>%
+  filter(grp != "other") %>%
   group_by(grp , date = as.Date(Date_Of_Admission)) %>%
   count() %>%
   filter(date > ymd("2023-07-01")) # data before this are spurious 

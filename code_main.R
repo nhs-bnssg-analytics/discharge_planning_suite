@@ -23,7 +23,7 @@ source("utils/colour_functions.R")
 plot_int <- TRUE
 seed <- FALSE
 
-n_rep <- 1E3
+n_rep <- 10
 n_days <- 10
 
 nctr_tbl <- tbl(con,
@@ -108,12 +108,12 @@ nctr_df <- nctr_tbl %>%
   mutate(
     la = if_else(la == "Other", replace(la_pds, " Area", ""), la),
     la = case_when(
-      la == "NOT BNSSG" | la == "Other" | is.na(la) ~ "Other",
+      la == "NOT BNSSG" | la == "Other" | is.na(la) ~ "other",
       TRUE ~ la
     ),
     la = tolower(la) 
   ) %>%
-  collect()
+  collect() 
 
 
 # max census date
@@ -184,6 +184,8 @@ nctr_sum <- nctr_df %>%
     names_to = "grp_type",
     values_to = "grp",
   ) %>%
+  # we only count patients in 'other' LA when considering accute occupancy
+  filter(grp != "other")
   dplyr::select(
     report_date,
     nhs_number,
