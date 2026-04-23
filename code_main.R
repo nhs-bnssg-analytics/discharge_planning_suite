@@ -23,7 +23,7 @@ source("utils/colour_functions.R")
 plot_int <- TRUE
 seed <- FALSE
 
-n_rep <- 10
+n_rep <- 1E3
 n_days <- 10
 
 nctr_tbl <- tbl(con,
@@ -185,7 +185,7 @@ nctr_sum <- nctr_df %>%
     values_to = "grp",
   ) %>%
   # we only count patients in 'other' LA when considering accute occupancy
-  filter(grp != "other")
+  filter(grp != "other") %>%
   dplyr::select(
     report_date,
     nhs_number,
