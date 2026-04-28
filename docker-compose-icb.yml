@@ -1,6 +1,9 @@
 version: '3.7'
 services:
   forecast:
+    cap_add:
+      - SYS_RESOURCE
+    oom_score_adj: -1000
     build:
       context: .           
       dockerfile: Dockerfile-icb 

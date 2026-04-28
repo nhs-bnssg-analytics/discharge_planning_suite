@@ -24,7 +24,7 @@ RUN apt-get update && apt-get install -y gnupg2 curl \
     && ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc-dev
 
 RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/bullseye/latest')); \
-    install.packages(c('tidymodels', 'fable', 'fabletools', 'forecast', 'feasts',  'fitdistrplus', 'EnvStats', 'ranger', 'extraDistr', 'treeClust', 'ggtext', 'bslib', 'RODBC', 'odbc', 'RMySQL', 'RJDBC'))"
+    install.packages(c('tidymodels', 'fable', 'fabletools', 'forecast', 'feasts',  'fitdistrplus', 'EnvStats', 'ranger', 'extraDistr', 'treeClust', 'ggtext', 'bslib', 'RODBC', 'odbc', 'RMySQL', 'RJDBC', 'matrixStats'))"
 
 
 WORKDIR /root
@@ -39,15 +39,13 @@ COPY code_curr_admits.R code_curr_admits.R
 COPY code_queue_sim.R code_queue_sim.R
 
 
-# Copy hello-cron file to the cron.d directory
-COPY crontab /etc/cron.d/crontab
+# 1. Copy the crontab to a temporary location
+COPY crontab /root/crontab_source
 
-# Give execution rights on the cron job
-RUN chmod 0644 /etc/cron.d/crontab
+# 2. Force install it into the root user's crontab and fix permissions
+RUN chmod 0644 /root/crontab_source && \
+    crontab /root/crontab_source
 
-# Apply cron job
-RUN crontab /etc/cron.d/crontab
-
-# Run the command on container startup
-CMD printenv > /etc/environment && cron -f
-
+# 3. Ensure cron is logging and has the right environment
+# We use '&&' to ensure cron starts AFTER the environment is dumped
+CMD printenv | grep -v "no_proxy" >> /etc/environment && cron -f -L 15
