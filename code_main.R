@@ -364,3 +364,7 @@ query_delete <- str_c("DELETE FROM discharge_pathway_projections")
 DBI::dbGetQuery(conn, query_delete)
 DBI::dbWriteTable(conn, "discharge_pathway_projections", value = plot_df, overwrite = TRUE, row.names = FALSE)
 
+
+message("==========================================")
+message(paste("Forecast completed successfully at", Sys.time()))
+message("==========================================")
