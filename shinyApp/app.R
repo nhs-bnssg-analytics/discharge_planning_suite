@@ -125,10 +125,7 @@ ui <- page_sidebar(
                  letter-spacing: 0.5px; color: #888;"
       ),
       br(),
-      tags$span(
-        format(report_date, "%a %d %b"),
-        style = "font-size: 18px; font-weight: 500;"
-      )
+      textOutput("sidebar_date")
     ),
     
     radioButtons(
@@ -152,7 +149,7 @@ dpp_module_server <- function(id, data_subset, report_date) {
     output$dpp_plot <- renderGirafe({
       p_pred <- data_subset() %>%
         mutate(pathway_add = fct_relevel(pathway_add, "..not for D2A service", after = Inf)) %>%
-        mutate(day = report_date + ddays(day-1)) %>%
+        mutate(day = report_date() + ddays(day-1)) %>%
         filter(ctr == "Y", source == "model_pred") %>%
         ggplot(aes(x = day, y = n, fill = pathway_add, group = pathway_add)) +
         geom_col_interactive(aes(tooltip = tooltip_n), alpha = 0.75) +
@@ -207,7 +204,7 @@ dpp_module_server <- function(id, data_subset, report_date) {
       p <- data_subset() %>%
         filter(source == "queue_sim") %>%
         select(-any_of(select_vec)) %>%
-        mutate(day = report_date + ddays(day-1)) %>%
+        mutate(day = report_date() + ddays(day-1)) %>%
         rename(!!!rename_vec) %>%
         ggplot(aes(x = day, y = n, fill = pathway_q)) +
         geom_col_interactive(aes(tooltip = tooltip_q), alpha = 0.8) +
@@ -248,18 +245,59 @@ dpp_module_server <- function(id, data_subset, report_date) {
 # server is unchanged
 server <- function(input, output, session) {
   
+  
+  data_dpp_reactive <- reactivePoll(intervalMillis = 60000, session = session,
+                                    # CHECK: Is there a reason to reload?
+                                    checkFunc = function() {
+                                      host <- Sys.getenv("DB_HOST")
+                                      dbname <- Sys.getenv("DB_NAME")
+                                      user <- Sys.getenv("DB_USER")
+                                      password <- Sys.getenv("DB_CRED")
+                                      
+                                      # Create the connection
+                                      con <- DBI::dbConnect(DBI::dbDriver("MySQL"),
+                                                            dbname = dbname,
+                                                            host = host,
+                                                            port = 3306,
+                                                            user = user,
+                                                            password=password)
+                                      # We just check the latest timestamp or count
+                                      res <- DBI::dbGetQuery(con, "SELECT MAX(report_date) FROM discharge_pathway_projections")
+                                      DBI::dbDisconnect(con)
+                                      return(res)
+                                    },
+                                    # VALUE: If checkFunc changes, run the full pipeline
+                                    valueFunc = function() {
+                                      get_processed_data()
+                                    }
+  )
+  
+  
   filtered_data <- reactive({
+    req(data_dpp_reactive())
+    
+    d <- data_dpp_reactive()
     acute_grps <- c("NBT", "BRI", "Weston")
     la_grps    <- c("NSC", "BCC", "SGC")
     
     if (input$view_toggle == "acute") {
-      data_dpp %>% filter(grp %in% acute_grps)
+      d %>% filter(grp %in% acute_grps)
     } else {
-      data_dpp %>% filter(grp %in% la_grps)
+      d %>% filter(grp %in% la_grps)
     }
   })
   
-  dpp_module_server("main_dashboard", filtered_data, report_date)
+  report_date_reactive <- reactive({
+    req(data_dpp_reactive())
+    ymd(data_dpp_reactive()$report_date)[1]
+  })
+  
+  output$sidebar_date <- renderText({
+    req(report_date_reactive())
+    format(report_date_reactive(), "%a %d %b")
+  })
+  
+  dpp_module_server("main_dashboard", filtered_data, report_date_reactive)
 }
 
 shinyApp(ui, server)
