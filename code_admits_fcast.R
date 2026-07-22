@@ -26,12 +26,6 @@ min_adm_date <- nctr_df %>%
 fcast_days <- ceiling((report_end - min_adm_date)/ddays(1))
 
 admissions <- nctr_df %>%
-  # filter(!is.na(NHS_Number)) %>%
-  filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
-  mutate(site = case_when(Organisation_Site_Code == 'RVJ01' ~ 'nbt',
-                                            Organisation_Site_Code == 'RA701' ~ 'bri',
-                                            Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
-                                            TRUE ~ '')) %>%
   group_by(nhs_number = NHS_Number) %>%
   distinct(Date_Of_Admission, .keep_all = TRUE) %>%
   pivot_longer(

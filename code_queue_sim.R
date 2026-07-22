@@ -20,16 +20,6 @@ plot_df_queue_sim <- local({
     mutate(nhs_number = as.character(NHS_Number),
            nhs_number = if_else(is.na(nhs_number), CDS_Unique_Identifier, nhs_number),
            sex = if_else(Person_Stated_Gender_Code == 1, "Male", "Female")) %>%
-    filter(Organisation_Site_Code %in% c('RVJ01', 'RA701', 'RA301', 'RA7C2')) %>%
-    mutate(
-      site = case_when(
-        Organisation_Site_Code == 'RVJ01' ~ 'nbt',
-        Organisation_Site_Code == 'RA701' ~ 'bri',
-        Organisation_Site_Code %in% c('RA301', 'RA7C2') ~ 'weston',
-        TRUE ~ 'other'
-      ),
-      Date_Of_Admission = as.Date(Date_Of_Admission)
-    ) %>%
     mutate(
       der_los = (as.Date(Census_Date) - as.Date(Date_Of_Admission))/ddays(1),
       der_ctr = case_when(
@@ -39,10 +29,10 @@ plot_df_queue_sim <- local({
         Criteria_To_Reside == "N" ~ FALSE
       )) %>%
     mutate(report_date = max(Census_Date)) %>%
-    mutate(los = (report_date - Date_Of_Admission) / ddays(1)) %>%
+    mutate(los = (as.Date(report_date) - as.Date(Date_Of_Admission)) / ddays(1)) %>%
     mutate(
       pathway = recode(
-        Current_Delay_Code_Standard,
+        Current_Delay_Code,
         !!!pathway_recodes
       ),
       pathway = coalesce(pathway, "Other")
